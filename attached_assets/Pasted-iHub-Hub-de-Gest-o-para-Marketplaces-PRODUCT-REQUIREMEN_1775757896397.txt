@@ -1,0 +1,817 @@
+iHub
+Hub de Gestão para Marketplaces
+PRODUCT REQUIREMENTS DOCUMENT  ·  v2.0
+Versão
+2.0 — Junho 2025
+Status
+Em Desenvolvimento
+Plataforma
+Web App / PWA
+Stack
+React + Express + Supabase
+
+
+
+
+1. Visão Geral do Produto
+O iHub é um Web App (PWA) que centraliza a gestão de vendas em marketplaces, começando pelo Mercado Livre. O produto elimina a fragmentação de informações críticas que prejudica pequenos vendedores, entregando visibilidade total em uma interface rápida e esteticamente superior.
+
+1.1 Problema Central
+O painel do Mercado Livre apresenta dados de forma fragmentada, sem hierarquia visual clara e com baixa eficiência para tomada de decisão. Pequenos vendedores perdem tempo navegando entre telas, cometem erros de estoque e respondem perguntas com atraso.
+
+1.2 Proposta de Valor
+Usuário entende qualquer informação crítica em menos de 2 segundos. Essa é a regra de ouro do iHub.
+
+Funcionalidades do MVP:
+Autenticação de usuários via Supabase Auth
+Conexão com múltiplas contas Mercado Livre via OAuth 2.0
+Dashboard com métricas consolidadas
+Gestão de produtos com estoque em destaque máximo
+Gestão de pedidos com filtros avançados
+Resposta a perguntas de clientes diretamente no iHub
+Notificações em tempo real (in-app + push PWA)
+Sistema de trial de 30 dias + assinatura Stripe
+Sincronização de estoque compartilhado por SKU
+
+1.3 Público-Alvo
+Pequenos e médios vendedores do Mercado Livre que possuem múltiplas contas ou múltiplos anúncios e precisam de visibilidade centralizada sem custo elevado de ferramentas enterprise.
+
+
+2. Arquitetura Técnica
+2.1 Stack Definitiva
+Camada
+Tecnologia
+Justificativa
+Frontend
+React + Vite + TypeScript
+SPA com TypeScript para type-safety. PWA via vite-plugin-pwa.
+Roteamento
+Wouter
+Leve, sem dependências pesadas como React Router.
+Estado / Dados
+TanStack Query (React Query)
+Cache inteligente, retry automático, loading states.
+Estilização
+Tailwind CSS
+Utility-first, mobile-first por padrão.
+Componentes
+shadcn/ui
+Componentes acessíveis e customizáveis.
+Backend
+Node.js + Express + TypeScript
+API REST. Rodar no Replit com Railway/Vercel como destino futuro.
+ORM
+Drizzle ORM
+Type-safe, migrations via drizzle-kit.
+Banco de Dados
+Supabase (PostgreSQL)
+Auth, Realtime, RLS e PostgreSQL gerenciado.
+Autenticação
+Supabase Auth
+JWT. O backend valida com SUPABASE_JWT_SECRET.
+Notificações RT
+Supabase Realtime
+Channels para notificações in-app.
+Push Notifications
+Web Push API + Service Worker
+Nativas do PWA, sem Firebase.
+Pagamentos
+Stripe
+Checkout, webhooks, gestão de assinatura.
+Monorepo
+pnpm workspaces
+artifacts/ihub, artifacts/api-server, lib/db, lib/api-client-react.
+
+
+2.2 Estrutura do Monorepo
+ihub/
+├── artifacts/
+│   ├── ihub/              # React PWA Frontend
+│   │   ├── src/pages/     # dashboard, products, orders, questions, notifications, profile, integrations
+│   │   ├── src/lib/       # api-client, supabase, utils
+│   │   └── public/        # manifest.json, service-worker.js, icons
+│   └── api-server/        # Express Backend
+│       ├── src/routes/    # auth, accounts, products, orders, questions, notifications, dashboard, webhooks
+│       ├── src/lib/       # auth.ts (JWT), mercadolivre.ts, supabase.ts
+│       └── src/app.ts     # Express entry point
+├── lib/
+│   ├── db/                # Drizzle schema + migrations
+│   └── api-client-react/  # Orval generated hooks
+└── scripts/
+    └── supabase-ihub-full-schema.sql
+
+⚠️  O Replit deve iniciar ambos os processos (frontend e api-server) com concurrently ou usando dois Repls separados.
+
+
+3. Banco de Dados (Supabase / PostgreSQL)
+3.1 Diagrama de Entidades
+auth.users (Supabase) → profiles (1:1) → accounts (1:N) → products / orders / questions (1:N)
+profiles → notifications (1:N)
+accounts → tokens de acesso ML (colunas na própria tabela accounts)
+
+3.2 Tabela: profiles
+Coluna
+Tipo
+Descrição
+id
+UUID
+FK para auth.users(id). PRIMARY KEY.
+full_name
+TEXT
+Nome completo do usuário.
+email
+TEXT
+Email do usuário (copiado do auth.users).
+avatar_url
+TEXT
+URL do avatar.
+plan
+TEXT DEFAULT 'trial'
+Plano atual: 'trial', 'basic', 'pro'.
+trial_ends_at
+TIMESTAMPTZ
+Data de término do trial. NULL se não em trial.
+stripe_customer_id
+TEXT
+ID do customer no Stripe.
+stripe_subscription_id
+TEXT
+ID da assinatura ativa no Stripe.
+created_at
+TIMESTAMPTZ
+Data de criação.
+updated_at
+TIMESTAMPTZ
+Atualização automática via trigger.
+
+
+3.3 Tabela: accounts
+Coluna
+Tipo
+Descrição
+id
+UUID
+PRIMARY KEY gerado automaticamente.
+user_id
+UUID
+FK para profiles(id). Dono da conta.
+ml_user_id
+TEXT
+ID do usuário no Mercado Livre (ex: 123456789).
+ml_nickname
+TEXT
+Apelido da conta ML (ex: VENDEDOR_BRASIL).
+ml_email
+TEXT
+Email da conta ML.
+access_token
+TEXT
+Token de acesso ML. Renovado automaticamente.
+refresh_token
+TEXT
+Token de renovação ML. Armazenar com segurança.
+token_expires_at
+TIMESTAMPTZ
+Expiração do access_token. Checar antes de usar.
+is_active
+BOOLEAN
+Se a integração está ativa.
+last_sync_at
+TIMESTAMPTZ
+Última sincronização completa.
+created_at
+TIMESTAMPTZ
+Data de criação.
+updated_at
+TIMESTAMPTZ
+Atualização automática via trigger.
+
+
+3.4 Tabela: products
+Coluna
+Tipo
+Descrição
+id
+UUID
+PRIMARY KEY.
+account_id
+UUID
+FK para accounts(id).
+ml_item_id
+TEXT
+ID do anúncio no ML (ex: MLB123456789).
+title
+TEXT
+Título do anúncio.
+sku
+TEXT
+SKU do produto. CHAVE LÓGICA GLOBAL para sync de estoque.
+price
+DECIMAL(10,2)
+Preço de venda atual.
+available_quantity
+INTEGER
+Estoque disponível. Valor mais crítico do sistema.
+sold_quantity
+INTEGER
+Total vendido.
+status
+TEXT
+Status do anúncio: 'active', 'paused', 'closed', 'under_review'.
+listing_type
+TEXT
+Tipo: 'gold_special', 'gold_pro', 'bronze', etc.
+logistic_type
+TEXT
+Tipo logístico: 'fulfillment' (FULL), 'drop_off', 'xd_drop_off', 'self_service'.
+is_full
+BOOLEAN
+TRUE se logistic_type = fulfillment. Não pode editar estoque.
+thumbnail
+TEXT
+URL da imagem principal.
+permalink
+TEXT
+URL do anúncio no ML.
+ml_category_id
+TEXT
+Categoria no ML.
+last_synced_at
+TIMESTAMPTZ
+Última sincronização deste item.
+created_at
+TIMESTAMPTZ
+Data de criação.
+updated_at
+TIMESTAMPTZ
+Atualização automática via trigger.
+
+
+3.5 Tabela: orders
+Coluna
+Tipo
+Descrição
+id
+UUID
+PRIMARY KEY.
+account_id
+UUID
+FK para accounts(id).
+ml_order_id
+BIGINT
+ID do pedido no ML.
+status
+TEXT
+Status: 'confirmed', 'payment_required', 'payment_in_process', 'partially_paid', 'paid', 'cancelled'.
+total_amount
+DECIMAL(10,2)
+Valor total do pedido.
+currency_id
+TEXT
+Moeda. Padrão 'BRL'.
+buyer_id
+BIGINT
+ID do comprador no ML.
+buyer_nickname
+TEXT
+Apelido do comprador.
+shipping_id
+BIGINT
+ID do envio no ML.
+shipping_status
+TEXT
+Status do envio.
+date_created
+TIMESTAMPTZ
+Data de criação do pedido no ML.
+date_closed
+TIMESTAMPTZ
+Data de fechamento.
+items_json
+JSONB
+Array com itens do pedido [{item_id, title, quantity, price}].
+created_at
+TIMESTAMPTZ
+Data de criação local.
+updated_at
+TIMESTAMPTZ
+Atualização automática via trigger.
+
+
+3.6 Tabela: questions
+Coluna
+Tipo
+Descrição
+id
+UUID
+PRIMARY KEY.
+account_id
+UUID
+FK para accounts(id).
+ml_question_id
+BIGINT
+ID da pergunta no ML.
+ml_item_id
+TEXT
+ID do anúncio ao qual a pergunta pertence.
+text
+TEXT
+Texto da pergunta do comprador.
+status
+TEXT
+Status: 'unanswered', 'answered', 'closed_unanswered', 'under_review'.
+from_user_id
+BIGINT
+ID do comprador que perguntou.
+from_user_nickname
+TEXT
+Apelido de quem perguntou.
+answer_text
+TEXT
+Texto da resposta enviada. NULL se não respondida.
+answer_date
+TIMESTAMPTZ
+Data da resposta.
+date_created
+TIMESTAMPTZ
+Data de criação da pergunta no ML.
+created_at
+TIMESTAMPTZ
+Data de criação local.
+updated_at
+TIMESTAMPTZ
+Atualização automática via trigger.
+
+
+3.7 Tabela: notifications
+Coluna
+Tipo
+Descrição
+id
+UUID
+PRIMARY KEY.
+user_id
+UUID
+FK para profiles(id).
+type
+TEXT
+Tipo: 'new_question', 'new_order', 'low_stock', 'order_update', 'sync_error'.
+title
+TEXT
+Título da notificação.
+message
+TEXT
+Corpo da mensagem.
+is_read
+BOOLEAN
+FALSE por padrão.
+resource_type
+TEXT
+Tipo do recurso relacionado: 'question', 'order', 'product'.
+resource_id
+TEXT
+ID do recurso para redirecionar ao clicar.
+created_at
+TIMESTAMPTZ
+Data de criação.
+
+
+3.8 RLS (Row Level Security)
+Habilitar RLS em todas as tabelas. Políticas obrigatórias:
+profiles: usuário acessa apenas o próprio registro (id = auth.uid()).
+accounts: usuário acessa apenas contas onde user_id = auth.uid().
+products / orders / questions: acesso via JOIN com accounts (account_id IN SELECT id FROM accounts WHERE user_id = auth.uid()).
+notifications: usuário acessa apenas onde user_id = auth.uid().
+⚠️  A API Node.js usa DATABASE_URL com role service_role que bypassa RLS. Isso é intencional — o backend já faz a validação de JWT e ownership.
+
+3.9 Triggers Obrigatórios
+Trigger 1: handle_new_user — Após INSERT em auth.users, cria automaticamente um registro em profiles com trial_ends_at = NOW() + 30 days.
+Trigger 2: update_updated_at — Trigger genérico em todas as tabelas para manter updated_at = NOW() a cada UPDATE.
+
+
+4. Integração Mercado Livre — Endpoints Exatos
+⚠️  CRÍTICO: Usar exatamente estes endpoints. Erros de URL são a causa mais comum de falha na integração.
+
+4.1 OAuth 2.0 — Fluxo de Autorização
+Passo 1 — Gerar URL de autorização:
+https://auth.mercadolivre.com.br/authorization?response_type=code&client_id={ML_CLIENT_ID}&redirect_uri={ML_REDIRECT_URI}
+
+Passo 2 — Trocar code por tokens:
+POST https://api.mercadolibre.com/oauth/token
+Content-Type: application/x-www-form-urlencoded
+Body: grant_type=authorization_code&client_id={ML_CLIENT_ID}&client_secret={ML_CLIENT_SECRET}&code={CODE}&redirect_uri={ML_REDIRECT_URI}
+
+Resposta do token (salvar todos os campos no accounts):
+{ "access_token": "...", "token_type": "Bearer", "expires_in": 21600,
+  "scope": "...", "user_id": 123456789, "refresh_token": "..." }
+
+Passo 3 — Renovar access_token (executar quando token_expires_at < NOW() + 5min):
+POST https://api.mercadolibre.com/oauth/token
+Body: grant_type=refresh_token&client_id={ML_CLIENT_ID}&client_secret={ML_CLIENT_SECRET}&refresh_token={REFRESH_TOKEN}
+
+⚠️  O access_token expira em 6 horas. Implementar middleware que checa expiração antes de cada chamada à API ML e faz refresh automático.
+
+4.2 Endpoints da API ML Utilizados
+Método
+Endpoint ML
+Descrição e Observações
+GET
+/users/me
+Dados do usuário autenticado. Usar para salvar ml_user_id e ml_nickname.
+GET
+/users/{ml_user_id}/items/search?status=active&limit=50&offset=0
+Lista IDs de anúncios ativos. Paginar com offset.
+GET
+/items/{item_id}
+Detalhes de um anúncio: título, preço, estoque, status, logística, SKU.
+GET
+/items?ids=MLB1,MLB2,MLB3
+Busca múltiplos itens (até 20). Usar para sincronização eficiente.
+PUT
+/items/{item_id}
+Atualizar anúncio. Para estoque: body {"available_quantity": N}. Bloqueado se is_full=true.
+GET
+/orders/search?seller={ml_user_id}&sort=date_desc&limit=50&offset=0
+Lista pedidos do vendedor. Filtrar por date_from e date_to.
+GET
+/orders/{order_id}
+Detalhes de um pedido específico.
+GET
+/questions/search?seller_id={ml_user_id}&status=unanswered&limit=50
+Lista perguntas não respondidas.
+POST
+/answers
+Responder pergunta. Body: {"question_id": 123, "text": "Resposta..."}
+GET
+/notifications/guides
+Listar tópicos disponíveis para registrar webhook.
+POST
+/notifications/topics/{topic}/applications/{app_id}
+Registrar webhook. Usar para questions e orders.
+
+
+4.3 Headers Obrigatórios em Todas as Chamadas ML
+Authorization: Bearer {access_token}
+Content-Type: application/json
+Accept: application/json
+
+Base URL: https://api.mercadolibre.com
+⚠️  Usar /mercadolibre.com (não /mercadolivre.com.br) para chamadas REST da API.
+
+4.4 Webhook do Mercado Livre
+O backend deve expor um endpoint público que receberá notificações em tempo real do ML:
+POST /api/webhooks/mercadolivre
+
+Payload que o ML envia:
+{ "_id": "...", "resource": "/questions/123456789", "user_id": 123456789,
+  "topic": "questions", "application_id": "...", "attempts": 1,
+  "sent": "2025-01-01T00:00:00.000Z", "received": "2025-01-01T00:00:01.000Z" }
+
+Tópicos a registrar e tratar:
+questions — Nova pergunta ou resposta.
+orders_v2 — Novo pedido ou atualização de status.
+items — Mudança em anúncio (estoque, status).
+
+Lógica do webhook handler:
+1. Extrair resource e topic do body.
+2. Buscar ml_user_id para saber qual account atualizar.
+3. Fazer GET no recurso indicado usando o access_token da conta correspondente.
+4. Atualizar o banco de dados (upsert).
+5. Inserir notificação na tabela notifications.
+6. Responder com HTTP 200 imediatamente (ML requer resposta em < 500ms).
+⚠️  Processar a lógica de forma assíncrona após responder 200. Usar setImmediate() ou queue.
+
+
+5. API Backend — Endpoints Express
+Todos os endpoints têm prefixo /api. Autenticação via Bearer JWT do Supabase, exceto onde indicado.
+
+5.1 Middleware de Autenticação
+Validação do JWT do Supabase em artifacts/api-server/src/lib/auth.ts:
+// Verificar JWT com SUPABASE_JWT_SECRET (HS256)
+// Ou validar via JWKS em https://{SUPABASE_URL}/auth/v1/.well-known/jwks.json
+// Extrair user.id (UUID) do payload para identificar o usuário
+⚠️  Se SUPABASE_JWT_SECRET estiver errado ou ausente, TODOS os endpoints retornam 401.
+
+5.2 Endpoints: Auth
+Método
+Endpoint
+Descrição
+GET
+/api/healthz
+Health check. Sem autenticação. Resposta: {"status":"ok"}.
+GET
+/api/auth/me
+Retorna dados do usuário autenticado (profile + plano).
+
+
+5.3 Endpoints: Accounts (Integrações ML)
+Método
+Endpoint
+Descrição
+GET
+/api/accounts
+Lista todas as contas ML do usuário.
+GET
+/api/accounts/connect/url
+Gera e retorna a URL de autorização OAuth do ML.
+GET
+/api/accounts/connect/callback?code=X&state=Y
+Sem auth. Troca o code por tokens e salva no banco.
+GET
+/api/accounts/:id
+Detalhe de uma conta específica.
+DELETE
+/api/accounts/:id
+Remove a integração com a conta ML.
+POST
+/api/accounts/:id/sync
+Dispara sincronização completa (produtos, pedidos, perguntas) da conta.
+
+
+5.4 Endpoints: Products
+Método
+Endpoint
+Descrição
+GET
+/api/products?account_id=&status=&search=&page=1&limit=20
+Lista produtos com filtros. Suporta paginação.
+GET
+/api/products/low-stock?threshold=5
+Produtos com estoque abaixo do threshold. Default: 5.
+GET
+/api/products/:id
+Detalhes de um produto.
+PATCH
+/api/products/sku/:sku/stock
+Atualiza estoque de TODOS os anúncios com o mesmo SKU. Body: {"quantity": N}. CRÍTICO: verificar is_full antes de chamar ML API.
+
+
+5.5 Endpoints: Orders
+Método
+Endpoint
+Descrição
+GET
+/api/orders?account_id=&status=&date_from=&date_to=&page=1&limit=20
+Lista pedidos com filtros e paginação.
+GET
+/api/orders/:id
+Detalhes de um pedido.
+
+
+5.6 Endpoints: Questions
+Método
+Endpoint
+Descrição
+GET
+/api/questions?account_id=&status=unanswered&page=1&limit=20
+Lista perguntas. Filtrar por status.
+GET
+/api/questions/:id
+Detalhes de uma pergunta.
+POST
+/api/questions/:id/answer
+Envia resposta para o ML e atualiza banco. Body: {"text": "..."}
+
+
+5.7 Endpoints: Notifications
+Método
+Endpoint
+Descrição
+GET
+/api/notifications?is_read=false&page=1&limit=20
+Lista notificações do usuário.
+PATCH
+/api/notifications/:id/read
+Marca uma notificação como lida.
+PATCH
+/api/notifications/read-all
+Marca todas as notificações como lidas.
+
+
+5.8 Endpoints: Dashboard
+Método
+Endpoint
+Descrição
+GET
+/api/dashboard/summary?account_id=
+KPIs: total vendas hoje/mês, pedidos pendentes, perguntas não respondidas, produtos com estoque crítico.
+GET
+/api/dashboard/sales-chart?period=30d&account_id=
+Dados para gráfico de vendas. Retorna array de {date, revenue, orders}.
+
+
+5.9 Endpoint: Webhook
+Método
+Endpoint
+Descrição
+POST
+/api/webhooks/mercadolivre
+Sem auth JWT. Recebe notificações do ML. Responder 200 imediatamente, processar async.
+
+
+
+6. Variáveis de Ambiente
+⚠️  CRÍTICO: Configurar TODAS as variáveis antes de rodar o projeto. Erros de auth são 100% causados por variáveis ausentes ou incorretas.
+
+6.1 Backend (artifacts/api-server)
+Variável
+Descrição / Exemplo
+DATABASE_URL
+postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres
+SUPABASE_URL
+https://[PROJECT].supabase.co — usado para validar JWTs via JWKS.
+SUPABASE_ANON_KEY
+Chave pública do Supabase. Disponível em Settings > API.
+SUPABASE_SERVICE_ROLE_KEY
+Chave service_role. NUNCA expor no frontend. Usar apenas no backend.
+SUPABASE_JWT_SECRET
+Secret para validar JWTs. Em Settings > API > JWT Secret.
+ML_CLIENT_ID
+Client ID do app no Mercado Livre Developers.
+ML_CLIENT_SECRET
+Client Secret do app no Mercado Livre Developers.
+ML_REDIRECT_URI
+URL de callback OAuth. Ex: https://seu-repl.repl.co/api/accounts/connect/callback
+STRIPE_SECRET_KEY
+Chave secreta do Stripe (sk_test_... ou sk_live_...).
+STRIPE_WEBHOOK_SECRET
+Secret do webhook do Stripe para validar assinaturas.
+PORT
+Porta do servidor Express. Padrão: 3000.
+NODE_ENV
+development | production
+
+
+6.2 Frontend (artifacts/ihub)
+Variável
+Descrição / Exemplo
+VITE_SUPABASE_URL
+https://[PROJECT].supabase.co — mesmo valor de SUPABASE_URL.
+VITE_SUPABASE_ANON_KEY
+Chave anon/pública do Supabase.
+VITE_API_BASE_URL
+URL base da API. Ex: https://seu-api-repl.repl.co
+VITE_STRIPE_PUBLISHABLE_KEY
+Chave publicável do Stripe (pk_test_... ou pk_live_...).
+
+
+
+7. Regras de Negócio Críticas
+RN1: Sincronização de Estoque por SKU (CRÍTICA)
+O SKU é a chave lógica que une anúncios do mesmo produto. Ao atualizar estoque via PATCH /api/products/sku/:sku/stock:
+1. Buscar TODOS os produtos com o mesmo SKU no banco (inclusive de contas diferentes).
+2. Para cada produto, verificar is_full. Se is_full = true, PULAR e logar aviso.
+3. Para cada produto elegível, chamar PUT /items/{ml_item_id} com o novo estoque.
+4. Atualizar available_quantity no banco após confirmação do ML.
+5. Retornar resultado com lista de sucessos e falhas.
+⚠️  Produtos FULL (Fulfillment ML) têm estoque gerenciado pelo armazém da ML. NÃO tentar editar — a API retorna erro 400.
+
+RN2: Refresh Automático de Token ML
+Antes de qualquer chamada à API do ML, o middleware deve:
+1. Checar se token_expires_at < NOW() + 5 minutos.
+2. Se sim, executar refresh usando o refresh_token.
+3. Salvar novos access_token, refresh_token e token_expires_at no banco.
+4. Prosseguir com a chamada original usando o novo token.
+⚠️  O refresh_token também expira (em torno de 6 meses sem uso). Se o refresh falhar, marcar a conta como is_active = false e notificar o usuário.
+
+RN3: Rate Limiting da API ML
+O ML limita chamadas por app e por usuário. Estratégias obrigatórias:
+Usar endpoint de busca em batch: GET /items?ids=MLB1,MLB2 (até 20 itens por chamada).
+Sincronização completa apenas quando disparada manualmente ou via webhook.
+Cache no banco: dados sincronizados servem requisições do frontend sem chamar ML.
+Se API ML retornar 429, aguardar com exponential backoff (1s, 2s, 4s, max 30s).
+
+RN4: Trial e Bloqueio de Funcionalidades
+Ao cadastrar, profile recebe trial_ends_at = NOW() + 30 days e plan = trial.
+Após expiração do trial, bloquear no backend: verificar plano no requireAuth middleware.
+Funcionalidades bloqueadas devem retornar HTTP 402 com mensagem clara.
+No frontend, mostrar banner de upgrade quando plan = trial e trial_ends_at < 7 dias.
+
+RN5: Multi-Contas
+Um usuário pode conectar múltiplas contas ML. Todas as listagens (produtos, pedidos, perguntas) suportam filtro por account_id. Sem filtro, retornar dados consolidados de todas as contas do usuário.
+
+
+8. Frontend — UX e Design
+8.1 Princípio Central
+  O usuário deve entender qualquer informação crítica em menos de 2 segundos.  
+
+8.2 Design System
+Tailwind CSS + shadcn/ui como base. Customizações:
+Cor primária: Azul (#1a56db). Usar para botões principais, badges ativos, headers de tabela.
+Estoque crítico (< 5): vermelho (#dc2626) em tamanho grande (text-2xl bold).
+Estoque médio (5–20): âmbar (#d97706).
+Estoque OK (> 20): verde (#16a34a).
+Cards com border-radius generoso (rounded-xl), sombra suave (shadow-sm).
+Fundo geral: #f9fafb (gray-50). Cards: branco.
+Fonte: Inter ou sistema. Hierarquia clara de tamanhos.
+
+8.3 Layout Responsivo
+Mobile (padrão): lista vertical, navegação inferior (bottom navigation).
+Tablet: sidebar colapsável + 2 colunas de conteúdo.
+Desktop: sidebar fixa + grid de cards.
+
+8.4 Tela de Produtos (Prioridade Máxima)
+Cada card de produto deve exibir na ordem:
+Thumbnail (imagem do anúncio, 60x60px).
+Título truncado em 2 linhas.
+SKU em texto pequeno (text-xs, gray).
+ESTOQUE — elemento maior da tela. Número em text-3xl bold com cor semântica. Badge "FULL" em roxo se is_full.
+Preço formatado (R$ X.XXX,XX).
+Badge de status (Ativo = verde, Pausado = cinza, Em revisão = âmbar).
+Conta ML de origem (avatar + nickname).
+Botão de edição de estoque inline (desabilitado se is_full).
+
+8.5 Dashboard
+KPIs no topo (4 cards):
+Vendas do dia (R$)
+Vendas do mês (R$)
+Pedidos aguardando envio
+Perguntas não respondidas — em vermelho se > 0
+
+Seções abaixo dos KPIs:
+Gráfico de vendas dos últimos 30 dias (linha ou barras).
+Lista de produtos com estoque crítico (< 5 unidades) — com botão de ação direta.
+Últimas perguntas não respondidas (top 3) — com campo de resposta rápida.
+
+8.6 Navegação
+Itens do menu principal:
+Dashboard (ícone: Home)
+Produtos (ícone: Package)
+Pedidos (ícone: ShoppingBag)
+Perguntas (ícone: MessageCircle) — badge com contador não lidas
+Notificações (ícone: Bell) — badge com não lidas
+Integrações (ícone: Link)
+Perfil / Assinatura (ícone: User)
+
+
+9. Fluxos Críticos
+9.1 Fluxo de Autenticação
+1. Usuário acessa /login ou /register.
+2. Frontend chama Supabase Auth (signInWithPassword ou signUp).
+3. Supabase retorna session com access_token (JWT).
+4. Frontend armazena session no localStorage via supabase-js.
+5. Todas as requisições à API Express incluem header: Authorization: Bearer {access_token}.
+6. Backend valida JWT em lib/auth.ts usando SUPABASE_JWT_SECRET.
+7. Extrai user.id do payload e injeta no req.user.
+8. Rotas protegidas usam requireAuth middleware.
+⚠️  NÃO implementar /api/auth/login ou /api/auth/register. Auth é 100% via Supabase no cliente.
+
+9.2 Fluxo de Conexão de Conta ML
+1. Usuário clica em "Conectar conta" em /integrations.
+2. Frontend chama GET /api/accounts/connect/url.
+3. Backend gera state (UUID salvo no banco para validação CSRF), retorna URL de auth do ML.
+4. Frontend redireciona usuário para a URL do ML.
+5. Usuário autoriza no ML, que redireciona para ML_REDIRECT_URI com code e state.
+6. Backend (GET /api/accounts/connect/callback) valida state, troca code por tokens.
+7. Backend salva tokens em accounts, chama GET /users/me para salvar ml_user_id e ml_nickname.
+8. Dispara sincronização inicial assíncrona.
+9. Redireciona para /integrations?success=true.
+
+9.3 Fluxo de Sincronização
+POST /api/accounts/:id/sync dispara:
+1. Buscar lista de IDs de itens: GET /users/{ml_user_id}/items/search (paginado).
+2. Buscar detalhes em lote: GET /items?ids=MLB1,MLB2,...MLB20 (batches de 20).
+3. Upsert em products (ON CONFLICT ml_item_id DO UPDATE).
+4. Buscar pedidos recentes: GET /orders/search?seller={ml_user_id}&sort=date_desc.
+5. Upsert em orders.
+6. Buscar perguntas não respondidas: GET /questions/search?seller_id={ml_user_id}&status=unanswered.
+7. Upsert em questions.
+8. Atualizar accounts.last_sync_at.
+
+
+10. Escalabilidade e Boas Práticas
+10.1 Requisitos Não-Funcionais
+Retry automático: Todas as chamadas à API ML devem ter no mínimo 3 tentativas com backoff.
+Logs estruturados: Usar pino-http no Express. Logar method, url, status, responseTime em JSON.
+Tratamento de erros: Middleware global de erro retornando { error: { code, message } }.
+Multi-tenant: user_id em todas as queries — NUNCA retornar dados de outro usuário.
+Timeouts: API ML tem timeout de 30s. Configurar axios/fetch com timeout explícito.
+Graceful shutdown: Tratar SIGTERM para fechar conexões limpamente no Replit.
+
+10.2 Estratégia de Migração (Replit → Produção)
+Fase 1 — MVP no Replit: Tudo em um Repl com concurrently rodando frontend (Vite) + backend (Express). Webhook via URL pública do Repl.
+Fase 2 — Separar backend: Migrar api-server para Railway ou Render. Frontend continua em Replit ou migra para Vercel.
+Fase 3 — Produção: Vercel (frontend) + Railway/Render (backend) + Supabase (banco). Custom domain.
+
+10.3 Melhorias Estratégicas (Pós-MVP)
+S1: Sistema de alertas inteligentes — estoque baixo, perguntas pendentes há X horas.
+S2: Relatórios exportáveis (CSV/Excel) de vendas e estoque.
+S3: Sugestão automática de resposta para perguntas frequentes (IA).
+S4: Integração Shopee — mesmo schema, novo provider na tabela accounts.
+S5: Dashboard de precificação — comparação com concorrentes.
+S6: Automações via Supabase Edge Functions (sem N8N neste momento).
+
+
+11. Instruções Especiais para o Agente (Replit AI)
+  LEIA ANTES DE GERAR QUALQUER CÓDIGO  
+
+1. USE EXATAMENTE as URLs de endpoint da API ML listadas na seção 4. Não inventar URLs.
+2. USE EXATAMENTE os nomes de variáveis de ambiente da seção 6. Não criar variantes.
+3. NUNCA criar rotas /api/auth/login ou /api/auth/register. Auth é 100% Supabase.
+4. SEMPRE implementar o middleware de refresh de token ML ANTES de qualquer chamada à API ML.
+5. SEMPRE usar upsert (INSERT ... ON CONFLICT DO UPDATE) para sync de dados ML.
+6. O webhook DEVE responder HTTP 200 em menos de 500ms e processar async.
+7. Produtos com is_full = true NÃO podem ter estoque editado via API ML.
+8. SEMPRE incluir user_id em todas as queries SQL para garantir isolamento multi-tenant.
+9. O schema SQL deve incluir todos os triggers de updated_at e o trigger handle_new_user.
+10. Configurar RLS em todas as tabelas conforme descrito na seção 3.8.
