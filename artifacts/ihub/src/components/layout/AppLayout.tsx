@@ -1,6 +1,14 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
-import { useListNotifications, getListNotificationsQueryKey } from "@workspace/api-client-react";
+import {
+  useListNotifications,
+  useListQuestions,
+  useGetMe,
+  getListNotificationsQueryKey,
+  getListQuestionsQueryKey,
+  getGetMeQueryKey,
+  ListQuestionsStatus,
+} from "@workspace/api-client-react";
 import {
   LayoutDashboard,
   Package,
@@ -12,9 +20,11 @@ import {
   LogOut,
   ChevronRight,
   Zap,
+  X,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,16 +35,60 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
-  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/products", label: "Products", icon: Package },
-  { path: "/orders", label: "Orders", icon: ShoppingCart },
-  { path: "/questions", label: "Questions", icon: MessageSquare },
-  { path: "/notifications", label: "Notifications", icon: Bell },
-  { path: "/integrations", label: "Integrations", icon: Plug },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, badge: "none" as const },
+  { path: "/products", label: "Produtos", icon: Package, badge: "none" as const },
+  { path: "/orders", label: "Pedidos", icon: ShoppingCart, badge: "none" as const },
+  { path: "/questions", label: "Perguntas", icon: MessageSquare, badge: "questions" as const },
+  { path: "/notifications", label: "Notificacoes", icon: Bell, badge: "notifications" as const },
+  { path: "/integrations", label: "Integracoes", icon: Plug, badge: "none" as const },
+];
+
+const allNavItems = [
+  ...navItems,
+  { path: "/profile", label: "Perfil", icon: User, badge: "none" as const },
 ];
 
 interface AppLayoutProps {
   children: React.ReactNode;
+}
+
+function TrialBanner({ trialEndsAt }: { trialEndsAt: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const end = new Date(trialEndsAt);
+  const now = new Date();
+  const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysLeft > 7) return null;
+
+  const expired = daysLeft <= 0;
+
+  return (
+    <div className={cn(
+      "flex items-center justify-between px-4 py-2 text-xs font-medium",
+      expired
+        ? "bg-red-950/80 border-b border-red-900/50 text-red-300"
+        : "bg-amber-950/80 border-b border-amber-900/50 text-amber-300"
+    )}>
+      <div className="flex items-center gap-2">
+        <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+        {expired
+          ? "Seu trial expirou. Assine para continuar usando o iHub."
+          : `Seu trial expira em ${daysLeft} dia${daysLeft === 1 ? "" : "s"}.`}
+        <Link to="/profile" className="underline hover:no-underline ml-1">
+          Ver planos
+        </Link>
+      </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="ml-4 hover:opacity-70 transition-opacity"
+        aria-label="Fechar"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -45,13 +99,28 @@ export function AppLayout({ children }: AppLayoutProps) {
     { is_read: false, limit: 99 },
     { query: { queryKey: getListNotificationsQueryKey({ is_read: false, limit: 99 }), refetchInterval: 30000 } },
   );
-  const unreadCount = notifData?.data?.length ?? 0;
+  const unreadNotifCount = notifData?.data?.length ?? 0;
+
+  const { data: questionsData } = useListQuestions(
+    { status: ListQuestionsStatus.unanswered, limit: 99 },
+    { query: { queryKey: getListQuestionsQueryKey({ status: ListQuestionsStatus.unanswered, limit: 99 }), refetchInterval: 60000 } },
+  );
+  const unansweredCount = (questionsData as { data?: unknown[] } | null)?.data?.length ?? 0;
+
+  const { data: meData } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const me = meData as { plan?: string; trialEndsAt?: string | null } | null;
 
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "??";
 
+  function getBadge(badge: "questions" | "notifications" | "none"): number {
+    if (badge === "questions") return unansweredCount;
+    if (badge === "notifications") return unreadNotifCount;
+    return 0;
+  }
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      <aside className="w-56 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900">
+      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="h-14 flex items-center px-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
@@ -62,8 +131,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ path, label, icon: Icon }) => {
+          {navItems.map(({ path, label, icon: Icon, badge }) => {
             const active = location === path || location.startsWith(path + "/");
+            const count = getBadge(badge);
             return (
               <Link
                 key={path}
@@ -77,9 +147,9 @@ export function AppLayout({ children }: AppLayoutProps) {
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
                 <span className="flex-1">{label}</span>
-                {label === "Notifications" && unreadCount > 0 && (
+                {count > 0 && (
                   <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {count > 99 ? "99+" : count}
                   </span>
                 )}
                 {active && (
@@ -108,7 +178,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <DropdownMenuItem asChild className="text-slate-300 hover:text-white focus:text-white focus:bg-slate-700">
                 <Link to="/profile">
                   <User className="w-4 h-4 mr-2" />
-                  Profile
+                  Perfil
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-slate-700" />
@@ -117,16 +187,51 @@ export function AppLayout({ children }: AppLayoutProps) {
                 className="text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-slate-700 cursor-pointer"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
+                Sair
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {me?.plan === "trial" && me.trialEndsAt && (
+          <TrialBanner trialEndsAt={me.trialEndsAt} />
+        )}
+
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+          {children}
+        </main>
+
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 z-50">
+          <div className="flex items-stretch overflow-x-auto">
+            {allNavItems.map(({ path, label, icon: Icon, badge }) => {
+              const active = location === path || location.startsWith(path + "/");
+              const count = getBadge(badge);
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={cn(
+                    "flex-1 min-w-[52px] flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors",
+                    active ? "text-blue-400" : "text-slate-500 hover:text-slate-300"
+                  )}
+                >
+                  <div className="relative">
+                    <Icon className="w-5 h-5" />
+                    {count > 0 && (
+                      <span className="absolute -top-1.5 -right-2 bg-blue-600 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9px] leading-none">{label.split(" ")[0]}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
     </div>
   );
 }

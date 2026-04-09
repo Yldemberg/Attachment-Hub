@@ -4,9 +4,14 @@ import {
   useGetSalesChart,
   useGetLowStockProducts,
   useListAccounts,
+  useListQuestions,
+  useAnswerQuestion,
   getGetDashboardSummaryQueryKey,
   getGetSalesChartQueryKey,
   getGetLowStockProductsQueryKey,
+  getListQuestionsQueryKey,
+  getGetQuestionQueryKey,
+  ListQuestionsStatus,
 } from "@workspace/api-client-react";
 import {
   AreaChart,
@@ -17,14 +22,14 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatCurrency, formatDate, stockBgColor } from "@/lib/utils";
+import { formatCurrency, stockBgColor } from "@/lib/utils";
 import {
   TrendingUp,
-  ShoppingCart,
   Clock,
   MessageSquare,
   AlertTriangle,
   Plug,
+  Send,
 } from "lucide-react";
 import {
   Select,
@@ -33,7 +38,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 
 type Period = "7d" | "30d" | "90d";
 
@@ -62,6 +70,60 @@ interface ChartPoint {
   orders?: number | null;
 }
 
+interface Question {
+  id: string;
+  text?: string | null;
+  mlItemId?: string | null;
+  fromUserNickname?: string | null;
+  status?: string | null;
+}
+
+function QuickReply({ q }: { q: Question }) {
+  const [answer, setAnswer] = useState("");
+  const [done, setDone] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { mutate: sendAnswer, isPending } = useAnswerQuestion({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey({}) });
+        queryClient.invalidateQueries({ queryKey: getGetQuestionQueryKey(q.id) });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey({}) });
+        setDone(true);
+      },
+    },
+  });
+
+  if (done) {
+    return (
+      <div className="py-2 px-1 text-xs text-emerald-400 font-medium">
+        Resposta enviada!
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex gap-2">
+      <Textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="Digite sua resposta..."
+        className="flex-1 bg-slate-800 border-slate-700 text-slate-200 text-xs placeholder:text-slate-500 min-h-[60px] resize-none"
+        rows={2}
+      />
+      <Button
+        size="sm"
+        disabled={!answer.trim() || isPending}
+        onClick={() => sendAnswer({ id: q.id, data: { text: answer.trim() } })}
+        className="bg-blue-600 hover:bg-blue-500 text-white self-end gap-1"
+      >
+        <Send className="w-3 h-3" />
+        Enviar
+      </Button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("30d");
   const [accountId, setAccountId] = useState<string | undefined>();
@@ -86,6 +148,12 @@ export default function Dashboard() {
     { query: { queryKey: getGetLowStockProductsQueryKey({ threshold: 20, account_id: accountId }) } },
   );
   const lowStockProducts: Product[] = (lowStockData as { data?: Product[] } | null)?.data?.slice(0, 8) ?? [];
+
+  const { data: questionsData } = useListQuestions(
+    { status: ListQuestionsStatus.unanswered, limit: 3, ...(accountId ? { account_id: accountId } : {}) },
+    { query: { queryKey: getListQuestionsQueryKey({ status: ListQuestionsStatus.unanswered, limit: 3, account_id: accountId }) } },
+  );
+  const topQuestions: Question[] = (questionsData as { data?: Question[] } | null)?.data ?? [];
 
   const kpis = [
     {
@@ -284,6 +352,42 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-red-400" />
+            <h2 className="text-sm font-semibold text-white">Perguntas sem resposta</h2>
+          </div>
+          <Link to="/questions" className="text-blue-400 text-xs hover:text-blue-300">
+            Ver todas
+          </Link>
+        </div>
+
+        {topQuestions.length === 0 ? (
+          <p className="text-slate-500 text-sm text-center py-6">Nenhuma pergunta pendente</p>
+        ) : (
+          <div className="divide-y divide-slate-800">
+            {topQuestions.map((q) => (
+              <div key={q.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start gap-2 mb-1">
+                  <MessageSquare className="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {q.mlItemId && (
+                      <p className="text-slate-500 text-[10px] mb-0.5 truncate font-mono">#{q.mlItemId}</p>
+                    )}
+                    <p className="text-slate-200 text-xs leading-relaxed">{q.text}</p>
+                    {q.fromUserNickname && (
+                      <p className="text-slate-500 text-[10px] mt-0.5">de {q.fromUserNickname}</p>
+                    )}
+                  </div>
+                </div>
+                <QuickReply q={q} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
