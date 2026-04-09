@@ -54,7 +54,7 @@ router.get("/products", ...auth, async (req, res) => {
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
     res.json({
-      data: rows.map((p) => ({ ...p, account: accountMap[p.accountId] ?? null })),
+      data: rows.map((p) => ({ ...p, price: p.price !== null ? Number(p.price) : null, account: accountMap[p.accountId] ?? null })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
@@ -86,7 +86,7 @@ router.get("/products/low-stock", ...auth, async (req, res) => {
       .where(inArray(accountsTable.id, accountIds));
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
-    res.json({ data: rows.map((p) => ({ ...p, account: accountMap[p.accountId] ?? null })) });
+    res.json({ data: rows.map((p) => ({ ...p, price: p.price !== null ? Number(p.price) : null, account: accountMap[p.accountId] ?? null })) });
   } catch (err) {
     req.log.error({ err }, "Failed to get low stock products");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -117,7 +117,11 @@ router.get("/products/:id", ...auth, async (req, res) => {
       .from(accountsTable)
       .where(eq(accountsTable.id, product.accountId));
 
-    res.json({ data: { ...product, account: account ?? null } });
+    res.json({
+      ...product,
+      price: product.price !== null ? Number(product.price) : null,
+      account: account ?? null,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to get product");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

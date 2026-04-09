@@ -58,9 +58,10 @@ router.get("/orders", ...auth, async (req, res) => {
     res.json({
       data: rows.map((o) => ({
         ...o,
-        mlOrderId: o.mlOrderId?.toString(),
-        buyerId: o.buyerId?.toString(),
-        shippingId: o.shippingId?.toString(),
+        mlOrderId: o.mlOrderId !== null ? Number(o.mlOrderId) : null,
+        totalAmount: o.totalAmount !== null ? Number(o.totalAmount) : null,
+        buyerId: o.buyerId !== null ? Number(o.buyerId) : null,
+        shippingId: o.shippingId !== null ? Number(o.shippingId) : null,
         account: accountMap[o.accountId] ?? null,
       })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
@@ -95,7 +96,14 @@ router.get("/orders/:id", ...auth, async (req, res) => {
       .from(accountsTable)
       .where(eq(accountsTable.id, order.accountId));
 
-    res.json({ data: { ...order, mlOrderId: order.mlOrderId?.toString(), buyerId: order.buyerId?.toString(), shippingId: order.shippingId?.toString(), account: account ?? null } });
+    res.json({
+      ...order,
+      mlOrderId: order.mlOrderId !== null ? Number(order.mlOrderId) : null,
+      totalAmount: order.totalAmount !== null ? Number(order.totalAmount) : null,
+      buyerId: order.buyerId !== null ? Number(order.buyerId) : null,
+      shippingId: order.shippingId !== null ? Number(order.shippingId) : null,
+      account: account ?? null,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to get order");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

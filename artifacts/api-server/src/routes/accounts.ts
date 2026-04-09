@@ -71,11 +71,23 @@ router.get("/accounts/connect/callback", async (req, res) => {
     });
     const mlUser = (await mlUserRes.json()) as MlUser;
 
+    const mlUserIdStr = String(tokens.user_id);
+
+    const [existing] = await db
+      .select({ id: accountsTable.id, userId: accountsTable.userId })
+      .from(accountsTable)
+      .where(eq(accountsTable.mlUserId, mlUserIdStr));
+
+    if (existing && existing.userId !== userId) {
+      res.redirect("/integrations?error=account_already_linked");
+      return;
+    }
+
     const [account] = await db
       .insert(accountsTable)
       .values({
         userId,
-        mlUserId: String(tokens.user_id),
+        mlUserId: mlUserIdStr,
         mlNickname: mlUser.nickname,
         mlEmail: mlUser.email,
         accessToken: tokens.access_token,
@@ -86,7 +98,6 @@ router.get("/accounts/connect/callback", async (req, res) => {
       .onConflictDoUpdate({
         target: [accountsTable.mlUserId],
         set: {
-          userId,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           tokenExpiresAt: expiresAt,
