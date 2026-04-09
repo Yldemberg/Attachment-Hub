@@ -139,9 +139,9 @@ CREATE INDEX IF NOT EXISTS notifications_is_read_idx ON public.notifications(use
 
 -- ============================================================================
 -- TRIGGER: update_updated_at
--- Generic trigger to keep updated_at = NOW() on every UPDATE
+-- Generic trigger function to keep updated_at = NOW() on every UPDATE
 -- ============================================================================
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
+CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -149,25 +149,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER profiles_updated_at
+CREATE OR REPLACE TRIGGER profiles_update_updated_at
   BEFORE UPDATE ON public.profiles
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE OR REPLACE TRIGGER accounts_updated_at
+CREATE OR REPLACE TRIGGER accounts_update_updated_at
   BEFORE UPDATE ON public.accounts
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE OR REPLACE TRIGGER products_updated_at
+CREATE OR REPLACE TRIGGER products_update_updated_at
   BEFORE UPDATE ON public.products
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE OR REPLACE TRIGGER orders_updated_at
+CREATE OR REPLACE TRIGGER orders_update_updated_at
   BEFORE UPDATE ON public.orders
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE OR REPLACE TRIGGER questions_updated_at
+CREATE OR REPLACE TRIGGER questions_update_updated_at
   BEFORE UPDATE ON public.questions
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- ============================================================================
 -- TRIGGER: handle_new_user
