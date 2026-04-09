@@ -9,12 +9,14 @@ import { ml } from "../lib/mercadolivre";
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
-async function getUserAccountIds(userId: string): Promise<string[]> {
+async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
+  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
+  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
   const accounts = await db
     .select({ id: accountsTable.id })
     .from(accountsTable)
-    .where(and(eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)));
+    .where(and(...conditions));
   return accounts.map((a) => a.id);
 }
 
@@ -26,7 +28,7 @@ router.get("/products", ...auth, async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
 
-    const accountIds = account_id ? [account_id] : await getUserAccountIds(req.user!.id);
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
     if (accountIds.length === 0) {
       res.json({ data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 0 } });
       return;
@@ -67,7 +69,7 @@ router.get("/products/low-stock", ...auth, async (req, res) => {
     const { account_id, threshold = "5" } = req.query as Record<string, string>;
     const thresholdNum = parseInt(threshold);
 
-    const accountIds = account_id ? [account_id] : await getUserAccountIds(req.user!.id);
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
     if (accountIds.length === 0) {
       res.json({ data: [] });
       return;

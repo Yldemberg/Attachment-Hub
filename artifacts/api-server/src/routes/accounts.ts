@@ -6,7 +6,7 @@ import { accountsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
 import { syncAccount } from "../lib/sync";
-import crypto from "crypto";
+import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -38,7 +38,7 @@ router.get("/accounts", ...auth, async (req, res) => {
 
 router.get("/accounts/connect/url", requireAuth, async (req, res) => {
   try {
-    const state = crypto.randomUUID();
+    const state = createOAuthState(req.user!.id);
     const url = getMlAuthUrl(state);
     res.json({ url, state });
   } catch (err) {
@@ -50,8 +50,14 @@ router.get("/accounts/connect/url", requireAuth, async (req, res) => {
 router.get("/accounts/connect/callback", async (req, res) => {
   const { code, state } = req.query as { code?: string; state?: string };
 
-  if (!code) {
-    res.status(400).json({ error: { code: "BAD_REQUEST", message: "Missing code parameter" } });
+  if (!code || !state) {
+    res.redirect("/integrations?error=missing_params");
+    return;
+  }
+
+  const userId = consumeOAuthState(state);
+  if (!userId) {
+    res.redirect("/integrations?error=invalid_state");
     return;
   }
 
@@ -68,7 +74,7 @@ router.get("/accounts/connect/callback", async (req, res) => {
     const [account] = await db
       .insert(accountsTable)
       .values({
-        userId: state ?? crypto.randomUUID(),
+        userId,
         mlUserId: String(tokens.user_id),
         mlNickname: mlUser.nickname,
         mlEmail: mlUser.email,
@@ -80,6 +86,7 @@ router.get("/accounts/connect/callback", async (req, res) => {
       .onConflictDoUpdate({
         target: [accountsTable.mlUserId],
         set: {
+          userId,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           tokenExpiresAt: expiresAt,
@@ -91,9 +98,9 @@ router.get("/accounts/connect/callback", async (req, res) => {
       .returning();
 
     setImmediate(() => {
-      if (account?.userId) {
-        syncAccount(account.id, account.userId).catch((err) => {
-          req.log.error({ err, accountId: account.id }, "Background sync failed");
+      if (account?.id) {
+        syncAccount(account.id, userId).catch((err) => {
+          console.error({ err, accountId: account.id }, "Background sync failed");
         });
       }
     });
@@ -101,7 +108,7 @@ router.get("/accounts/connect/callback", async (req, res) => {
     res.redirect("/integrations?success=true");
   } catch (err) {
     req.log.error({ err }, "OAuth callback failed");
-    res.redirect("/integrations?error=true");
+    res.redirect("/integrations?error=oauth_failed");
   }
 });
 

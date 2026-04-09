@@ -216,16 +216,29 @@ router.post("/webhooks/stripe", async (req, res) => {
         const session = event.data.object as Stripe.Checkout.Session;
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
+        const userId = session.client_reference_id;
 
-        await db
-          .update(profilesTable)
-          .set({
-            stripeCustomerId: customerId,
-            stripeSubscriptionId: subscriptionId,
-            plan: "basic",
-            trialEndsAt: null,
-          })
-          .where(eq(profilesTable.stripeCustomerId, customerId));
+        if (userId) {
+          await db
+            .update(profilesTable)
+            .set({
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscriptionId,
+              plan: "basic",
+              trialEndsAt: null,
+            })
+            .where(eq(profilesTable.id, userId));
+        } else {
+          await db
+            .update(profilesTable)
+            .set({
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscriptionId,
+              plan: "basic",
+              trialEndsAt: null,
+            })
+            .where(eq(profilesTable.stripeCustomerId, customerId));
+        }
       } else if (event.type === "customer.subscription.updated") {
         const subscription = event.data.object as Stripe.Subscription;
         const plan = subscription.status === "active" ? "basic" : "trial";

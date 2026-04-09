@@ -8,12 +8,14 @@ import { eq, and, inArray, lt, sql, gte } from "drizzle-orm";
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
-async function getUserAccountIds(userId: string): Promise<string[]> {
+async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
+  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
+  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
   const accounts = await db
     .select({ id: accountsTable.id })
     .from(accountsTable)
-    .where(and(eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)));
+    .where(and(...conditions));
   return accounts.map((a) => a.id);
 }
 
@@ -21,7 +23,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const { account_id } = req.query as Record<string, string>;
-    const accountIds = account_id ? [account_id] : await getUserAccountIds(req.user!.id);
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
 
     if (accountIds.length === 0) {
       res.json({
@@ -100,7 +102,7 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const { account_id, period = "30d" } = req.query as Record<string, string>;
-    const accountIds = account_id ? [account_id] : await getUserAccountIds(req.user!.id);
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
 
     const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
     const startDate = new Date();
