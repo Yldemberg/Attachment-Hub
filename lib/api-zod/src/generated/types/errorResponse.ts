@@ -5,7 +5,8 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { ErrorResponseError } from "./errorResponseError";
 
-export interface HealthStatus {
-  status: string;
+export interface ErrorResponse {
+  error: ErrorResponseError;
 }

@@ -6,6 +6,6 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type SyncAccount202 = {
+  message: string;
+};

@@ -6,6 +6,9 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type UpdateStockResponseResultsItem = {
+  productId: string;
+  mlItemId: string;
+  success: boolean;
+  reason?: string | null;
+};

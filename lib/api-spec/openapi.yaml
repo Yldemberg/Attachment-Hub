@@ -2,15 +2,35 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: iHub - Marketplace Management Hub API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: accounts
+    description: Mercado Livre account integrations
+  - name: products
+    description: Product and inventory management
+  - name: orders
+    description: Order management
+  - name: questions
+    description: Customer question management
+  - name: notifications
+    description: In-app notifications
+  - name: dashboard
+    description: Dashboard KPIs and analytics
+  - name: webhooks
+    description: External webhook receivers
+
 paths:
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
   /healthz:
     get:
       operationId: healthCheck
@@ -24,13 +44,1146 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ---------------------------------------------------------------------------
+  # Auth
+  # ---------------------------------------------------------------------------
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      description: Returns the authenticated user's profile and plan details
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Accounts
+  # ---------------------------------------------------------------------------
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [accounts]
+      summary: List all connected ML accounts
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Account"
+                required: [data]
+
+  /accounts/connect/url:
+    get:
+      operationId: getConnectUrl
+      tags: [accounts]
+      summary: Get Mercado Livre OAuth authorization URL
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OAuth authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  state:
+                    type: string
+                required: [url, state]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /accounts/connect/callback:
+    get:
+      operationId: handleConnectCallback
+      tags: [accounts]
+      summary: OAuth callback — exchange code for tokens
+      description: No JWT auth. Handles Mercado Livre OAuth redirect.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to /integrations after successful connection
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /accounts/{id}:
+    get:
+      operationId: getAccount
+      tags: [accounts]
+      summary: Get a specific ML account
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteAccount
+      tags: [accounts]
+      summary: Remove ML account integration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Account removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{id}/sync:
+    post:
+      operationId: syncAccount
+      tags: [accounts]
+      summary: Trigger full sync for a ML account
+      description: Syncs products, orders, and questions from Mercado Livre
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "202":
+          description: Sync initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                required: [message]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Products
+  # ---------------------------------------------------------------------------
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List products with filters and pagination
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, closed, under_review]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /products/low-stock:
+    get:
+      operationId: getLowStockProducts
+      tags: [products]
+      summary: Get products with low stock
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: threshold
+          in: query
+          schema:
+            type: integer
+            default: 5
+        - name: account_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Low stock products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                required: [data]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get product details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /products/sku/{sku}/stock:
+    patch:
+      operationId: updateStockBySku
+      tags: [products]
+      summary: Update stock for all products with matching SKU
+      description: Updates available_quantity for all non-FULL products sharing the same SKU
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStockRequest"
+      responses:
+        "200":
+          description: Stock update results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStockResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Orders
+  # ---------------------------------------------------------------------------
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List orders with filters and pagination
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Questions
+  # ---------------------------------------------------------------------------
+  /questions:
+    get:
+      operationId: listQuestions
+      tags: [questions]
+      summary: List questions with filters and pagination
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [unanswered, answered, closed_unanswered, under_review]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of questions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /questions/{id}:
+    get:
+      operationId: getQuestion
+      tags: [questions]
+      summary: Get question details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Question details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /questions/{id}/answer:
+    post:
+      operationId: answerQuestion
+      tags: [questions]
+      summary: Answer a customer question
+      description: Sends the answer to Mercado Livre and updates the local record
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerQuestionRequest"
+      responses:
+        "200":
+          description: Answer sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Notifications
+  # ---------------------------------------------------------------------------
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: is_read
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/read-all:
+    patch:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+                required: [updated]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Dashboard
+  # ---------------------------------------------------------------------------
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard KPI summary
+      description: Returns consolidated KPIs including today/month sales, pending orders, and unanswered questions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard KPI summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /dashboard/sales-chart:
+    get:
+      operationId: getSalesChart
+      tags: [dashboard]
+      summary: Get sales chart data
+      description: Returns daily sales data for the specified period
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+        - name: account_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sales chart data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChartResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Webhooks
+  # ---------------------------------------------------------------------------
+  /webhooks/mercadolivre:
+    post:
+      operationId: handleMercadoLivreWebhook
+      tags: [webhooks]
+      summary: Receive Mercado Livre webhook notifications
+      description: No JWT auth. Responds 200 immediately and processes async.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MercadoLivreWebhookPayload"
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required: [status]
+
+  /webhooks/stripe:
+    post:
+      operationId: handleStripeWebhook
+      tags: [webhooks]
+      summary: Receive Stripe webhook events
+      description: No JWT auth. Validates Stripe signature and processes subscription events.
+      responses:
+        "200":
+          description: Processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                required: [received]
+
+# ==============================================================================
+# Components
+# ==============================================================================
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
+    # --------------------------------------------------------------------------
+    # Shared
+    # --------------------------------------------------------------------------
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+          required: [code, message]
+      required: [error]
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+      required: [page, limit, total, totalPages]
+
+    # --------------------------------------------------------------------------
+    # Auth
+    # --------------------------------------------------------------------------
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        plan:
+          type: string
+          enum: [trial, basic, pro]
+        trialEndsAt:
+          type: string
+          format: date-time
+          nullable: true
+        stripeCustomerId:
+          type: string
+          nullable: true
+        stripeSubscriptionId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, plan, createdAt]
+
+    # --------------------------------------------------------------------------
+    # Accounts
+    # --------------------------------------------------------------------------
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        mlUserId:
+          type: string
+          nullable: true
+        mlNickname:
+          type: string
+          nullable: true
+        mlEmail:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        lastSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, userId, isActive, createdAt, updatedAt]
+
+    # --------------------------------------------------------------------------
+    # Products
+    # --------------------------------------------------------------------------
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        mlItemId:
+          type: string
+        title:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        availableQuantity:
+          type: integer
+        soldQuantity:
+          type: integer
+        status:
+          type: string
+          nullable: true
+        listingType:
+          type: string
+          nullable: true
+        logisticType:
+          type: string
+          nullable: true
+        isFull:
+          type: boolean
+        thumbnail:
+          type: string
+          nullable: true
+        permalink:
+          type: string
+          nullable: true
+        mlCategoryId:
+          type: string
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        account:
+          $ref: "#/components/schemas/AccountSummary"
+          nullable: true
+      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, createdAt, updatedAt]
+
+    AccountSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        mlNickname:
+          type: string
+          nullable: true
+        mlUserId:
+          type: string
+          nullable: true
+      required: [id]
+
+    ProductListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+
+    UpdateStockRequest:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+      required: [quantity]
+
+    UpdateStockResponse:
+      type: object
+      properties:
+        sku:
+          type: string
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+              mlItemId:
+                type: string
+              success:
+                type: boolean
+              reason:
+                type: string
+                nullable: true
+            required: [productId, mlItemId, success]
+      required: [sku, updated, skipped, failed, results]
+
+    # --------------------------------------------------------------------------
+    # Orders
+    # --------------------------------------------------------------------------
+    OrderItem:
+      type: object
+      properties:
+        item_id:
+          type: string
+        title:
+          type: string
+        quantity:
+          type: integer
+        price:
+          type: number
+      required: [item_id, quantity, price]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        mlOrderId:
+          type: integer
+        status:
+          type: string
+          nullable: true
+        totalAmount:
+          type: number
+          nullable: true
+        currencyId:
+          type: string
+          nullable: true
+        buyerId:
+          type: integer
+          nullable: true
+        buyerNickname:
+          type: string
+          nullable: true
+        shippingId:
+          type: integer
+          nullable: true
+        shippingStatus:
+          type: string
+          nullable: true
+        dateCreated:
+          type: string
+          format: date-time
+          nullable: true
+        dateClosed:
+          type: string
+          format: date-time
+          nullable: true
+        itemsJson:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        account:
+          $ref: "#/components/schemas/AccountSummary"
+          nullable: true
+      required: [id, accountId, mlOrderId, createdAt, updatedAt]
+
+    OrderListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+
+    # --------------------------------------------------------------------------
+    # Questions
+    # --------------------------------------------------------------------------
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        mlQuestionId:
+          type: integer
+        mlItemId:
+          type: string
+          nullable: true
+        text:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [unanswered, answered, closed_unanswered, under_review]
+        fromUserId:
+          type: integer
+          nullable: true
+        fromUserNickname:
+          type: string
+          nullable: true
+        answerText:
+          type: string
+          nullable: true
+        answerDate:
+          type: string
+          format: date-time
+          nullable: true
+        dateCreated:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        account:
+          $ref: "#/components/schemas/AccountSummary"
+          nullable: true
+      required: [id, accountId, mlQuestionId, status, createdAt, updatedAt]
+
+    QuestionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+
+    AnswerQuestionRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+      required: [text]
+
+    # --------------------------------------------------------------------------
+    # Notifications
+    # --------------------------------------------------------------------------
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+          enum: [new_question, new_order, low_stock, order_update, sync_error]
+        title:
+          type: string
+        message:
+          type: string
+        isRead:
+          type: boolean
+        resourceType:
+          type: string
+          nullable: true
+        resourceId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, type, title, message, isRead, createdAt]
+
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+        unreadCount:
+          type: integer
+      required: [data, pagination, unreadCount]
+
+    # --------------------------------------------------------------------------
+    # Dashboard
+    # --------------------------------------------------------------------------
+    DashboardSummary:
+      type: object
+      properties:
+        salesToday:
+          type: number
+        salesMonth:
+          type: number
+        pendingOrders:
+          type: integer
+        unansweredQuestions:
+          type: integer
+        criticalStockCount:
+          type: integer
+        activeAccounts:
+          type: integer
+      required: [salesToday, salesMonth, pendingOrders, unansweredQuestions, criticalStockCount, activeAccounts]
+
+    SalesChartDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        revenue:
+          type: number
+        orders:
+          type: integer
+      required: [date, revenue, orders]
+
+    SalesChartResponse:
+      type: object
+      properties:
+        period:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesChartDataPoint"
+      required: [period, data]
+
+    # --------------------------------------------------------------------------
+    # Webhooks
+    # --------------------------------------------------------------------------
+    MercadoLivreWebhookPayload:
+      type: object
+      properties:
+        _id:
+          type: string
+        resource:
+          type: string
+        user_id:
+          type: integer
+        topic:
+          type: string
+        application_id:
+          type: string
+        attempts:
+          type: integer
+        sent:
+          type: string
+        received:
+          type: string
+      required: [resource, user_id, topic]

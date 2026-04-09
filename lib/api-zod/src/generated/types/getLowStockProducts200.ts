@@ -5,7 +5,8 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { Product } from "./product";
 
-export interface HealthStatus {
-  status: string;
-}
+export type GetLowStockProducts200 = {
+  data: Product[];
+};
