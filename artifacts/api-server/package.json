@@ -18,7 +18,8 @@
     "express": "^5",
     "jose": "^6.2.2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "stripe": "^22.0.1"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
