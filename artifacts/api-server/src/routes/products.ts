@@ -80,7 +80,13 @@ router.get("/products/low-stock", ...auth, async (req, res) => {
       .from(productsTable)
       .where(and(inArray(productsTable.accountId, accountIds), lt(productsTable.availableQuantity, thresholdNum)));
 
-    res.json({ data: rows });
+    const accounts = await db
+      .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+      .from(accountsTable)
+      .where(inArray(accountsTable.id, accountIds));
+    const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
+
+    res.json({ data: rows.map((p) => ({ ...p, account: accountMap[p.accountId] ?? null })) });
   } catch (err) {
     req.log.error({ err }, "Failed to get low stock products");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -106,7 +112,12 @@ router.get("/products/:id", ...auth, async (req, res) => {
       return;
     }
 
-    res.json(product);
+    const [account] = await db
+      .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, product.accountId));
+
+    res.json({ data: { ...product, account: account ?? null } });
   } catch (err) {
     req.log.error({ err }, "Failed to get product");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

@@ -10,20 +10,24 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 
+const ALL_ML_STATUSES = ["active", "paused", "closed", "under_review"];
+
 async function syncProducts(accountId: string, mlUserId: string): Promise<void> {
   const db = getDb();
-  let offset = 0;
   const limit = 50;
   const allItemIds: string[] = [];
 
-  while (true) {
-    const result = await ml.get<{ results: string[]; paging: { total: number } }>(
-      accountId,
-      `/users/${mlUserId}/items/search?status=active&limit=${limit}&offset=${offset}`,
-    );
-    allItemIds.push(...result.results);
-    if (result.results.length < limit) break;
-    offset += limit;
+  for (const status of ALL_ML_STATUSES) {
+    let offset = 0;
+    while (true) {
+      const result = await ml.get<{ results: string[]; paging: { total: number } }>(
+        accountId,
+        `/users/${mlUserId}/items/search?status=${status}&limit=${limit}&offset=${offset}`,
+      );
+      allItemIds.push(...result.results);
+      if (result.results.length < limit) break;
+      offset += limit;
+    }
   }
 
   const BATCH = 20;

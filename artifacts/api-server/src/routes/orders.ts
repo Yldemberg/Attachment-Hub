@@ -56,7 +56,13 @@ router.get("/orders", ...auth, async (req, res) => {
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
     res.json({
-      data: rows.map((o) => ({ ...o, account: accountMap[o.accountId] ?? null })),
+      data: rows.map((o) => ({
+        ...o,
+        mlOrderId: o.mlOrderId?.toString(),
+        buyerId: o.buyerId?.toString(),
+        shippingId: o.shippingId?.toString(),
+        account: accountMap[o.accountId] ?? null,
+      })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
@@ -84,7 +90,12 @@ router.get("/orders/:id", ...auth, async (req, res) => {
       return;
     }
 
-    res.json(order);
+    const [account] = await db
+      .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, order.accountId));
+
+    res.json({ data: { ...order, mlOrderId: order.mlOrderId?.toString(), buyerId: order.buyerId?.toString(), shippingId: order.shippingId?.toString(), account: account ?? null } });
   } catch (err) {
     req.log.error({ err }, "Failed to get order");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

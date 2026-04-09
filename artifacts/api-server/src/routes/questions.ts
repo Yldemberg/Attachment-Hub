@@ -55,7 +55,12 @@ router.get("/questions", ...auth, async (req, res) => {
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
     res.json({
-      data: rows.map((q) => ({ ...q, account: accountMap[q.accountId] ?? null })),
+      data: rows.map((q) => ({
+        ...q,
+        mlQuestionId: q.mlQuestionId?.toString(),
+        fromUserId: q.fromUserId?.toString(),
+        account: accountMap[q.accountId] ?? null,
+      })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
@@ -83,7 +88,12 @@ router.get("/questions/:id", ...auth, async (req, res) => {
       return;
     }
 
-    res.json(question);
+    const [account] = await db
+      .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, question.accountId));
+
+    res.json({ data: { ...question, mlQuestionId: question.mlQuestionId?.toString(), fromUserId: question.fromUserId?.toString(), account: account ?? null } });
   } catch (err) {
     req.log.error({ err }, "Failed to get question");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -133,7 +143,7 @@ router.post("/questions/:id/answer", ...auth, async (req, res) => {
       .where(eq(questionsTable.id, question.id))
       .returning();
 
-    res.json(updated);
+    res.json({ data: { ...updated, mlQuestionId: updated.mlQuestionId?.toString(), fromUserId: updated.fromUserId?.toString() } });
   } catch (err) {
     req.log.error({ err }, "Failed to answer question");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

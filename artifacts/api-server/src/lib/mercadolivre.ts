@@ -149,9 +149,6 @@ async function mlFetch<T>(
   const token = await getValidToken(accountId);
   const url = path.startsWith("http") ? path : `${ML_BASE_URL}${path}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS);
-
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -159,6 +156,9 @@ async function mlFetch<T>(
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
       await new Promise((r) => setTimeout(r, delay));
     }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS);
 
     try {
       const res = await fetch(url, {
@@ -186,15 +186,15 @@ async function mlFetch<T>(
 
       return res.json() as Promise<T>;
     } catch (err) {
+      clearTimeout(timeoutId);
       lastError = err as Error;
       if ((err as Error).name === "AbortError") {
-        throw new Error("ML API request timed out");
+        lastError = new Error("ML API request timed out");
       }
       if (attempt === retries - 1) break;
     }
   }
 
-  clearTimeout(timeoutId);
   throw lastError ?? new Error("ML API request failed");
 }
 
