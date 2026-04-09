@@ -1,13 +1,13 @@
 import {
   useListAccounts,
-  useGetConnectUrl,
   useDeleteAccount,
   useSyncAccount,
   getListAccountsQueryKey,
+  getConnectUrl,
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -21,6 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Account {
   id: string;
@@ -33,22 +34,32 @@ interface Account {
 
 function ConnectButton() {
   const [loading, setLoading] = useState(false);
-  const { data: connectUrl } = useGetConnectUrl();
-  const url = (connectUrl as { url?: string } | null)?.url;
+  const { toast } = useToast();
 
-  const handleConnect = () => {
-    if (!url) return;
+  const handleConnect = async () => {
     setLoading(true);
-    window.location.href = url;
+    try {
+      const data = await getConnectUrl();
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error("URL não retornada");
+      window.location.href = url;
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Erro ao conectar",
+        description: "Não foi possível iniciar a conexão com o Mercado Livre. Configure as variáveis ML_CLIENT_ID e ML_REDIRECT_URI no servidor.",
+      });
+      setLoading(false);
+    }
   };
 
   return (
     <Button
       onClick={handleConnect}
-      disabled={loading || !url}
+      disabled={loading}
       className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
     >
-      <Plus className="w-4 h-4" />
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
       Conectar conta ML
     </Button>
   );
