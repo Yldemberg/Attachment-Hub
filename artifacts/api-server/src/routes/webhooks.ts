@@ -1,5 +1,6 @@
-import express, { Router } from "express";
+import express, { Router, Request, Response, NextFunction } from "express";
 import Stripe from "stripe";
+import crypto from "crypto";
 import { getDb } from "../lib/db";
 import {
   accountsTable,
@@ -15,7 +16,55 @@ import { ml, MlItem, MlOrder, MlQuestion } from "../lib/mercadolivre";
 
 const router = Router();
 
-router.post("/webhooks/mercadolivre", async (req, res) => {
+const mlRateLimit = new Map<string, { count: number; resetAt: number }>();
+const ML_RATE_LIMIT = 120;
+const ML_RATE_WINDOW_MS = 60_000;
+
+function mlWebhookRateLimit(req: Request, res: Response, next: NextFunction): void {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() ?? req.socket.remoteAddress ?? "unknown";
+  const now = Date.now();
+  let entry = mlRateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + ML_RATE_WINDOW_MS };
+    mlRateLimit.set(ip, entry);
+  }
+  entry.count++;
+  if (entry.count > ML_RATE_LIMIT) {
+    res.status(429).json({ error: "Too many requests" });
+    return;
+  }
+  next();
+}
+
+function verifyMlSignature(req: Request): boolean {
+  const secret = process.env.ML_WEBHOOK_SECRET;
+  if (!secret) return true;
+
+  const signatureHeader = req.headers["x-signature"] as string | undefined;
+  const requestId = req.headers["x-request-id"] as string | undefined;
+  if (!signatureHeader || !requestId) return false;
+
+  const tsMatch = signatureHeader.match(/ts=([^,]+)/);
+  const v1Match = signatureHeader.match(/v1=([^,]+)/);
+  if (!tsMatch || !v1Match) return false;
+
+  const ts = tsMatch[1];
+  const receivedHmac = v1Match[1];
+
+  const notificationId = (req.query as Record<string, string>).id ?? "";
+  const template = `id:${notificationId};request-id:${requestId};ts:${ts}`;
+  const expected = crypto.createHmac("sha256", secret).update(template).digest("hex");
+
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(receivedHmac));
+}
+
+router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
+  if (!verifyMlSignature(req)) {
+    logger.warn("ML webhook signature verification failed");
+    res.status(401).json({ error: "Invalid signature" });
+    return;
+  }
+
   res.status(200).json({ status: "ok" });
 
   const payload = req.body as {

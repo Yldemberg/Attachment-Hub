@@ -66,7 +66,7 @@ router.get("/accounts/connect/callback", async (req, res) => {
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
     const db = getDb();
 
-    const mlUserRes = await fetch(`https://api.mercadolibre.com/users/${tokens.user_id}`, {
+    const mlUserRes = await fetch(`https://api.mercadolibre.com/users/me`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     const mlUser = (await mlUserRes.json()) as MlUser;
@@ -175,11 +175,23 @@ router.delete("/accounts/:id", ...auth, async (req, res) => {
 
 router.post("/accounts/:id/sync", ...auth, async (req, res) => {
   try {
+    const db = getDb();
+    const accountId = req.params.id as string;
+    const [account] = await db
+      .select({ id: accountsTable.id })
+      .from(accountsTable)
+      .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, req.user!.id)));
+
+    if (!account) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Account not found" } });
+      return;
+    }
+
     res.status(202).json({ message: "Sync initiated" });
 
     setImmediate(() => {
-      syncAccount(req.params.id as string, req.user!.id).catch((err) => {
-        req.log.error({ err, accountId: req.params.id }, "Sync failed");
+      syncAccount(accountId, req.user!.id).catch((err) => {
+        req.log.error({ err, accountId }, "Sync failed");
       });
     });
   } catch (err) {
