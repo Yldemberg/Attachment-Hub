@@ -1,12 +1,15 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { notificationsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/notifications", requireAuth, async (req, res) => {
+const auth = [requireAuth, requireActivePlan];
+
+router.get("/notifications", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const { is_read, page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -45,7 +48,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/notifications/:id/read", requireAuth, async (req, res) => {
+router.patch("/notifications/:id/read", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const [updated] = await db
@@ -66,7 +69,7 @@ router.patch("/notifications/:id/read", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/notifications/read-all", requireAuth, async (req, res) => {
+router.patch("/notifications/read-all", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const updated = await db

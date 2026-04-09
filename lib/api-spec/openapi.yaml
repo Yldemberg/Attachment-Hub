@@ -1090,7 +1090,7 @@ components:
           type: string
         type:
           type: string
-          enum: [new_question, new_order, low_stock, order_update, sync_error]
+          enum: [new_question, new_order, low_stock, order_update, sync_error, sync_complete]
         title:
           type: string
         message:

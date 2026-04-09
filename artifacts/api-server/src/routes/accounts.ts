@@ -36,7 +36,7 @@ router.get("/accounts", ...auth, async (req, res) => {
   }
 });
 
-router.get("/accounts/connect/url", requireAuth, async (req, res) => {
+router.get("/accounts/connect/url", ...auth, async (req, res) => {
   try {
     const state = createOAuthState(req.user!.id);
     const url = getMlAuthUrl(state);

@@ -188,6 +188,7 @@ export const NotificationType = {
   low_stock: "low_stock",
   order_update: "order_update",
   sync_error: "sync_error",
+  sync_complete: "sync_complete",
 } as const;
 
 export interface Notification {

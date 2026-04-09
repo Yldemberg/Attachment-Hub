@@ -198,7 +198,7 @@ export async function syncAccount(accountId: string, userId: string): Promise<vo
 
   await db.insert(notificationsTable).values({
     userId,
-    type: "sync_error",
+    type: "sync_complete",
     title: "Sincronização concluída",
     message: `Conta ${account.mlNickname ?? accountId} sincronizada com sucesso.`,
     isRead: false,
