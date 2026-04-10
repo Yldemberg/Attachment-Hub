@@ -116,6 +116,45 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
   }
 }
 
+async function buildOrderItemsJson(
+  accountId: string,
+  orderItems: MlOrder["order_items"],
+): Promise<Array<{
+  item_id: string;
+  title: string;
+  quantity: number;
+  price: number;
+  thumbnail: string | null;
+  sku: string | null;
+  logistic_type: string | null;
+}>> {
+  const db = getDb();
+
+  return Promise.all(
+    orderItems.map(async (oi) => {
+      const [product] = await db
+        .select({
+          thumbnail: productsTable.thumbnail,
+          sku: productsTable.sku,
+          logisticType: productsTable.logisticType,
+        })
+        .from(productsTable)
+        .where(and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, oi.item.id)))
+        .limit(1);
+
+      return {
+        item_id: oi.item.id,
+        title: oi.item.title,
+        quantity: oi.quantity,
+        price: oi.unit_price,
+        thumbnail: product?.thumbnail ?? null,
+        sku: product?.sku ?? null,
+        logistic_type: product?.logisticType ?? null,
+      };
+    }),
+  );
+}
+
 async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
   const db = getDb();
   let offset = 0;
@@ -128,12 +167,7 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
     );
 
     for (const order of result.results) {
-      const itemsJson = order.order_items.map((oi) => ({
-        item_id: oi.item.id,
-        title: oi.item.title,
-        quantity: oi.quantity,
-        price: oi.unit_price,
-      }));
+      const itemsJson = await buildOrderItemsJson(accountId, order.order_items);
 
       await db
         .insert(ordersTable)
@@ -232,6 +266,7 @@ export async function syncAccount(accountId: string, userId: string): Promise<vo
 
   await db.insert(notificationsTable).values({
     userId,
+    accountId,
     type: "sync_complete",
     title: "Sincronização concluída",
     message: `Conta ${account.mlNickname ?? accountId} sincronizada com sucesso.`,

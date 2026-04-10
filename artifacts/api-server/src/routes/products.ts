@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, lt, ilike, or, sql } from "drizzle-orm";
+import { eq, and, inArray, lt, ilike, sql } from "drizzle-orm";
 import { ml } from "../lib/mercadolivre";
 
 const router = Router();
@@ -141,7 +141,7 @@ router.get("/products/:id", ...auth, async (req, res) => {
   }
 });
 
-router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
+router.patch("/products/:id/stock", ...auth, async (req, res) => {
   try {
     const db = getDb();
     const { quantity } = req.body as { quantity: number };
@@ -152,6 +152,51 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
     }
 
     const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    if (product.isFull) {
+      res.status(400).json({ error: { code: "FULL_ITEM", message: "Estoque FULL é gerenciado pelo armazém do Mercado Livre" } });
+      return;
+    }
+
+    await ml.put(product.accountId, `/items/${product.mlItemId}`, { available_quantity: quantity });
+    await db
+      .update(productsTable)
+      .set({ availableQuantity: quantity })
+      .where(eq(productsTable.id, product.id));
+
+    res.json({ success: true, productId: product.id, quantity });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update single product stock");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { quantity } = req.body as { quantity: number };
+    const { account_id } = req.query as Record<string, string>;
+
+    if (typeof quantity !== "number" || quantity < 0) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Invalid quantity" } });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
     if (accountIds.length === 0) {
       res.json({ sku: req.params.sku, updated: 0, skipped: 0, failed: 0, results: [] });
       return;

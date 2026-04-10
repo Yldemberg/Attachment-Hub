@@ -2,8 +2,8 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
-import { notificationsTable } from "@workspace/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { notificationsTable, accountsTable } from "@workspace/db/schema";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -37,8 +37,26 @@ router.get("/notifications", ...auth, async (req, res) => {
     const total = countResult[0]?.count ?? 0;
     const unreadCount = unreadResult[0]?.count ?? 0;
 
+    const accountIds = rows
+      .map((r) => r.accountId)
+      .filter((id): id is string => id != null);
+
+    let accountMap: Record<string, string> = {};
+    if (accountIds.length > 0) {
+      const accounts = await db
+        .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname })
+        .from(accountsTable)
+        .where(inArray(accountsTable.id, accountIds));
+      accountMap = Object.fromEntries(
+        accounts.map((a) => [a.id, a.mlNickname ?? a.id]),
+      );
+    }
+
     res.json({
-      data: rows,
+      data: rows.map((n) => ({
+        ...n,
+        accountNickname: n.accountId ? (accountMap[n.accountId] ?? null) : null,
+      })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
       unreadCount,
     });

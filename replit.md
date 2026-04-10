@@ -36,7 +36,7 @@ Tables: `profiles`, `accounts`, `products`, `orders`, `questions`, `notification
 - **products** — ML listings; stock (available_quantity is most critical field), SKU
 - **orders** — ML orders; buyer info, items_json, shipping status
 - **questions** — ML customer questions; answer text/date
-- **notifications** — In-app notifications; Supabase Realtime enabled
+- **notifications** — In-app notifications; `account_id` FK column (nullable); Supabase Realtime enabled
 
 Full Supabase SQL migration (RLS policies + triggers): `scripts/supabase-ihub-full-schema.sql`
 
@@ -70,7 +70,8 @@ Full Supabase SQL migration (RLS policies + triggers): `scripts/supabase-ihub-fu
 
 ## Business Rules (Critical)
 
-- **SKU stock sync** — Updating stock via PATCH /api/products/sku/:sku/stock updates ALL products with same SKU; skip is_full=true products (ML Fulfillment items cannot have stock edited)
+- **Stock update scopes** — 3 scopes: "single item" (PATCH /products/:id/stock), "same account by SKU" (PATCH /products/sku/:sku/stock?account_id=X), "all accounts by SKU" (PATCH /products/sku/:sku/stock); isFull products always skipped
+- **Notifications account link** — notifications table has nullable account_id FK; API JOINs accounts to return accountNickname; all new notifications created with accountId
 - **ML token refresh** — Before every ML API call, check if token_expires_at < NOW()+5min; refresh automatically
 - **Trial enforcement** — 402 returned after trial_ends_at; trial = 30 days from signup
 - **Multi-tenant** — user_id in every DB query; RLS enforced via Supabase + service_role on backend
@@ -87,7 +88,8 @@ Full Supabase SQL migration (RLS policies + triggers): `scripts/supabase-ihub-fu
 - `GET /products` — list with filters (account_id, status, search, page, limit)
 - `GET /products/low-stock` — products below threshold
 - `GET /products/:id` — product detail
-- `PATCH /products/sku/:sku/stock` — update stock by SKU
+- `PATCH /products/:id/stock` — update stock for a single product
+- `PATCH /products/sku/:sku/stock` — update stock by SKU (supports optional `?account_id=` filter)
 - `GET /orders` — list with filters
 - `GET /orders/:id` — order detail
 - `GET /questions` — list with filters

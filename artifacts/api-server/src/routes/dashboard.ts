@@ -29,6 +29,8 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
       res.json({
         salesToday: 0,
         salesMonth: 0,
+        ordersToday: 0,
+        ordersMonth: 0,
         pendingOrders: 0,
         unansweredQuestions: 0,
         criticalStockCount: 0,
@@ -44,7 +46,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const [todaySales, monthSales, pendingOrders, unansweredQ, criticalStock] = await Promise.all([
+    const [todaySalesRow, monthSalesRow, todayOrdersRow, monthOrdersRow, pendingOrdersRow, unansweredQRow, criticalStockRow] = await Promise.all([
       db
         .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
         .from(ordersTable)
@@ -55,6 +57,22 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         )),
       db
         .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
+        .from(ordersTable)
+        .where(and(
+          inArray(ordersTable.accountId, accountIds),
+          gte(ordersTable.dateCreated, monthStart),
+          eq(ordersTable.status, "paid"),
+        )),
+      db
+        .select({ count: sql<number>`cast(count(*) as int)` })
+        .from(ordersTable)
+        .where(and(
+          inArray(ordersTable.accountId, accountIds),
+          gte(ordersTable.dateCreated, todayStart),
+          eq(ordersTable.status, "paid"),
+        )),
+      db
+        .select({ count: sql<number>`cast(count(*) as int)` })
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
@@ -85,11 +103,13 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
     ]);
 
     res.json({
-      salesToday: Number(todaySales[0]?.total ?? 0),
-      salesMonth: Number(monthSales[0]?.total ?? 0),
-      pendingOrders: pendingOrders[0]?.count ?? 0,
-      unansweredQuestions: unansweredQ[0]?.count ?? 0,
-      criticalStockCount: criticalStock[0]?.count ?? 0,
+      salesToday: Number(todaySalesRow[0]?.total ?? 0),
+      salesMonth: Number(monthSalesRow[0]?.total ?? 0),
+      ordersToday: todayOrdersRow[0]?.count ?? 0,
+      ordersMonth: monthOrdersRow[0]?.count ?? 0,
+      pendingOrders: pendingOrdersRow[0]?.count ?? 0,
+      unansweredQuestions: unansweredQRow[0]?.count ?? 0,
+      criticalStockCount: criticalStockRow[0]?.count ?? 0,
       activeAccounts: accountIds.length,
     });
   } catch (err) {

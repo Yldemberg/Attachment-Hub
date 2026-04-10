@@ -122,6 +122,7 @@ export default function Integrations() {
   const { toast } = useToast();
   const searchStr = useSearch();
   const [, navigate] = useLocation();
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const params = new URLSearchParams(searchStr);
@@ -155,17 +156,36 @@ export default function Integrations() {
 
   const { mutate: syncAccount } = useSyncAccount({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (_data, variables) => {
+        setSyncingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(variables.id);
+          return next;
+        });
         queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+        toast({ title: "Sincronização concluída", description: "Os dados da conta foram atualizados com sucesso." });
+      },
+      onError: (_err, variables) => {
+        setSyncingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(variables.id);
+          return next;
+        });
+        toast({ variant: "destructive", title: "Erro ao sincronizar", description: "Não foi possível sincronizar a conta. Tente novamente." });
       },
     },
   });
+
+  const handleSync = (accountId: string) => {
+    setSyncingIds((prev) => new Set(prev).add(accountId));
+    syncAccount({ id: accountId });
+  };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Integracoes</h1>
+          <h1 className="text-xl font-bold text-white">Integrações</h1>
           <p className="text-slate-400 text-sm mt-0.5">
             Gerencie suas contas do Mercado Livre
           </p>
@@ -184,99 +204,112 @@ export default function Integrations() {
           <Plug className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <h3 className="text-slate-300 font-medium mb-1">Nenhuma conta conectada</h3>
           <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
-            Conecte sua conta do Mercado Livre para comecar a gerenciar seus anuncios e pedidos.
+            Conecte sua conta do Mercado Livre para começar a gerenciar seus anúncios e pedidos.
           </p>
           <ConnectButton />
         </div>
       ) : (
         <div className="space-y-3">
-          {accounts.map((account) => (
-            <div
-              key={account.id}
-              className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex items-center gap-4"
-            >
-              <div className="w-10 h-10 rounded-lg bg-amber-900/40 border border-amber-800/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-amber-400 font-bold text-sm">ML</span>
-              </div>
+          {accounts.map((account) => {
+            const isSyncing = syncingIds.has(account.id);
+            return (
+              <div
+                key={account.id}
+                className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex items-center gap-4"
+              >
+                <div className="w-10 h-10 rounded-lg bg-amber-900/40 border border-amber-800/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-amber-400 font-bold text-sm">ML</span>
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-white font-medium text-sm">
-                    {account.mlNickname ?? account.mlUserId ?? account.id}
-                  </h3>
-                  {account.isActive ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  ) : (
-                    <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white font-medium text-sm">
+                      {account.mlNickname ?? account.mlUserId ?? account.id}
+                    </h3>
+                    {account.isActive ? (
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    ) : (
+                      <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                    )}
+                    {isSyncing && (
+                      <span className="text-[10px] text-blue-400 bg-blue-900/30 border border-blue-800/40 px-1.5 py-0.5 rounded">
+                        Sincronizando...
+                      </span>
+                    )}
+                  </div>
+                  {account.mlEmail && (
+                    <p className="text-slate-400 text-xs mt-0.5">{account.mlEmail}</p>
+                  )}
+                  {account.lastSyncAt && (
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      Última sincronização: {formatDateTime(account.lastSyncAt)}
+                    </p>
                   )}
                 </div>
-                {account.mlEmail && (
-                  <p className="text-slate-400 text-xs mt-0.5">{account.mlEmail}</p>
-                )}
-                {account.lastSyncAt && (
-                  <p className="text-slate-500 text-xs mt-0.5">
-                    Ultima sincronizacao: {formatDateTime(account.lastSyncAt)}
-                  </p>
-                )}
-              </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => syncAccount({ id: account.id })}
-                  className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs gap-1.5"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  Sincronizar
-                </Button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSync(account.id)}
+                    disabled={isSyncing}
+                    className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs gap-1.5 min-w-[110px]"
+                  >
+                    {isSyncing ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3" />
+                    )}
+                    {isSyncing ? "Sincronizando..." : "Sincronizar"}
+                  </Button>
 
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-red-900/50 text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8 p-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-slate-900 border-slate-700">
-                    <AlertDialogHeader>
-                      <AlertDialogTitle className="text-white">Remover conta</AlertDialogTitle>
-                      <AlertDialogDescription className="text-slate-400">
-                        Tem certeza que deseja remover a conta{" "}
-                        <span className="text-white font-medium">{account.mlNickname}</span>?
-                        Todos os dados sincronizados serao mantidos, mas a conta sera desconectada.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800">
-                        Cancelar
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => deleteAccount({ id: account.id })}
-                        disabled={deleting}
-                        className="bg-red-600 hover:bg-red-500 text-white"
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-red-900/50 text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8 p-0"
                       >
-                        Remover
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-slate-900 border-slate-700">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-white">Remover conta</AlertDialogTitle>
+                        <AlertDialogDescription className="text-slate-400">
+                          Tem certeza que deseja remover a conta{" "}
+                          <span className="text-white font-medium">{account.mlNickname}</span>?
+                          Todos os dados sincronizados serão mantidos, mas a conta será desconectada.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800">
+                          Cancelar
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => deleteAccount({ id: account.id })}
+                          disabled={deleting}
+                          className="bg-red-600 hover:bg-red-500 text-white"
+                        >
+                          Remover
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
         <h3 className="text-white text-sm font-medium mb-2">Como funciona</h3>
         <div className="space-y-2 text-slate-400 text-xs">
-          <p>1. Clique em "Conectar conta ML" — voce sera redirecionado para o Mercado Livre</p>
+          <p>1. Clique em "Conectar conta ML" — você será redirecionado para o Mercado Livre</p>
           <p>2. Autorize o iHub a acessar sua conta</p>
-          <p>3. Voce sera redirecionado de volta e a sincronizacao iniciara automaticamente</p>
-          <p>4. Produtos, pedidos e perguntas serao importados para o iHub</p>
+          <p>3. Você será redirecionado de volta e a sincronização iniciará automaticamente</p>
+          <p>4. Produtos, pedidos e perguntas serão importados para o iHub</p>
         </div>
       </div>
 

@@ -58,6 +58,44 @@ function verifyMlSignature(req: Request): boolean {
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(receivedHmac));
 }
 
+async function enrichOrderItemsJson(
+  accountId: string,
+  orderItems: MlOrder["order_items"],
+): Promise<Array<{
+  item_id: string;
+  title: string;
+  quantity: number;
+  price: number;
+  thumbnail: string | null;
+  sku: string | null;
+  logistic_type: string | null;
+}>> {
+  const db = getDb();
+  return Promise.all(
+    orderItems.map(async (oi) => {
+      const [product] = await db
+        .select({
+          thumbnail: productsTable.thumbnail,
+          sku: productsTable.sku,
+          logisticType: productsTable.logisticType,
+        })
+        .from(productsTable)
+        .where(and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, oi.item.id)))
+        .limit(1);
+
+      return {
+        item_id: oi.item.id,
+        title: oi.item.title,
+        quantity: oi.quantity,
+        price: oi.unit_price,
+        thumbnail: product?.thumbnail ?? null,
+        sku: product?.sku ?? null,
+        logistic_type: product?.logisticType ?? null,
+      };
+    }),
+  );
+}
+
 router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
   if (!verifyMlSignature(req)) {
     logger.warn("ML webhook signature verification failed");
@@ -122,6 +160,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (q.status === "unanswered") {
           await db.insert(notificationsTable).values({
             userId: account.userId,
+            accountId: account.id,
             type: "new_question",
             title: "Nova pergunta",
             message: `${q.from?.nickname ?? "Comprador"}: ${q.text?.slice(0, 100) ?? ""}`,
@@ -135,12 +174,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (!orderId) return;
 
         const order = await ml.get<MlOrder>(account.id, `/orders/${orderId}`);
-        const itemsJson = order.order_items.map((oi) => ({
-          item_id: oi.item.id,
-          title: oi.item.title,
-          quantity: oi.quantity,
-          price: oi.unit_price,
-        }));
+        const itemsJson = await enrichOrderItemsJson(account.id, order.order_items);
 
         await db
           .insert(ordersTable)
@@ -170,6 +204,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
 
         await db.insert(notificationsTable).values({
           userId: account.userId,
+          accountId: account.id,
           type: "new_order",
           title: "Novo pedido",
           message: `Pedido #${order.id} de ${order.buyer.nickname} — R$ ${order.total_amount}`,
@@ -245,6 +280,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (item.available_quantity < 5) {
           await db.insert(notificationsTable).values({
             userId: account.userId,
+            accountId: account.id,
             type: "low_stock",
             title: "Estoque crítico",
             message: `"${item.title}" tem apenas ${item.available_quantity} unidade(s)`,

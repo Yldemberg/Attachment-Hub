@@ -24,12 +24,13 @@ import {
 } from "recharts";
 import { formatCurrency, stockBgColor } from "@/lib/utils";
 import {
-  TrendingUp,
+  ShoppingCart,
   Clock,
   MessageSquare,
   AlertTriangle,
   Plug,
   Send,
+  TrendingUp,
 } from "lucide-react";
 import {
   Select,
@@ -46,14 +47,14 @@ import { useQueryClient } from "@tanstack/react-query";
 type Period = "7d" | "30d" | "90d";
 
 interface DashboardSummaryData {
-  todaySales?: number | null;
-  todayOrders?: number | null;
-  monthSales?: number | null;
-  monthOrders?: number | null;
+  salesToday?: number | null;
+  salesMonth?: number | null;
+  ordersToday?: number | null;
+  ordersMonth?: number | null;
   pendingOrders?: number | null;
   unansweredQuestions?: number | null;
-  lowStockCount?: number | null;
-  accountsConnected?: number | null;
+  criticalStockCount?: number | null;
+  activeAccounts?: number | null;
 }
 
 interface Product {
@@ -61,12 +62,12 @@ interface Product {
   title?: string | null;
   sku?: string | null;
   availableQuantity?: number | null;
-  thumbnailUrl?: string | null;
+  thumbnail?: string | null;
 }
 
 interface ChartPoint {
   date?: string;
-  amount?: number | null;
+  revenue?: number | null;
   orders?: number | null;
 }
 
@@ -157,23 +158,23 @@ export default function Dashboard() {
 
   const kpis = [
     {
-      label: "Vendas hoje",
-      value: formatCurrency(s?.todaySales),
-      sub: `${s?.todayOrders ?? 0} pedidos`,
-      icon: TrendingUp,
+      label: "Pedidos hoje",
+      value: String(s?.ordersToday ?? 0),
+      sub: s?.salesToday ? `${formatCurrency(s.salesToday)} em vendas` : "nenhuma venda registrada",
+      icon: ShoppingCart,
       color: "text-blue-400",
     },
     {
-      label: "Vendas no mes",
-      value: formatCurrency(s?.monthSales),
-      sub: `${s?.monthOrders ?? 0} pedidos`,
+      label: "Pedidos no mês",
+      value: String(s?.ordersMonth ?? 0),
+      sub: s?.salesMonth ? `${formatCurrency(s.salesMonth)} em vendas` : "nenhuma venda registrada",
       icon: TrendingUp,
       color: "text-blue-400",
     },
     {
       label: "Pedidos pendentes",
       value: String(s?.pendingOrders ?? 0),
-      sub: "aguardando acao",
+      sub: "aguardando ação",
       icon: Clock,
       color: "text-amber-400",
       link: "/orders",
@@ -188,15 +189,15 @@ export default function Dashboard() {
     },
     {
       label: "Produtos em baixo estoque",
-      value: String(s?.lowStockCount ?? 0),
-      sub: "estoque critico",
+      value: String(s?.criticalStockCount ?? 0),
+      sub: "estoque crítico (< 5 un.)",
       icon: AlertTriangle,
       color: "text-amber-400",
       link: "/products",
     },
     {
       label: "Contas conectadas",
-      value: String(s?.accountsConnected ?? 0),
+      value: String(s?.activeAccounts ?? 0),
       sub: "Mercado Livre",
       icon: Plug,
       color: "text-emerald-400",
@@ -209,7 +210,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Visao geral de todas as suas contas</p>
+          <p className="text-slate-400 text-sm mt-0.5">Visão geral de todas as suas contas</p>
         </div>
         <div className="flex items-center gap-2">
           {accounts.length > 0 && (
@@ -262,7 +263,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg p-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-white">Evolucao de vendas</h2>
+            <h2 className="text-sm font-semibold text-white">Evolução de vendas</h2>
             <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
               <SelectTrigger className="w-24 bg-slate-800 border-slate-700 text-slate-300 text-xs h-7">
                 <SelectValue />
@@ -304,11 +305,11 @@ export default function Dashboard() {
                 contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 6 }}
                 labelStyle={{ color: "#94a3b8", fontSize: 11 }}
                 itemStyle={{ color: "#60a5fa" }}
-                formatter={(v: number) => [formatCurrency(v), "Vendas"]}
+                formatter={(v: number) => [formatCurrency(v), "Receita"]}
               />
               <Area
                 type="monotone"
-                dataKey="amount"
+                dataKey="revenue"
                 stroke="#3b82f6"
                 strokeWidth={2}
                 fill="url(#salesGrad)"
@@ -320,7 +321,7 @@ export default function Dashboard() {
 
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-white">Estoque critico</h2>
+            <h2 className="text-sm font-semibold text-white">Estoque crítico</h2>
             <Link to="/products" className="text-blue-400 text-xs hover:text-blue-300">
               Ver todos
             </Link>
@@ -332,12 +333,16 @@ export default function Dashboard() {
               {lowStockProducts.map((p) => (
                 <Link key={p.id} to={`/products/${p.id}`}>
                   <div className="flex items-center gap-2 py-1.5 hover:bg-slate-800 rounded px-1 transition-colors">
-                    {p.thumbnailUrl && (
+                    {p.thumbnail ? (
                       <img
-                        src={p.thumbnailUrl}
+                        src={p.thumbnail}
                         alt=""
                         className="w-8 h-8 rounded object-cover flex-shrink-0 bg-slate-800"
                       />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                      </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-200 text-xs truncate">{p.title}</p>

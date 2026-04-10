@@ -2,12 +2,15 @@ import { pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { profilesTable } from "./profiles";
+import { accountsTable } from "./accounts";
 
 export const notificationsTable = pgTable("notifications", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
     .references(() => profilesTable.id, { onDelete: "cascade" }),
+  accountId: uuid("account_id")
+    .references(() => accountsTable.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   title: text("title").notNull(),
   message: text("message").notNull(),
