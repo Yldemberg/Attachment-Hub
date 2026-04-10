@@ -70,13 +70,15 @@ function WebhookUrlCard() {
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${window.location.origin}/api/webhooks/mercadolivre`;
 
+  const { toast } = useToast();
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(webhookUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback: select text
+      toast({ variant: "destructive", title: "Não foi possível copiar", description: "Copie manualmente: " + webhookUrl });
     }
   };
 
@@ -100,7 +102,7 @@ function WebhookUrlCard() {
           className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-8 px-3 gap-1.5 flex-shrink-0"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copiado!" : "Copiar"}
+          {copied ? "Copiado!" : "Copiar URL"}
         </Button>
       </div>
 

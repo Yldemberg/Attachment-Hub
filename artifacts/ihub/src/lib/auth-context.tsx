@@ -76,10 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (type === "new_question") {
             queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey() });
-          } else if (type === "new_order" || type === "order_update") {
+          } else if (type === "new_order") {
             queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetSalesChartQueryKey() });
+          } else if (type === "order_update") {
+            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           } else if (type === "low_stock") {
             queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetLowStockProductsQueryKey() });
