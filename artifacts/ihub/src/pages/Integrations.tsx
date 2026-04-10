@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -63,6 +63,55 @@ function ConnectButton() {
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
       Conectar conta ML
     </Button>
+  );
+}
+
+function WebhookUrlCard() {
+  const [copied, setCopied] = useState(false);
+  const webhookUrl = `${window.location.origin}/api/webhooks/mercadolivre`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback: select text
+    }
+  };
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+      <div>
+        <h3 className="text-white text-sm font-medium">Notificações em Tempo Real</h3>
+        <p className="text-slate-400 text-xs mt-0.5">
+          Configure esta URL no seu app do Mercado Livre Developer para receber atualizações instantâneas de pedidos, perguntas e anúncios.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <code className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs text-blue-400 font-mono truncate select-all">
+          {webhookUrl}
+        </code>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCopy}
+          className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-8 px-3 gap-1.5 flex-shrink-0"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? "Copiado!" : "Copiar"}
+        </Button>
+      </div>
+
+      <div className="space-y-1 text-slate-500 text-xs">
+        <p className="font-medium text-slate-400">Como configurar no ML Developer:</p>
+        <p>1. Acesse <span className="text-blue-400">developers.mercadolivre.com.br</span> → seu app → Notificações</p>
+        <p>2. Cole a URL acima no campo "URL de notificação"</p>
+        <p>3. Ative os tópicos: <span className="text-slate-300">orders_v2</span>, <span className="text-slate-300">questions</span>, <span className="text-slate-300">items</span></p>
+        <p>4. Salve — o iHub começará a receber atualizações em tempo real</p>
+      </div>
+    </div>
   );
 }
 
@@ -228,6 +277,8 @@ export default function Integrations() {
           <p>4. Produtos, pedidos e perguntas serao importados para o iHub</p>
         </div>
       </div>
+
+      <WebhookUrlCard />
     </div>
   );
 }

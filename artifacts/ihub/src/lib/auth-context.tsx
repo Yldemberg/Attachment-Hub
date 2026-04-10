@@ -4,7 +4,16 @@ import { supabase } from "./supabase";
 import { configureApiClient, updateApiToken } from "./api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { getListNotificationsQueryKey } from "@workspace/api-client-react";
+import {
+  getListNotificationsQueryKey,
+  getListQuestionsQueryKey,
+  getListOrdersQueryKey,
+  getListProductsQueryKey,
+  getGetLowStockProductsQueryKey,
+  getGetDashboardSummaryQueryKey,
+  getGetSalesChartQueryKey,
+  getListAccountsQueryKey,
+} from "@workspace/api-client-react";
 
 interface AuthContextType {
   session: Session | null;
@@ -61,10 +70,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
+          const type = (payload.new as { type?: string }).type;
+
           queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+
+          if (type === "new_question") {
+            queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey() });
+          } else if (type === "new_order" || type === "order_update") {
+            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetSalesChartQueryKey() });
+          } else if (type === "low_stock") {
+            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetLowStockProductsQueryKey() });
+          } else if (type === "sync_complete") {
+            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetLowStockProductsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetSalesChartQueryKey() });
+          }
+
           toast({
-            title: payload.new.title || "New Notification",
-            description: payload.new.message || "",
+            title: (payload.new as { title?: string }).title || "Nova notificação",
+            description: (payload.new as { message?: string }).message || "",
           });
         }
       )
