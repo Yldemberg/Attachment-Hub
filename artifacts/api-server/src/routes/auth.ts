@@ -3,29 +3,27 @@ import { requireAuth } from "../lib/auth";
 import { getDb } from "../lib/db";
 import { profilesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import type { Profile } from "@workspace/db/schema";
 
 const router = Router();
 
 router.get("/auth/me", requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    let profile: Profile | undefined = (
-      await db.select().from(profilesTable).where(eq(profilesTable.id, req.user!.id))
-    )[0];
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
-    if (!profile) {
-      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-      [profile] = await db
-        .insert(profilesTable)
-        .values({
-          id: req.user!.id,
-          email: req.user!.email ?? null,
-          plan: "trial",
-          trialEndsAt,
-        })
-        .returning();
-    }
+    const [profile] = await db
+      .insert(profilesTable)
+      .values({
+        id: req.user!.id,
+        email: req.user!.email ?? null,
+        plan: "trial",
+        trialEndsAt,
+      })
+      .onConflictDoUpdate({
+        target: profilesTable.id,
+        set: { updatedAt: new Date() },
+      })
+      .returning();
 
     res.json({
       id: profile.id,
