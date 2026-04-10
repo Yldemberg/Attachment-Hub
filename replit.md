@@ -39,6 +39,8 @@ Tables: `profiles`, `accounts`, `products`, `orders`, `questions`, `notification
 - **notifications** — In-app notifications; `account_id` FK column (nullable); Supabase Realtime enabled
 
 Full Supabase SQL migration (RLS policies + triggers): `scripts/supabase-ihub-full-schema.sql`
+Incremental migrations: `scripts/migrations/` — must be applied in order on existing DBs
+- `001_notifications_account_id.sql` — adds `account_id UUID NULL FK → accounts` column to notifications (already applied)
 
 ## Key Commands
 
