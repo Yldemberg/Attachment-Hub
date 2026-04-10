@@ -11,7 +11,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Search, Package, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -35,9 +34,10 @@ interface Product {
   sku?: string | null;
   availableQuantity?: number | null;
   price?: number | null;
+  originalPrice?: number | null;
   status?: string | null;
   isFull?: boolean | null;
-  thumbnailUrl?: string | null;
+  thumbnail?: string | null;
   mlItemId?: string | null;
   permalink?: string | null;
   accountId?: string;
@@ -194,9 +194,9 @@ export default function Products() {
                   <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                     <td className="px-4 py-3">
                       <Link to={`/products/${p.id}`} className="flex items-center gap-2 group">
-                        {p.thumbnailUrl ? (
+                        {p.thumbnail ? (
                           <img
-                            src={p.thumbnailUrl}
+                            src={p.thumbnail}
                             alt=""
                             className="w-8 h-8 rounded object-cover flex-shrink-0 bg-slate-800"
                           />
@@ -224,7 +224,18 @@ export default function Products() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-slate-200 text-xs">{formatCurrency(p.price)}</span>
+                      {p.originalPrice != null && p.originalPrice > (p.price ?? 0) ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-slate-500 text-[10px] line-through">
+                            {formatCurrency(p.originalPrice)}
+                          </span>
+                          <span className="text-emerald-400 text-xs font-semibold">
+                            {formatCurrency(p.price)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-200 text-xs">{formatCurrency(p.price)}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${STATUS_COLORS[p.status ?? ""] ?? "bg-slate-800 text-slate-500 border-slate-700"}`}>

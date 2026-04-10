@@ -7,26 +7,47 @@ import {
 import { formatCurrency, formatDateTime, stockBgColor } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, ExternalLink, Package, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Package, RefreshCw, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+interface ProductVariation {
+  id: number;
+  sku?: string | null;
+  price: number;
+  available_quantity: number;
+  sold_quantity: number;
+  attributes: Array<{ name: string; value: string }>;
+}
 
 interface Product {
   id: string;
   title?: string | null;
   sku?: string | null;
   availableQuantity?: number | null;
+  soldQuantity?: number | null;
   price?: number | null;
+  originalPrice?: number | null;
   status?: string | null;
   isFull?: boolean | null;
-  thumbnailUrl?: string | null;
+  thumbnail?: string | null;
   mlItemId?: string | null;
   permalink?: string | null;
+  listingType?: string | null;
+  logisticType?: string | null;
   accountId?: string;
   updatedAt?: string | null;
   createdAt?: string | null;
+  variationsJson?: ProductVariation[] | null;
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  active: "Ativo",
+  paused: "Pausado",
+  closed: "Encerrado",
+  under_review: "Em revisao",
+};
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -81,6 +102,9 @@ export default function ProductDetail() {
     );
   }
 
+  const hasPromo = p.originalPrice != null && p.originalPrice > (p.price ?? 0);
+  const variations: ProductVariation[] = Array.isArray(p.variationsJson) ? p.variationsJson : [];
+
   return (
     <div className="p-6 space-y-4 max-w-3xl">
       <button
@@ -92,8 +116,8 @@ export default function ProductDetail() {
       </button>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex items-start gap-4">
-        {p.thumbnailUrl ? (
-          <img src={p.thumbnailUrl} alt="" className="w-20 h-20 rounded-lg object-cover bg-slate-800 flex-shrink-0" />
+        {p.thumbnail ? (
+          <img src={p.thumbnail} alt="" className="w-20 h-20 rounded-lg object-cover bg-slate-800 flex-shrink-0" />
         ) : (
           <div className="w-20 h-20 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0">
             <Package className="w-8 h-8 text-slate-600" />
@@ -123,17 +147,33 @@ export default function ProductDetail() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "SKU", value: p.sku ?? "—" },
-          { label: "Preco", value: formatCurrency(p.price) },
-          { label: "Status", value: p.status ?? "—" },
-          { label: "Atualizado", value: formatDateTime(p.updatedAt) },
-        ].map((item) => (
-          <div key={item.label} className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <p className="text-slate-500 text-xs mb-1">{item.label}</p>
-            <p className="text-white text-sm font-medium">{item.value}</p>
-          </div>
-        ))}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+          <p className="text-slate-500 text-xs mb-1">SKU</p>
+          <p className="text-white text-sm font-mono">{p.sku ?? "—"}</p>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+          <p className="text-slate-500 text-xs mb-1">Preco</p>
+          {hasPromo ? (
+            <div className="space-y-0.5">
+              <p className="text-slate-500 text-xs line-through">
+                De: {formatCurrency(p.originalPrice)}
+              </p>
+              <p className="text-emerald-400 text-sm font-semibold">
+                Por: {formatCurrency(p.price)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-white text-sm font-medium">{formatCurrency(p.price)}</p>
+          )}
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+          <p className="text-slate-500 text-xs mb-1">Status</p>
+          <p className="text-white text-sm font-medium">{STATUS_LABELS[p.status ?? ""] ?? p.status ?? "—"}</p>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+          <p className="text-slate-500 text-xs mb-1">Atualizado</p>
+          <p className="text-white text-sm font-medium">{formatDateTime(p.updatedAt)}</p>
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
@@ -175,6 +215,62 @@ export default function ProductDetail() {
           </div>
         )}
       </div>
+
+      {variations.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800 flex items-center gap-2">
+            <Tag className="w-4 h-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-white">
+              Variacoes <span className="text-slate-500 font-normal">({variations.length})</span>
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-800">
+                  <th className="text-left px-4 py-2.5 text-slate-500 font-medium">Atributos</th>
+                  <th className="text-left px-4 py-2.5 text-slate-500 font-medium">SKU</th>
+                  <th className="text-right px-4 py-2.5 text-slate-500 font-medium">Preco</th>
+                  <th className="text-right px-4 py-2.5 text-slate-500 font-medium">Estoque</th>
+                  <th className="text-right px-4 py-2.5 text-slate-500 font-medium">Vendidos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variations.map((v) => (
+                  <tr key={v.id} className="border-b border-slate-800/50 hover:bg-slate-800/20">
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {v.attributes.map((a) => (
+                          <span
+                            key={a.name}
+                            className="inline-flex items-center gap-1 text-[10px] bg-slate-800 text-slate-300 rounded px-1.5 py-0.5"
+                          >
+                            <span className="text-slate-500">{a.name}:</span> {a.value}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="font-mono text-slate-400">{v.sku ?? "—"}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-200">
+                      {formatCurrency(v.price)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className={`font-bold px-1.5 py-0.5 rounded ${stockBgColor(v.available_quantity)}`}>
+                        {v.available_quantity}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-400">
+                      {v.sold_quantity}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

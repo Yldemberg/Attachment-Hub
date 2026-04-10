@@ -184,14 +184,36 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const item = await ml.get<MlItem>(account.id, `/items/${itemId}`);
         const isFull = item.shipping?.logistic_type === "fulfillment";
 
+        const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
+        const sku =
+          item.seller_custom_field ??
+          (hasVariations
+            ? (item.variations!.find((v) => v.seller_custom_field)?.seller_custom_field ?? null)
+            : null);
+        const variationsJson = hasVariations
+          ? item.variations!.map((v) => ({
+              id: v.id,
+              sku: v.seller_custom_field ?? null,
+              price: v.price,
+              available_quantity: v.available_quantity,
+              sold_quantity: v.sold_quantity,
+              attributes: v.attribute_combinations.map((a) => ({ name: a.name, value: a.value_name })),
+            }))
+          : null;
+        const originalPrice =
+          item.original_price != null && item.original_price > item.price
+            ? item.original_price.toString()
+            : null;
+
         await db
           .insert(productsTable)
           .values({
             accountId: account.id,
             mlItemId: item.id,
             title: item.title,
-            sku: item.seller_custom_field ?? null,
+            sku,
             price: item.price.toString(),
+            originalPrice,
             availableQuantity: item.available_quantity,
             soldQuantity: item.sold_quantity,
             status: item.status,
@@ -201,14 +223,21 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             thumbnail: item.thumbnail,
             permalink: item.permalink,
             mlCategoryId: item.category_id,
+            variationsJson,
             lastSyncedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: [productsTable.accountId, productsTable.mlItemId],
             set: {
-              availableQuantity: item.available_quantity,
-              status: item.status,
+              title: item.title,
+              sku,
               price: item.price.toString(),
+              originalPrice,
+              availableQuantity: item.available_quantity,
+              soldQuantity: item.sold_quantity,
+              status: item.status,
+              thumbnail: item.thumbnail,
+              variationsJson,
               lastSyncedAt: new Date(),
             },
           });

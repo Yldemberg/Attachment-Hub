@@ -221,19 +221,36 @@ export type MlUser = {
   email: string;
 };
 
+export type MlVariation = {
+  id: number;
+  price: number;
+  available_quantity: number;
+  sold_quantity: number;
+  seller_custom_field?: string | null;
+  attribute_combinations: Array<{
+    id: string;
+    name: string;
+    value_id: string;
+    value_name: string;
+  }>;
+  picture_ids?: string[];
+};
+
 export type MlItem = {
   id: string;
   title: string;
   price: number;
+  original_price?: number | null;
   available_quantity: number;
   sold_quantity: number;
   status: string;
   listing_type_id: string;
   shipping: { logistic_type: string };
-  seller_custom_field?: string;
+  seller_custom_field?: string | null;
   thumbnail: string;
   permalink: string;
   category_id: string;
+  variations?: MlVariation[];
 };
 
 export type MlOrder = {

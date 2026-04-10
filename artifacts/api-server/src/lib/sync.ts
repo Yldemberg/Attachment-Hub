@@ -41,41 +41,75 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
     for (const { code, body: item } of items) {
       if (code !== 200 || !item) continue;
       const isFull = item.shipping?.logistic_type === "fulfillment";
+
+      const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
+
+      const sku =
+        item.seller_custom_field ??
+        (hasVariations
+          ? (item.variations!.find((v) => v.seller_custom_field)?.seller_custom_field ?? null)
+          : null);
+
+      const variationsJson = hasVariations
+        ? item.variations!.map((v) => ({
+            id: v.id,
+            sku: v.seller_custom_field ?? null,
+            price: v.price,
+            available_quantity: v.available_quantity,
+            sold_quantity: v.sold_quantity,
+            attributes: v.attribute_combinations.map((a) => ({
+              name: a.name,
+              value: a.value_name,
+            })),
+          }))
+        : null;
+
+      const originalPrice =
+        item.original_price != null && item.original_price > item.price
+          ? item.original_price.toString()
+          : null;
+
+      const values = {
+        accountId,
+        mlItemId: item.id,
+        title: item.title,
+        sku,
+        price: item.price.toString(),
+        originalPrice,
+        availableQuantity: item.available_quantity,
+        soldQuantity: item.sold_quantity,
+        status: item.status,
+        listingType: item.listing_type_id,
+        logisticType: item.shipping?.logistic_type ?? null,
+        isFull,
+        thumbnail: item.thumbnail,
+        permalink: item.permalink,
+        mlCategoryId: item.category_id,
+        variationsJson,
+        lastSyncedAt: new Date(),
+      };
+
       await db
         .insert(productsTable)
-        .values({
-          accountId,
-          mlItemId: item.id,
-          title: item.title,
-          sku: item.seller_custom_field ?? null,
-          price: item.price.toString(),
-          availableQuantity: item.available_quantity,
-          soldQuantity: item.sold_quantity,
-          status: item.status,
-          listingType: item.listing_type_id,
-          logisticType: item.shipping?.logistic_type ?? null,
-          isFull,
-          thumbnail: item.thumbnail,
-          permalink: item.permalink,
-          mlCategoryId: item.category_id,
-          lastSyncedAt: new Date(),
-        })
+        .values(values)
         .onConflictDoUpdate({
           target: [productsTable.accountId, productsTable.mlItemId],
           set: {
-            title: item.title,
-            sku: item.seller_custom_field ?? null,
-            price: item.price.toString(),
-            availableQuantity: item.available_quantity,
-            soldQuantity: item.sold_quantity,
-            status: item.status,
-            listingType: item.listing_type_id,
-            logisticType: item.shipping?.logistic_type ?? null,
-            isFull,
-            thumbnail: item.thumbnail,
-            permalink: item.permalink,
-            mlCategoryId: item.category_id,
-            lastSyncedAt: new Date(),
+            title: values.title,
+            sku: values.sku,
+            price: values.price,
+            originalPrice: values.originalPrice,
+            availableQuantity: values.availableQuantity,
+            soldQuantity: values.soldQuantity,
+            status: values.status,
+            listingType: values.listingType,
+            logisticType: values.logisticType,
+            isFull: values.isFull,
+            thumbnail: values.thumbnail,
+            permalink: values.permalink,
+            mlCategoryId: values.mlCategoryId,
+            variationsJson: values.variationsJson,
+            lastSyncedAt: values.lastSyncedAt,
           },
         });
     }

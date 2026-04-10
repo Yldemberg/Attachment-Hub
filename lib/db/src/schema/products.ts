@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, boolean, integer, decimal, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean, integer, decimal, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { accountsTable } from "./accounts";
@@ -12,6 +12,7 @@ export const productsTable = pgTable("products", {
   title: text("title"),
   sku: text("sku"),
   price: decimal("price", { precision: 10, scale: 2 }),
+  originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
   availableQuantity: integer("available_quantity").default(0).notNull(),
   soldQuantity: integer("sold_quantity").default(0).notNull(),
   status: text("status"),
@@ -21,6 +22,7 @@ export const productsTable = pgTable("products", {
   thumbnail: text("thumbnail"),
   permalink: text("permalink"),
   mlCategoryId: text("ml_category_id"),
+  variationsJson: jsonb("variations_json"),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
