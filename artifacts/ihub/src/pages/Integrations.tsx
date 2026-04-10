@@ -20,8 +20,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useSearch, useLocation } from "wouter";
 
 interface Account {
   id: string;
@@ -67,6 +68,28 @@ function ConnectButton() {
 
 export default function Integrations() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const searchStr = useSearch();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchStr);
+    const success = params.get("success");
+    const error = params.get("error");
+    if (success === "true") {
+      toast({ title: "Conta conectada!", description: "Sua conta do Mercado Livre foi conectada com sucesso. A sincronização iniciará em breve." });
+      navigate("/integrations", { replace: true } as never);
+    } else if (error) {
+      const messages: Record<string, string> = {
+        missing_params: "Parâmetros inválidos no retorno do Mercado Livre.",
+        invalid_state: "Sessão expirada. Tente conectar novamente.",
+        account_already_linked: "Esta conta do ML já está vinculada a outro usuário.",
+        oauth_failed: "Falha na autenticação com o Mercado Livre. Tente novamente.",
+      };
+      toast({ variant: "destructive", title: "Erro ao conectar", description: messages[error] ?? "Erro desconhecido." });
+      navigate("/integrations", { replace: true } as never);
+    }
+  }, []);
 
   const { data: accountsData, isLoading } = useListAccounts();
   const accounts: Account[] = (accountsData as { data?: Account[] } | null)?.data ?? [];

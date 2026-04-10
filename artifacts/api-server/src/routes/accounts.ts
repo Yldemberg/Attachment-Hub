@@ -47,7 +47,10 @@ router.get("/accounts/connect/url", ...auth, async (req, res) => {
   }
 });
 
-router.get("/accounts/connect/callback", async (req, res) => {
+async function handleOAuthCallback(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
   const { code, state } = req.query as { code?: string; state?: string };
 
   if (!code || !state) {
@@ -121,7 +124,10 @@ router.get("/accounts/connect/callback", async (req, res) => {
     req.log.error({ err }, "OAuth callback failed");
     res.redirect("/integrations?error=oauth_failed");
   }
-});
+}
+
+router.get("/callback", handleOAuthCallback);
+router.get("/accounts/connect/callback", handleOAuthCallback);
 
 router.get("/accounts/:id", ...auth, async (req, res) => {
   try {
