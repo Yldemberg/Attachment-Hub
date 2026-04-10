@@ -8,7 +8,7 @@ export const accountsTable = pgTable("accounts", {
   userId: uuid("user_id")
     .notNull()
     .references(() => profilesTable.id, { onDelete: "cascade" }),
-  mlUserId: text("ml_user_id"),
+  mlUserId: text("ml_user_id").unique(),
   mlNickname: text("ml_nickname"),
   mlEmail: text("ml_email"),
   accessToken: text("access_token"),
