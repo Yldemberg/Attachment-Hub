@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import { configureApiClient } from "./api-client";
+import { configureApiClient, updateApiToken } from "./api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { getListNotificationsQueryKey } from "@workspace/api-client-react";
@@ -31,12 +31,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     configureApiClient();
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      updateApiToken(session?.access_token ?? null);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      updateApiToken(session?.access_token ?? null);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, queryClient, toast]);
 
   const signOut = async () => {
+    updateApiToken(null);
     await supabase.auth.signOut();
   };
 

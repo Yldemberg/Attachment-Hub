@@ -3,22 +3,28 @@ import { requireAuth } from "../lib/auth";
 import { getDb } from "../lib/db";
 import { profilesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import type { Profile } from "@workspace/db/schema";
 
 const router = Router();
 
 router.get("/auth/me", requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const [profile] = await db
-      .select()
-      .from(profilesTable)
-      .where(eq(profilesTable.id, req.user!.id));
+    let profile: Profile | undefined = (
+      await db.select().from(profilesTable).where(eq(profilesTable.id, req.user!.id))
+    )[0];
 
     if (!profile) {
-      res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Profile not found" },
-      });
-      return;
+      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      [profile] = await db
+        .insert(profilesTable)
+        .values({
+          id: req.user!.id,
+          email: req.user!.email ?? null,
+          plan: "trial",
+          trialEndsAt,
+        })
+        .returning();
     }
 
     res.json({
