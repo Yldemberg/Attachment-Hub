@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, boolean, integer, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean, integer, decimal, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { accountsTable } from "./accounts";
@@ -24,7 +24,9 @@ export const productsTable = pgTable("products", {
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [
+  uniqueIndex("products_account_id_ml_item_id_unique").on(t.accountId, t.mlItemId),
+]);
 
 export const insertProductSchema = createInsertSchema(productsTable).omit({
   id: true,
