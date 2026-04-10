@@ -10,6 +10,8 @@ import type { NotificationType } from "./notificationType";
 export interface Notification {
   id: string;
   userId: string;
+  accountId?: string | null;
+  accountNickname?: string | null;
   type: NotificationType;
   title: string;
   message: string;

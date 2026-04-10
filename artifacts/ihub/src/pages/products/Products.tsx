@@ -2,6 +2,8 @@ import { useState } from "react";
 import {
   useListProducts,
   useListAccounts,
+  useUpdateProductStock,
+  useUpdateStockBySku,
   getListProductsQueryKey,
   ListProductsStatus,
 } from "@workspace/api-client-react";
@@ -107,7 +109,6 @@ export default function Products() {
   const [stockDialog, setStockDialog] = useState<StockUpdateDialog | null>(null);
   const [newQuantity, setNewQuantity] = useState("");
   const [stockScope, setStockScope] = useState<StockScope>("single");
-  const [updatingSingle, setUpdatingSingle] = useState(false);
 
   const params = {
     page,
@@ -127,58 +128,55 @@ export default function Products() {
   const { data: accountsData } = useListAccounts();
   const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
 
-  const handleStockUpdate = async () => {
-    if (!stockDialog || !newQuantity) return;
-    const qty = Number(newQuantity);
-    setUpdatingSingle(true);
-    try {
-      let url: string;
-      if (stockScope === "single") {
-        url = `/api/products/${stockDialog.productId}/stock`;
-      } else if (stockScope === "account" && stockDialog.sku) {
-        url = `/api/products/sku/${encodeURIComponent(stockDialog.sku)}/stock?account_id=${stockDialog.accountId}`;
-      } else if (stockDialog.sku) {
-        url = `/api/products/sku/${encodeURIComponent(stockDialog.sku)}/stock`;
-      } else {
-        toast({ variant: "destructive", title: "Erro", description: "Produto sem SKU — use o escopo 'somente este anúncio'." });
-        setUpdatingSingle(false);
-        return;
-      }
-
-      const res = await fetch(url, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ quantity: qty }),
-      });
-
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error((errBody as { error?: { message?: string } })?.error?.message ?? "Erro desconhecido");
-      }
-
-      const result = await res.json();
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-      setStockDialog(null);
-      setNewQuantity("");
-
-      if (stockScope === "single") {
+  const { mutate: updateSingleStock, isPending: updatingSingle } = useUpdateProductStock({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        setStockDialog(null);
+        setNewQuantity("");
         toast({ title: "Estoque atualizado", description: "Estoque deste anúncio atualizado com sucesso." });
-      } else {
+      },
+      onError: (err) => {
+        const msg = (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ?? "Não foi possível atualizar o estoque.";
+        toast({ variant: "destructive", title: "Erro ao atualizar", description: msg });
+      },
+    },
+  });
+
+  const { mutate: updateSkuStock, isPending: updatingBySku } = useUpdateStockBySku({
+    mutation: {
+      onSuccess: (result) => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        setStockDialog(null);
+        setNewQuantity("");
         const r = result as { updated?: number; skipped?: number };
         toast({
           title: "Estoque atualizado",
           description: `${r.updated ?? 0} anúncio(s) atualizado(s)${r.skipped ? `, ${r.skipped} ignorado(s) (FULL)` : ""}.`,
         });
-      }
-    } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: (err as Error).message });
-    } finally {
-      setUpdatingSingle(false);
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "Erro ao atualizar", description: "Não foi possível atualizar o estoque." });
+      },
+    },
+  });
+
+  const isUpdating = updatingSingle || updatingBySku;
+
+  const handleStockUpdate = () => {
+    if (!stockDialog || !newQuantity) return;
+    const qty = Number(newQuantity);
+
+    if (stockScope === "single") {
+      updateSingleStock({ id: stockDialog.productId, data: { quantity: qty } });
+    } else if (!stockDialog.sku) {
+      toast({ variant: "destructive", title: "Erro", description: "Produto sem SKU — use o escopo 'somente este anúncio'." });
+    } else if (stockScope === "account") {
+      updateSkuStock({ sku: stockDialog.sku, data: { quantity: qty }, params: { account_id: stockDialog.accountId } });
+    } else {
+      updateSkuStock({ sku: stockDialog.sku, data: { quantity: qty } });
     }
   };
-
-  const isUpdating = updatingSingle;
 
   const openStockDialog = (p: Product) => {
     setStockDialog({

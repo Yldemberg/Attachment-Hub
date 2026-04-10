@@ -49,6 +49,8 @@ export * from "./salesChartDataPoint";
 export * from "./salesChartResponse";
 export * from "./syncAccount202";
 export * from "./unauthorizedResponse";
+export * from "./updateProductStock200";
+export * from "./updateStockBySkuParams";
 export * from "./updateStockRequest";
 export * from "./updateStockResponse";
 export * from "./updateStockResponseResultsItem";

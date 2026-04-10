@@ -116,6 +116,9 @@ export interface OrderItem {
   title?: string;
   quantity: number;
   price: number;
+  thumbnail?: string | null;
+  sku?: string | null;
+  logistic_type?: string | null;
 }
 
 export interface Order {
@@ -189,11 +192,14 @@ export const NotificationType = {
   order_update: "order_update",
   sync_error: "sync_error",
   sync_complete: "sync_complete",
+  item_update: "item_update",
 } as const;
 
 export interface Notification {
   id: string;
   userId: string;
+  accountId?: string | null;
+  accountNickname?: string | null;
   type: NotificationType;
   title: string;
   message: string;
@@ -300,6 +306,19 @@ export type GetLowStockProductsParams = {
 
 export type GetLowStockProducts200 = {
   data: Product[];
+};
+
+export type UpdateProductStock200 = {
+  success: boolean;
+  productId: string;
+  quantity: number;
+};
+
+export type UpdateStockBySkuParams = {
+  /**
+   * Restrict update to products belonging to this account
+   */
+  account_id?: string;
 };
 
 export type ListOrdersParams = {

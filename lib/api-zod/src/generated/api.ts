@@ -233,11 +233,38 @@ export const GetProductResponse = zod.object({
 });
 
 /**
- * Updates available_quantity for all non-FULL products sharing the same SKU
+ * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
+ * @summary Update stock for a single product
+ */
+export const UpdateProductStockParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const updateProductStockBodyQuantityMin = 0;
+
+export const UpdateProductStockBody = zod.object({
+  quantity: zod.number().min(updateProductStockBodyQuantityMin),
+});
+
+export const UpdateProductStockResponse = zod.object({
+  success: zod.boolean(),
+  productId: zod.string(),
+  quantity: zod.number(),
+});
+
+/**
+ * Updates available_quantity for all non-FULL products sharing the same SKU. Optionally scoped to a single account via account_id query param.
  * @summary Update stock for all products with matching SKU
  */
 export const UpdateStockBySkuParams = zod.object({
   sku: zod.coerce.string(),
+});
+
+export const UpdateStockBySkuQueryParams = zod.object({
+  account_id: zod.coerce
+    .string()
+    .optional()
+    .describe("Restrict update to products belonging to this account"),
 });
 
 export const updateStockBySkuBodyQuantityMin = 0;
@@ -298,6 +325,9 @@ export const ListOrdersResponse = zod.object({
             title: zod.string().optional(),
             quantity: zod.number(),
             price: zod.number(),
+            thumbnail: zod.string().nullish(),
+            sku: zod.string().nullish(),
+            logistic_type: zod.string().nullish(),
           }),
         )
         .nullish(),
@@ -347,6 +377,9 @@ export const GetOrderResponse = zod.object({
         title: zod.string().optional(),
         quantity: zod.number(),
         price: zod.number(),
+        thumbnail: zod.string().nullish(),
+        sku: zod.string().nullish(),
+        logistic_type: zod.string().nullish(),
       }),
     )
     .nullish(),
@@ -506,6 +539,8 @@ export const ListNotificationsResponse = zod.object({
     zod.object({
       id: zod.string(),
       userId: zod.string(),
+      accountId: zod.string().nullish(),
+      accountNickname: zod.string().nullish(),
       type: zod.enum([
         "new_question",
         "new_order",
@@ -513,6 +548,7 @@ export const ListNotificationsResponse = zod.object({
         "order_update",
         "sync_error",
         "sync_complete",
+        "item_update",
       ]),
       title: zod.string(),
       message: zod.string(),
@@ -541,6 +577,8 @@ export const MarkNotificationReadParams = zod.object({
 export const MarkNotificationReadResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  accountId: zod.string().nullish(),
+  accountNickname: zod.string().nullish(),
   type: zod.enum([
     "new_question",
     "new_order",
@@ -548,6 +586,7 @@ export const MarkNotificationReadResponse = zod.object({
     "order_update",
     "sync_error",
     "sync_complete",
+    "item_update",
   ]),
   title: zod.string(),
   message: zod.string(),

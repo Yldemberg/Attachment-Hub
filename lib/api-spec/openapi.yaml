@@ -296,18 +296,66 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /products/{id}/stock:
+    patch:
+      operationId: updateProductStock
+      tags: [products]
+      summary: Update stock for a single product
+      description: Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStockRequest"
+      responses:
+        "200":
+          description: Stock updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  productId:
+                    type: string
+                  quantity:
+                    type: integer
+                required: [success, productId, quantity]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /products/sku/{sku}/stock:
     patch:
       operationId: updateStockBySku
       tags: [products]
       summary: Update stock for all products with matching SKU
-      description: Updates available_quantity for all non-FULL products sharing the same SKU
+      description: Updates available_quantity for all non-FULL products sharing the same SKU. Optionally scoped to a single account via account_id query param.
       security:
         - bearerAuth: []
       parameters:
         - name: sku
           in: path
           required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          required: false
+          description: Restrict update to products belonging to this account
           schema:
             type: string
       requestBody:
@@ -943,6 +991,15 @@ components:
           type: integer
         price:
           type: number
+        thumbnail:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        logistic_type:
+          type: string
+          nullable: true
       required: [item_id, quantity, price]
 
     Order:
@@ -1088,9 +1145,15 @@ components:
           type: string
         userId:
           type: string
+        accountId:
+          type: string
+          nullable: true
+        accountNickname:
+          type: string
+          nullable: true
         type:
           type: string
-          enum: [new_question, new_order, low_stock, order_update, sync_error, sync_complete]
+          enum: [new_question, new_order, low_stock, order_update, sync_error, sync_complete, item_update]
         title:
           type: string
         message:

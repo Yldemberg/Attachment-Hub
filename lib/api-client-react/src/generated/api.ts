@@ -49,6 +49,8 @@ import type {
   SalesChartResponse,
   SyncAccount202,
   UnauthorizedResponse,
+  UpdateProductStock200,
+  UpdateStockBySkuParams,
   UpdateStockRequest,
   UpdateStockResponse,
   UserProfile,
@@ -1007,19 +1009,129 @@ export function useGetProduct<
 }
 
 /**
- * Updates available_quantity for all non-FULL products sharing the same SKU
+ * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
+ * @summary Update stock for a single product
+ */
+export const getUpdateProductStockUrl = (id: string) => {
+  return `/api/products/${id}/stock`;
+};
+
+export const updateProductStock = async (
+  id: string,
+  updateStockRequest: UpdateStockRequest,
+  options?: RequestInit,
+): Promise<UpdateProductStock200> => {
+  return customFetch<UpdateProductStock200>(getUpdateProductStockUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateStockRequest),
+  });
+};
+
+export const getUpdateProductStockMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductStock>>,
+    TError,
+    { id: string; data: BodyType<UpdateStockRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProductStock>>,
+  TError,
+  { id: string; data: BodyType<UpdateStockRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateProductStock"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProductStock>>,
+    { id: string; data: BodyType<UpdateStockRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProductStock(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProductStockMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProductStock>>
+>;
+export type UpdateProductStockMutationBody = BodyType<UpdateStockRequest>;
+export type UpdateProductStockMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Update stock for a single product
+ */
+export const useUpdateProductStock = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductStock>>,
+    TError,
+    { id: string; data: BodyType<UpdateStockRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProductStock>>,
+  TError,
+  { id: string; data: BodyType<UpdateStockRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateProductStockMutationOptions(options));
+};
+
+/**
+ * Updates available_quantity for all non-FULL products sharing the same SKU. Optionally scoped to a single account via account_id query param.
  * @summary Update stock for all products with matching SKU
  */
-export const getUpdateStockBySkuUrl = (sku: string) => {
-  return `/api/products/sku/${sku}/stock`;
+export const getUpdateStockBySkuUrl = (
+  sku: string,
+  params?: UpdateStockBySkuParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/products/sku/${sku}/stock?${stringifiedParams}`
+    : `/api/products/sku/${sku}/stock`;
 };
 
 export const updateStockBySku = async (
   sku: string,
   updateStockRequest: UpdateStockRequest,
+  params?: UpdateStockBySkuParams,
   options?: RequestInit,
 ): Promise<UpdateStockResponse> => {
-  return customFetch<UpdateStockResponse>(getUpdateStockBySkuUrl(sku), {
+  return customFetch<UpdateStockResponse>(getUpdateStockBySkuUrl(sku, params), {
     ...options,
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -1034,14 +1146,22 @@ export const getUpdateStockBySkuMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateStockBySku>>,
     TError,
-    { sku: string; data: BodyType<UpdateStockRequest> },
+    {
+      sku: string;
+      data: BodyType<UpdateStockRequest>;
+      params?: UpdateStockBySkuParams;
+    },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof updateStockBySku>>,
   TError,
-  { sku: string; data: BodyType<UpdateStockRequest> },
+  {
+    sku: string;
+    data: BodyType<UpdateStockRequest>;
+    params?: UpdateStockBySkuParams;
+  },
   TContext
 > => {
   const mutationKey = ["updateStockBySku"];
@@ -1055,11 +1175,15 @@ export const getUpdateStockBySkuMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof updateStockBySku>>,
-    { sku: string; data: BodyType<UpdateStockRequest> }
+    {
+      sku: string;
+      data: BodyType<UpdateStockRequest>;
+      params?: UpdateStockBySkuParams;
+    }
   > = (props) => {
-    const { sku, data } = props ?? {};
+    const { sku, data, params } = props ?? {};
 
-    return updateStockBySku(sku, data, requestOptions);
+    return updateStockBySku(sku, data, params, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1083,14 +1207,22 @@ export const useUpdateStockBySku = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateStockBySku>>,
     TError,
-    { sku: string; data: BodyType<UpdateStockRequest> },
+    {
+      sku: string;
+      data: BodyType<UpdateStockRequest>;
+      params?: UpdateStockBySkuParams;
+    },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof updateStockBySku>>,
   TError,
-  { sku: string; data: BodyType<UpdateStockRequest> },
+  {
+    sku: string;
+    data: BodyType<UpdateStockRequest>;
+    params?: UpdateStockBySkuParams;
+  },
   TContext
 > => {
   return useMutation(getUpdateStockBySkuMutationOptions(options));

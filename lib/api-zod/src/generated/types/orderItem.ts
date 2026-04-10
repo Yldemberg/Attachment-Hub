@@ -11,4 +11,7 @@ export interface OrderItem {
   title?: string;
   quantity: number;
   price: number;
+  thumbnail?: string | null;
+  sku?: string | null;
+  logistic_type?: string | null;
 }

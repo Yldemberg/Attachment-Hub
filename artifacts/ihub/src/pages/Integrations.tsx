@@ -129,6 +129,13 @@ export default function Integrations() {
   const syncTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
+    const timeouts = syncTimeoutsRef.current;
+    return () => {
+      Object.values(timeouts).forEach(clearTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
     const searchParams = new URLSearchParams(searchStr);
     const success = searchParams.get("success");
     const error = searchParams.get("error");
@@ -152,7 +159,7 @@ export default function Integrations() {
       queryKey: getListAccountsQueryKey(),
       refetchInterval: Object.keys(syncingAccounts).length > 0 ? SYNC_POLL_INTERVAL : false,
     },
-  } as Parameters<typeof useListAccounts>[0]);
+  });
   const accounts: Account[] = (accountsData as { data?: Account[] } | null)?.data ?? [];
 
   useEffect(() => {
