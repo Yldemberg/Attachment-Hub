@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch, useLocation } from "wouter";
 
@@ -69,7 +69,6 @@ function ConnectButton() {
 function WebhookUrlCard() {
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${window.location.origin}/api/webhooks/mercadolivre`;
-
   const { toast } = useToast();
 
   const handleCopy = async () => {
@@ -117,17 +116,22 @@ function WebhookUrlCard() {
   );
 }
 
+const SYNC_POLL_INTERVAL = 3000;
+const SYNC_TIMEOUT_MS = 120_000;
+
 export default function Integrations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const searchStr = useSearch();
   const [, navigate] = useLocation();
-  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+
+  const [syncingAccounts, setSyncingAccounts] = useState<Record<string, string | null>>({});
+  const syncTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    const params = new URLSearchParams(searchStr);
-    const success = params.get("success");
-    const error = params.get("error");
+    const searchParams = new URLSearchParams(searchStr);
+    const success = searchParams.get("success");
+    const error = searchParams.get("error");
     if (success === "true") {
       toast({ title: "Conta conectada!", description: "Sua conta do Mercado Livre foi conectada com sucesso. A sincronização iniciará em breve." });
       navigate("/integrations", { replace: true } as never);
@@ -143,8 +147,39 @@ export default function Integrations() {
     }
   }, []);
 
-  const { data: accountsData, isLoading } = useListAccounts();
+  const { data: accountsData, isLoading } = useListAccounts({
+    query: {
+      queryKey: getListAccountsQueryKey(),
+      refetchInterval: Object.keys(syncingAccounts).length > 0 ? SYNC_POLL_INTERVAL : false,
+    },
+  } as Parameters<typeof useListAccounts>[0]);
   const accounts: Account[] = (accountsData as { data?: Account[] } | null)?.data ?? [];
+
+  useEffect(() => {
+    const syncing = Object.keys(syncingAccounts);
+    if (syncing.length === 0 || accounts.length === 0) return;
+
+    for (const accountId of syncing) {
+      const prevLastSyncAt = syncingAccounts[accountId];
+      const current = accounts.find((a) => a.id === accountId);
+      if (!current) continue;
+
+      const currentLastSyncAt = current.lastSyncAt ?? null;
+      if (currentLastSyncAt !== prevLastSyncAt) {
+        clearTimeout(syncTimeoutsRef.current[accountId]);
+        delete syncTimeoutsRef.current[accountId];
+        setSyncingAccounts((prev) => {
+          const next = { ...prev };
+          delete next[accountId];
+          return next;
+        });
+        toast({
+          title: "Sincronização concluída",
+          description: `Conta ${current.mlNickname ?? accountId} sincronizada com sucesso.`,
+        });
+      }
+    }
+  }, [accounts]);
 
   const { mutate: deleteAccount, isPending: deleting } = useDeleteAccount({
     mutation: {
@@ -156,29 +191,41 @@ export default function Integrations() {
 
   const { mutate: syncAccount } = useSyncAccount({
     mutation: {
-      onSuccess: (_data, variables) => {
-        setSyncingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(variables.id);
-          return next;
-        });
-        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
-        toast({ title: "Sincronização concluída", description: "Os dados da conta foram atualizados com sucesso." });
-      },
       onError: (_err, variables) => {
-        setSyncingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(variables.id);
+        clearTimeout(syncTimeoutsRef.current[variables.id]);
+        delete syncTimeoutsRef.current[variables.id];
+        setSyncingAccounts((prev) => {
+          const next = { ...prev };
+          delete next[variables.id];
           return next;
         });
-        toast({ variant: "destructive", title: "Erro ao sincronizar", description: "Não foi possível sincronizar a conta. Tente novamente." });
+        toast({ variant: "destructive", title: "Erro ao sincronizar", description: "Não foi possível iniciar a sincronização." });
       },
     },
   });
 
-  const handleSync = (accountId: string) => {
-    setSyncingIds((prev) => new Set(prev).add(accountId));
-    syncAccount({ id: accountId });
+  const handleSync = (account: Account) => {
+    if (syncingAccounts[account.id] !== undefined) return;
+
+    setSyncingAccounts((prev) => ({
+      ...prev,
+      [account.id]: account.lastSyncAt ?? null,
+    }));
+
+    syncAccount({ id: account.id });
+
+    syncTimeoutsRef.current[account.id] = setTimeout(() => {
+      setSyncingAccounts((prev) => {
+        if (!(account.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[account.id];
+        return next;
+      });
+      toast({
+        title: "Sincronização concluída",
+        description: `A sincronização da conta ${account.mlNickname ?? account.id} pode ter finalizado em segundo plano.`,
+      });
+    }, SYNC_TIMEOUT_MS);
   };
 
   return (
@@ -211,7 +258,7 @@ export default function Integrations() {
       ) : (
         <div className="space-y-3">
           {accounts.map((account) => {
-            const isSyncing = syncingIds.has(account.id);
+            const isSyncing = account.id in syncingAccounts;
             return (
               <div
                 key={account.id}
@@ -232,7 +279,8 @@ export default function Integrations() {
                       <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
                     )}
                     {isSyncing && (
-                      <span className="text-[10px] text-blue-400 bg-blue-900/30 border border-blue-800/40 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] text-blue-400 bg-blue-900/30 border border-blue-800/40 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
                         Sincronizando...
                       </span>
                     )}
@@ -251,7 +299,7 @@ export default function Integrations() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSync(account.id)}
+                    onClick={() => handleSync(account)}
                     disabled={isSyncing}
                     className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-8 text-xs gap-1.5 min-w-[110px]"
                   >

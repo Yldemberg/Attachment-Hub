@@ -1131,6 +1131,10 @@ components:
           type: number
         salesMonth:
           type: number
+        ordersToday:
+          type: integer
+        ordersMonth:
+          type: integer
         pendingOrders:
           type: integer
         unansweredQuestions:
@@ -1139,7 +1143,7 @@ components:
           type: integer
         activeAccounts:
           type: integer
-      required: [salesToday, salesMonth, pendingOrders, unansweredQuestions, criticalStockCount, activeAccounts]
+      required: [salesToday, salesMonth, ordersToday, ordersMonth, pendingOrders, unansweredQuestions, criticalStockCount, activeAccounts]
 
     SalesChartDataPoint:
       type: object

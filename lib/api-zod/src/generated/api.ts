@@ -575,6 +575,8 @@ export const GetDashboardSummaryQueryParams = zod.object({
 export const GetDashboardSummaryResponse = zod.object({
   salesToday: zod.number(),
   salesMonth: zod.number(),
+  ordersToday: zod.number(),
+  ordersMonth: zod.number(),
   pendingOrders: zod.number(),
   unansweredQuestions: zod.number(),
   criticalStockCount: zod.number(),

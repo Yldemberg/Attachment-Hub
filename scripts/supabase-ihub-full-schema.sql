@@ -125,6 +125,7 @@ CREATE INDEX IF NOT EXISTS questions_status_idx ON public.questions(status);
 CREATE TABLE IF NOT EXISTS public.notifications (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id       UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  account_id    UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
   type          TEXT NOT NULL,
   title         TEXT NOT NULL,
   message       TEXT NOT NULL,

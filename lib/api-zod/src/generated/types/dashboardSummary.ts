@@ -9,6 +9,8 @@
 export interface DashboardSummary {
   salesToday: number;
   salesMonth: number;
+  ordersToday: number;
+  ordersMonth: number;
   pendingOrders: number;
   unansweredQuestions: number;
   criticalStockCount: number;
