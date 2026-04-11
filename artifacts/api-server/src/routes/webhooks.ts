@@ -10,7 +10,7 @@ import {
   questionsTable,
   profilesTable,
 } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
   ml,
@@ -107,6 +107,82 @@ async function enrichOrderItemsJson(
       };
     }),
   );
+}
+
+/**
+ * After a confirmed sale, fetches the current stock from ML for each sold item,
+ * then pushes that quantity to ALL non-Full listings with the same SKU across
+ * every account. Full (fulfillment) listings are skipped — stock is managed by
+ * the ML warehouse.
+ */
+async function propagateStockFromSale(
+  sellingAccountId: string,
+  orderItems: MlOrder["order_items"],
+): Promise<void> {
+  const db = getDb();
+
+  for (const oi of orderItems) {
+    const mlItemId = oi.item.id;
+
+    // Find the sold item in our DB to get its SKU and logistic type.
+    const [soldProduct] = await db
+      .select({
+        id: productsTable.id,
+        sku: productsTable.sku,
+        isFull: productsTable.isFull,
+        availableQuantity: productsTable.availableQuantity,
+      })
+      .from(productsTable)
+      .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, mlItemId)))
+      .limit(1);
+
+    // Skip if we don't know this product, it has no SKU, or it's Full.
+    if (!soldProduct || !soldProduct.sku || soldProduct.isFull) continue;
+
+    const sku = soldProduct.sku;
+
+    // Fetch the actual post-sale stock from ML (authoritative source).
+    let newStock: number;
+    try {
+      const mlItem = await ml.get<MlItem>(sellingAccountId, `/items/${mlItemId}`);
+      newStock = mlItem.available_quantity;
+      // Update the sold item itself in our DB.
+      await db
+        .update(productsTable)
+        .set({ availableQuantity: newStock })
+        .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, mlItemId)));
+    } catch (err) {
+      logger.warn({ err, mlItemId }, "Stock propagation: failed to fetch post-sale stock from ML");
+      continue;
+    }
+
+    logger.info({ sku, mlItemId, newStock }, "Stock propagation: pushing updated stock to sibling listings");
+
+    // Find all other non-Full listings with the same SKU (across all accounts).
+    const siblings = await db
+      .select()
+      .from(productsTable)
+      .where(
+        and(
+          eq(productsTable.sku, sku),
+          eq(productsTable.isFull, false),
+          ne(productsTable.mlItemId, mlItemId), // exclude the sold item (already updated)
+        ),
+      );
+
+    for (const sibling of siblings) {
+      try {
+        await ml.put(sibling.accountId, `/items/${sibling.mlItemId}`, { available_quantity: newStock });
+        await db
+          .update(productsTable)
+          .set({ availableQuantity: newStock })
+          .where(eq(productsTable.id, sibling.id));
+        logger.info({ mlItemId: sibling.mlItemId, accountId: sibling.accountId, sku, newStock }, "Stock propagation: sibling updated");
+      } catch (err) {
+        logger.warn({ err, mlItemId: sibling.mlItemId, sku }, "Stock propagation: failed to update sibling listing");
+      }
+    }
+  }
 }
 
 router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
@@ -225,6 +301,12 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           resourceType: "order",
           resourceId: order.id.toString(),
         });
+
+        // Propagate post-sale stock to all same-SKU non-Full listings.
+        // Only trigger on confirmed paid orders to avoid reacting to interim statuses.
+        if (order.status === "paid") {
+          await propagateStockFromSale(account.id, order.order_items);
+        }
       } else if (topic === "items") {
         const itemId = resource.split("/").pop();
         if (!itemId) return;
