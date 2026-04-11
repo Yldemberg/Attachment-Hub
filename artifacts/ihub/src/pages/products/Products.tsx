@@ -112,7 +112,6 @@ function ProductCard({
 
   return (
     <div className="relative bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden group hover:border-slate-500 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
-      {/* Left: thumbnail */}
       <Link
         to={`/products/${p.id}`}
         className="relative w-28 flex-shrink-0 overflow-hidden bg-slate-800 focus:outline-none"
@@ -128,7 +127,6 @@ function ProductCard({
             <Package className="w-8 h-8 text-slate-600" />
           </div>
         )}
-        {/* Logistic chip */}
         <div
           className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1 ${accentBg} border-t ${accentBorder}`}
         >
@@ -146,9 +144,7 @@ function ProductCard({
         )}
       </Link>
 
-      {/* Right: content */}
       <div className="flex-1 flex flex-col px-3 py-2.5 gap-1.5 min-w-0">
-        {/* Title + SKU */}
         <div className="min-w-0">
           <Link
             to={`/products/${p.id}`}
@@ -162,7 +158,6 @@ function ProductCard({
           </p>
         </div>
 
-        {/* Badges */}
         <div className="flex items-center gap-2 flex-wrap">
           {p.status === "active" && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
@@ -196,9 +191,7 @@ function ProductCard({
           )}
         </div>
 
-        {/* Stock + price + actions — bottom row */}
         <div className="flex items-end justify-between mt-auto gap-2">
-          {/* Stock */}
           <div className="flex items-baseline gap-1">
             <span className={`text-2xl font-black leading-none ${stockColor}`}>
               {qty}
@@ -214,7 +207,6 @@ function ProductCard({
             )}
           </div>
 
-          {/* Price + actions */}
           <div className="flex items-center gap-2">
             <div className="text-right">
               <p className="text-xs font-bold text-slate-200">
@@ -421,11 +413,9 @@ export default function Products() {
     "bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   return (
-    <div className="min-h-full flex flex-col bg-slate-600">
-      {/* ── Sticky header ── */}
+    <div className="h-full flex flex-col overflow-hidden bg-slate-600">
       <div className="sticky top-0 z-10 bg-slate-600 border-b border-slate-500 px-4 py-2.5">
         <div className="flex gap-2 items-center flex-wrap">
-          {/* Search */}
           <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
@@ -440,7 +430,6 @@ export default function Products() {
             />
           </div>
 
-          {/* Status filter */}
           <select
             value={status}
             onChange={(e) => {
@@ -455,7 +444,6 @@ export default function Products() {
             <option value="closed">Encerrado</option>
           </select>
 
-          {/* Account filter */}
           {accounts.length > 0 && (
             <select
               value={accountId}
@@ -474,9 +462,7 @@ export default function Products() {
             </select>
           )}
 
-          {/* Right controls */}
           <div className="flex items-center gap-2 ml-auto">
-            {/* Rows per page */}
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-slate-200 whitespace-nowrap font-medium hidden sm:block">
                 Itens/pág.:
@@ -501,7 +487,6 @@ export default function Products() {
               </div>
             </div>
 
-            {/* Total count */}
             {total > 0 && (
               <span className="text-[10px] text-slate-200 whitespace-nowrap hidden sm:block">
                 <span className="text-white font-semibold">{total}</span>{" "}
@@ -512,8 +497,8 @@ export default function Products() {
         </div>
       </div>
 
-      {/* ── Scrollable body ── */}
-      <div className="flex-1 px-4 py-4">
+      <div className="flex-1 overflow-y-auto">
+      <div className="px-4 py-4">
         {isLoading ? (
           <div className="grid grid-cols-1 gap-2.5">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -538,7 +523,6 @@ export default function Products() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-500/50">
             <p className="text-[10px] text-slate-200">
@@ -603,9 +587,9 @@ export default function Products() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
-      {/* ── Stock edit dialog (with 3-scope logic preserved) ── */}
       <Dialog
         open={!!stockDialog}
         onOpenChange={(o) => {
