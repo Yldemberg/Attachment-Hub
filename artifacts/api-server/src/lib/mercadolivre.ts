@@ -402,6 +402,22 @@ export async function enrichMlItemForSellerSku(accountId: string, item: MlItem):
   }
 }
 
+/**
+ * The multiget batch endpoint (/items?ids=...) does not return the `tags` field.
+ * When `tags` is missing (null/undefined) on an item, fetch the individual endpoint
+ * to obtain it. Returns the full individual item (which has tags) or the original
+ * item on failure.
+ */
+export async function enrichMlItemWithTags(accountId: string, item: MlItem): Promise<MlItem> {
+  if (Array.isArray(item.tags)) return item;
+  try {
+    return await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
+  } catch (err) {
+    logger.warn({ err, itemId: item.id }, "ML fetch full item for tags failed");
+    return item;
+  }
+}
+
 export type MlOrder = {
   id: number;
   status: string;

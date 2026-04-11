@@ -5,6 +5,7 @@ import {
   MlOrder,
   MlQuestion,
   enrichMlItemForSellerSku,
+  enrichMlItemWithTags,
   fetchMlItemVariations,
   getMlEffectiveLogisticType,
   getMlItemRepresentativeSku,
@@ -52,8 +53,6 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
     for (const { code, body: item } of items) {
       if (code !== 200 || !item) continue;
       const isFull = item.shipping?.logistic_type === "fulfillment";
-      const isFlex = Array.isArray(item.tags) && item.tags.includes("self_service_in");
-      const logisticType = getMlEffectiveLogisticType(item);
 
       const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
 
@@ -70,6 +69,11 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
           };
         }
       }
+
+      // Batch endpoint does not return `tags`; enrich from individual endpoint if missing.
+      const taggedItem = await enrichMlItemWithTags(accountId, workItem);
+      const isFlex = Array.isArray(taggedItem.tags) && taggedItem.tags.includes("self_service_in");
+      const logisticType = getMlEffectiveLogisticType(taggedItem);
 
       const sku = getMlItemRepresentativeSku(workItem);
 
@@ -223,6 +227,8 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
 
     if (result.results.length < limit) break;
     offset += limit;
+    // ML orders/search caps at offset 10 000; stop before hitting the limit.
+    if (offset >= 10000) break;
   }
 }
 
