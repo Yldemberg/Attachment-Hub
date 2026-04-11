@@ -1,0 +1,109 @@
+Crie a interface de um aplicativo web moderno (dashboard) focado em vendedores de marketplace, com prioridade absoluta em visualização rápida, leitura fácil e tomada de decisão ágil.
+
+🎯 Objetivo do App
+
+O app deve resolver um problema crítico:
+No painel de anúncios, as informações são confusas e difíceis de identificar rapidamente.
+O objetivo é permitir que o usuário bata o olho e entenda tudo em segundos, sem esforço.
+
+🧠 Princípios de Design (OBRIGATÓRIO)
+Interface clean e moderna (estilo SaaS premium)
+Foco em UX (experiência do usuário) e não só estética
+Hierarquia visual extremamente clara
+Uso de cores com significado (não apenas decorativas)
+Tipografia grande e legível
+Layout pensado para escaneabilidade (scan rápido com os olhos)
+🎨 Estilo Visual
+Inspirado em dashboards como:
+Stripe
+Notion
+Linear
+Fundo claro (ou dark mode opcional)
+Uso de cards com bordas arredondadas (8px a 16px)
+Sombras suaves (soft shadows)
+Espaçamento generoso (white space)
+📊 Tela Principal: LISTA DE ANÚNCIOS
+
+Criar uma lista de anúncios com layout em cards (NÃO tabela simples)
+
+Cada anúncio deve ser um CARD com as seguintes informações:
+
+🔥 INFORMAÇÕES PRINCIPAIS (DESTAQUE MÁXIMO)
+Nome do produto (fonte grande e negrito)
+Preço atual
+Status do anúncio (ativo, pausado, etc)
+🚀 INDICADORES VISUAIS (BADGES COLORIDAS)
+
+Cada item abaixo deve ser um badge visual destacado com cor forte e ícone:
+
+FULL → badge verde (ex: "FULL")
+FLEX → badge azul (ex: "FLEX")
+Promoção → badge vermelho (ex: "PROMO")
+Frete grátis → badge roxo
+Clássico / Premium → badge com cores diferentes
+⚡ REGRAS IMPORTANTES PARA BADGES
+Devem ser visíveis SEM precisar ler texto longo
+Cada status precisa ter:
+Cor única
+Ícone simples
+Texto curto
+📈 INFORMAÇÕES SECUNDÁRIAS
+
+Mostrar abaixo ou ao lado:
+
+Estoque disponível
+Vendas nos últimos dias
+Visitas
+Conversão (se possível)
+
+Essas infos devem ser menores, mas ainda legíveis
+
+🧭 USABILIDADE
+Deve ser possível identificar rapidamente:
+Quais anúncios são FULL
+Quais têm FLEX
+Quais estão em promoção
+Sem precisar clicar no anúncio
+🔍 FILTROS E AÇÕES
+
+Adicionar no topo:
+
+Filtro por:
+FULL
+FLEX
+Promoção
+Ativo / pausado
+Campo de busca
+Ordenação por:
+Mais vendidos
+Menor estoque
+Maior preço
+⚠️ DIFERENCIAL IMPORTANTE
+
+Destacar anúncios com problemas:
+
+Pouco estoque → badge laranja
+Sem vendas → badge cinza
+Conversão baixa → badge amarelo
+💡 EXPERIÊNCIA PREMIUM
+Animações suaves ao passar o mouse (hover)
+Microinterações modernas
+Transições leves
+Feedback visual ao clicar
+📱 RESPONSIVIDADE
+Funcionar bem no mobile
+Cards se adaptando para tela menor
+🧠 FOCO FINAL
+
+O usuário deve conseguir:
+
+Bater o olho e entender tudo em 2–3 segundos
+Identificar oportunidades e problemas rapidamente
+Tomar decisão sem esforço mental
+🚀 TECNOLOGIA
+Criar usando React (preferencial)
+Utilizar TailwindCSS
+Código limpo e organizado
+Componentes reutilizáveis
+
+Se possível, já gerar dados mockados (exemplo de anúncios) para visualização do layout.
