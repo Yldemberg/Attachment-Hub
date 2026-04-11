@@ -109,7 +109,7 @@ function QuickReply({ q }: { q: Question }) {
         value={answer}
         onChange={(e) => setAnswer(e.target.value)}
         placeholder="Digite sua resposta..."
-        className="flex-1 bg-slate-800 border-slate-700 text-slate-200 text-xs placeholder:text-slate-500 min-h-[60px] resize-none"
+        className="flex-1 bg-[#122040] border-[#1a3055]/70 text-blue-100 text-xs placeholder:text-blue-400/60 min-h-[60px] resize-none"
         rows={2}
       />
       <Button
@@ -206,193 +206,195 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Visão geral de todas as suas contas</p>
+    <div className="h-full overflow-y-auto bg-[#080f1e]">
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">Dashboard</h1>
+            <p className="text-blue-300 text-sm mt-0.5">Visão geral de todas as suas contas</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {accounts.length > 0 && (
+              <Select value={accountId ?? "all"} onValueChange={(v) => setAccountId(v === "all" ? undefined : v)}>
+                <SelectTrigger className="w-44 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-sm h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
+                  <SelectItem value="all" className="text-blue-200">Todas as contas</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id} className="text-blue-200">
+                      {a.mlNickname ?? a.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {accounts.length > 0 && (
-            <Select value={accountId ?? "all"} onValueChange={(v) => setAccountId(v === "all" ? undefined : v)}>
-              <SelectTrigger className="w-44 bg-slate-800 border-slate-700 text-slate-300 text-sm h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                <SelectItem value="all" className="text-slate-300">Todas as contas</SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id} className="text-slate-300">
-                    {a.mlNickname ?? a.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-          const inner = (
-            <div
-              key={kpi.label}
-              className="bg-slate-900 border border-slate-800 rounded-lg p-4 hover:border-slate-700 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <p className="text-slate-400 text-xs font-medium">{kpi.label}</p>
-                <Icon className={`w-4 h-4 ${kpi.color} flex-shrink-0`} />
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          {kpis.map((kpi) => {
+            const Icon = kpi.icon;
+            const inner = (
+              <div
+                key={kpi.label}
+                className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4 hover:border-blue-600/40 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-blue-300 text-xs font-medium">{kpi.label}</p>
+                  <Icon className={`w-4 h-4 ${kpi.color} flex-shrink-0`} />
+                </div>
+                <p className={`text-2xl font-bold ${kpi.color} mb-0.5`}>
+                  {loadingSummary ? "—" : kpi.value}
+                </p>
+                <p className="text-blue-400/70 text-xs">{kpi.sub}</p>
               </div>
-              <p className={`text-2xl font-bold ${kpi.color} mb-0.5`}>
-                {loadingSummary ? "—" : kpi.value}
-              </p>
-              <p className="text-slate-500 text-xs">{kpi.sub}</p>
-            </div>
-          );
+            );
 
-          return kpi.link ? (
-            <Link key={kpi.label} to={kpi.link}>
-              {inner}
-            </Link>
-          ) : (
-            <div key={kpi.label}>{inner}</div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-white">Evolução de vendas</h2>
-            <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-              <SelectTrigger className="w-24 bg-slate-800 border-slate-700 text-slate-300 text-xs h-7">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                <SelectItem value="7d" className="text-slate-300 text-xs">7 dias</SelectItem>
-                <SelectItem value="30d" className="text-slate-300 text-xs">30 dias</SelectItem>
-                <SelectItem value="90d" className="text-slate-300 text-xs">90 dias</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis
-                dataKey="date"
-                tickFormatter={(v) => {
-                  const d = new Date(v);
-                  return `${d.getDate()}/${d.getMonth() + 1}`;
-                }}
-                tick={{ fill: "#94a3b8", fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tickFormatter={(v) => `R$${v}`}
-                tick={{ fill: "#94a3b8", fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                width={60}
-              />
-              <Tooltip
-                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 6 }}
-                labelStyle={{ color: "#94a3b8", fontSize: 11 }}
-                itemStyle={{ color: "#60a5fa" }}
-                formatter={(v: number) => [formatCurrency(v), "Receita"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                fill="url(#salesGrad)"
-                dot={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+            return kpi.link ? (
+              <Link key={kpi.label} to={kpi.link}>
+                {inner}
+              </Link>
+            ) : (
+              <div key={kpi.label}>{inner}</div>
+            );
+          })}
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Evolução de vendas</h2>
+              <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
+                <SelectTrigger className="w-24 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-xs h-7">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
+                  <SelectItem value="7d" className="text-blue-200 text-xs">7 dias</SelectItem>
+                  <SelectItem value="30d" className="text-blue-200 text-xs">30 dias</SelectItem>
+                  <SelectItem value="90d" className="text-blue-200 text-xs">90 dias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={chartPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a3055" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(v) => {
+                    const d = new Date(v);
+                    return `${d.getDate()}/${d.getMonth() + 1}`;
+                  }}
+                  tick={{ fill: "#93c5fd", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={(v) => `R$${v}`}
+                  tick={{ fill: "#93c5fd", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={60}
+                />
+                <Tooltip
+                  contentStyle={{ background: "#0d1b2e", border: "1px solid #1a3055", borderRadius: 8 }}
+                  labelStyle={{ color: "#93c5fd", fontSize: 11 }}
+                  itemStyle={{ color: "#60a5fa" }}
+                  formatter={(v: number) => [formatCurrency(v), "Receita"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="url(#salesGrad)"
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-white">Estoque crítico</h2>
+              <Link to="/products" className="text-blue-400 text-xs hover:text-blue-300">
+                Ver todos
+              </Link>
+            </div>
+            {lowStockProducts.length === 0 ? (
+              <p className="text-blue-400/70 text-sm text-center py-8">Nenhum produto em baixo estoque</p>
+            ) : (
+              <div className="space-y-2">
+                {lowStockProducts.map((p) => (
+                  <Link key={p.id} to={`/products/${p.id}`}>
+                    <div className="flex items-center gap-2 py-1.5 hover:bg-[#122040] rounded-lg px-1 transition-colors">
+                      {p.thumbnail ? (
+                        <img
+                          src={p.thumbnail}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover flex-shrink-0 bg-[#122040]"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-[#122040] flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-blue-100 text-xs truncate">{p.title}</p>
+                        <p className="text-blue-400/70 text-[10px]">{p.sku}</p>
+                      </div>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${stockBgColor(p.availableQuantity)}`}>
+                        {p.availableQuantity ?? 0}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-white">Estoque crítico</h2>
-            <Link to="/products" className="text-blue-400 text-xs hover:text-blue-300">
-              Ver todos
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-red-400" />
+              <h2 className="text-sm font-semibold text-white">Perguntas sem resposta</h2>
+            </div>
+            <Link to="/questions" className="text-blue-400 text-xs hover:text-blue-300">
+              Ver todas
             </Link>
           </div>
-          {lowStockProducts.length === 0 ? (
-            <p className="text-slate-500 text-sm text-center py-8">Nenhum produto em baixo estoque</p>
+
+          {topQuestions.length === 0 ? (
+            <p className="text-blue-400/70 text-sm text-center py-6">Nenhuma pergunta pendente</p>
           ) : (
-            <div className="space-y-2">
-              {lowStockProducts.map((p) => (
-                <Link key={p.id} to={`/products/${p.id}`}>
-                  <div className="flex items-center gap-2 py-1.5 hover:bg-slate-800 rounded px-1 transition-colors">
-                    {p.thumbnail ? (
-                      <img
-                        src={p.thumbnail}
-                        alt=""
-                        className="w-8 h-8 rounded object-cover flex-shrink-0 bg-slate-800"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      </div>
-                    )}
+            <div className="divide-y divide-[#1a3055]/40">
+              {topQuestions.map((q) => (
+                <div key={q.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-start gap-2 mb-1">
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-400/60 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-slate-200 text-xs truncate">{p.title}</p>
-                      <p className="text-slate-500 text-[10px]">{p.sku}</p>
+                      {q.mlItemId && (
+                        <p className="text-blue-400/70 text-[10px] mb-0.5 truncate font-mono">#{q.mlItemId}</p>
+                      )}
+                      <p className="text-blue-100 text-xs leading-relaxed">{q.text}</p>
+                      {q.fromUserNickname && (
+                        <p className="text-blue-400/70 text-[10px] mt-0.5">de {q.fromUserNickname}</p>
+                      )}
                     </div>
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${stockBgColor(p.availableQuantity)}`}>
-                      {p.availableQuantity ?? 0}
-                    </span>
                   </div>
-                </Link>
+                  <QuickReply q={q} />
+                </div>
               ))}
             </div>
           )}
         </div>
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-red-400" />
-            <h2 className="text-sm font-semibold text-white">Perguntas sem resposta</h2>
-          </div>
-          <Link to="/questions" className="text-blue-400 text-xs hover:text-blue-300">
-            Ver todas
-          </Link>
-        </div>
-
-        {topQuestions.length === 0 ? (
-          <p className="text-slate-500 text-sm text-center py-6">Nenhuma pergunta pendente</p>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {topQuestions.map((q) => (
-              <div key={q.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex items-start gap-2 mb-1">
-                  <MessageSquare className="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    {q.mlItemId && (
-                      <p className="text-slate-500 text-[10px] mb-0.5 truncate font-mono">#{q.mlItemId}</p>
-                    )}
-                    <p className="text-slate-200 text-xs leading-relaxed">{q.text}</p>
-                    {q.fromUserNickname && (
-                      <p className="text-slate-500 text-[10px] mt-0.5">de {q.fromUserNickname}</p>
-                    )}
-                  </div>
-                </div>
-                <QuickReply q={q} />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

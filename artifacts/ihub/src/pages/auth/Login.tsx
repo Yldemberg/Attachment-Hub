@@ -29,29 +29,29 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex">
-      <div className="hidden lg:flex flex-1 bg-slate-900 items-center justify-center p-12">
+    <div className="min-h-screen bg-[#080f1e] flex">
+      <div className="hidden lg:flex flex-1 bg-[#0d1b2e] items-center justify-center p-12 border-r border-[#1a3055]/60">
         <div className="max-w-md">
           <div className="mb-8">
             <img src={logo} alt="iHub" className="h-36 w-auto object-contain" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Gestao total do seu Mercado Livre
+            Gestão total do seu Mercado Livre
           </h2>
-          <p className="text-slate-400 text-lg leading-relaxed">
-            Pedidos, estoque, perguntas e contas em um unico lugar. Decisoes rapidas, menos erros.
+          <p className="text-blue-300 text-lg leading-relaxed">
+            Pedidos, estoque, perguntas e contas em um único lugar. Decisões rápidas, menos erros.
           </p>
           <div className="mt-10 grid grid-cols-2 gap-4">
             {[
               { label: "Tempo de resposta", value: "< 2s", sub: "para qualquer dado" },
-              { label: "Contas simultaneas", value: "Ilimitado", sub: "todas conectadas" },
-              { label: "Sincronizacao", value: "Em tempo real", sub: "via webhooks" },
+              { label: "Contas simultâneas", value: "Ilimitado", sub: "todas conectadas" },
+              { label: "Sincronização", value: "Em tempo real", sub: "via webhooks" },
               { label: "Estoque unificado", value: "Por SKU", sub: "multi-conta" },
             ].map((stat) => (
-              <div key={stat.label} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div key={stat.label} className="bg-[#122040] rounded-xl p-4 border border-[#1a3055]/60">
                 <div className="text-blue-400 font-bold text-sm mb-1">{stat.value}</div>
-                <div className="text-slate-200 text-xs font-medium">{stat.label}</div>
-                <div className="text-slate-500 text-xs mt-0.5">{stat.sub}</div>
+                <div className="text-white text-xs font-medium">{stat.label}</div>
+                <div className="text-blue-400/70 text-xs mt-0.5">{stat.sub}</div>
               </div>
             ))}
           </div>
@@ -65,16 +65,16 @@ export default function Login() {
           </div>
 
           <h1 className="text-2xl font-bold text-white mb-1">Entrar na conta</h1>
-          <p className="text-slate-400 text-sm mb-8">
+          <p className="text-blue-300 text-sm mb-8">
             Novo por aqui?{" "}
-            <Link to="/auth/register" className="text-blue-400 hover:text-blue-300 transition-colors">
+            <Link to="/auth/register" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
               Criar conta
             </Link>
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-slate-300 text-sm">Email</Label>
+              <Label htmlFor="email" className="text-blue-200 text-sm">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -82,12 +82,12 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+                className="bg-[#122040] border-[#1a3055]/70 text-white placeholder:text-blue-400/60 focus:border-blue-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-slate-300 text-sm">Senha</Label>
+              <Label htmlFor="password" className="text-blue-200 text-sm">Senha</Label>
               <Input
                 id="password"
                 type="password"
@@ -95,12 +95,12 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+                className="bg-[#122040] border-[#1a3055]/70 text-white placeholder:text-blue-400/60 focus:border-blue-500"
               />
             </div>
 
             {error && (
-              <div className="bg-red-900/40 border border-red-800 rounded-md px-3 py-2 text-sm text-red-400">
+              <div className="bg-red-900/40 border border-red-800/60 rounded-xl px-3 py-2 text-sm text-red-400">
                 {error}
               </div>
             )}

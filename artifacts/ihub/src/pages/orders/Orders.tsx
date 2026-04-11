@@ -6,9 +6,8 @@ import {
 } from "@workspace/api-client-react";
 import type { Order as ApiOrder } from "@workspace/api-client-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { ShoppingCart, Package, Truck } from "lucide-react";
+import { ShoppingCart, Package, Truck, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -35,10 +34,10 @@ interface OrderItem {
 const STATUS_LABELS: Record<string, string> = {
   confirmed: "Confirmado",
   paid: "Pago",
-  payment_required: "Aguardando pagamento",
-  payment_in_process: "Pagamento em andamento",
-  partially_refunded: "Parcialmente reembolsado",
-  pending_cancel: "Cancelamento pendente",
+  payment_required: "Ag. pagamento",
+  payment_in_process: "Pag. em andamento",
+  partially_refunded: "Parcialm. reembolsado",
+  pending_cancel: "Cancel. pendente",
   cancelled: "Cancelado",
   invalid: "Inválido",
 };
@@ -48,7 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
   paid: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50",
   payment_required: "bg-amber-900/40 text-amber-400 border-amber-800/50",
   payment_in_process: "bg-blue-900/40 text-blue-400 border-blue-800/50",
-  cancelled: "bg-slate-800 text-slate-500 border-slate-700",
+  cancelled: "bg-[#122040] text-blue-400/50 border-[#1a3055]/50",
   invalid: "bg-red-900/40 text-red-400 border-red-800/50",
 };
 
@@ -57,7 +56,7 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   cross_docking: { label: "Cross-docking", cls: "bg-yellow-900/40 text-yellow-400 border-yellow-800/50" },
   self_service: { label: "Flex", cls: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50" },
   self_service_in: { label: "Flex", cls: "bg-orange-900/40 text-orange-400 border-orange-800/50" },
-  default: { label: "Padrão", cls: "bg-slate-800 text-slate-400 border-slate-700" },
+  default: { label: "Padrão", cls: "bg-[#122040] text-blue-300 border-[#1a3055]/50" },
 };
 
 function LogisticBadge({ type }: { type?: string | null }) {
@@ -78,8 +77,80 @@ function LogisticBadge({ type }: { type?: string | null }) {
   );
 }
 
+function OrderCard({ o }: { o: Order }) {
+  const items = (o.itemsJson as unknown as OrderItem[]) ?? [];
+  const firstItem = items[0];
+  const totalQty = items.reduce((s, i) => s + (i.quantity ?? 0), 0);
+  const logisticTypes = [...new Set(items.map((i) => i.logistic_type).filter(Boolean))];
+
+  return (
+    <Link to={`/orders/${o.id}`}>
+      <div className="flex items-center gap-3 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl px-4 py-3 hover:border-blue-600/40 transition-colors cursor-pointer">
+        {firstItem?.thumbnail ? (
+          <img
+            src={firstItem.thumbnail}
+            alt=""
+            className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-[#122040]"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-[#122040] flex items-center justify-center flex-shrink-0">
+            <Package className="w-5 h-5 text-blue-400/40" />
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-blue-400 text-xs font-mono font-medium">
+              #{o.mlOrderId ?? o.id.slice(0, 8)}
+            </span>
+            {logisticTypes.map((lt) => (
+              <LogisticBadge key={lt} type={lt} />
+            ))}
+          </div>
+          <p className="text-white text-sm truncate font-medium">
+            {firstItem?.title ?? "—"}
+            {items.length > 1 && (
+              <span className="text-blue-400/60 ml-1 font-normal text-xs">+{items.length - 1}</span>
+            )}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {firstItem?.sku && (
+              <span className="text-[10px] text-blue-400/70 font-mono">SKU: {firstItem.sku}</span>
+            )}
+            {totalQty > 0 && (
+              <span className="text-[10px] text-blue-400/70">× {totalQty} un.</span>
+            )}
+          </div>
+        </div>
+
+        <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0 min-w-[120px]">
+          <div className="flex items-center gap-1.5">
+            {o.account?.mlNickname && (
+              <span className="text-[10px] text-blue-400 flex items-center gap-1">
+                <Truck className="w-2.5 h-2.5" />
+                {o.account.mlNickname}
+              </span>
+            )}
+          </div>
+          <p className="text-blue-200 text-sm font-semibold">
+            {formatCurrency(o.totalAmount, o.currencyId ?? "BRL")}
+          </p>
+          <p className="text-blue-400/60 text-[10px]">{formatDateTime(o.createdAt)}</p>
+        </div>
+
+        <div className="flex-shrink-0">
+          <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${STATUS_COLORS[o.status ?? ""] ?? "bg-[#122040] text-blue-300 border-[#1a3055]/50"}`}>
+            {STATUS_LABELS[o.status ?? ""] ?? o.status ?? "—"}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export default function Orders() {
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [statusFilter, setStatusFilter] = useState("all");
   const [accountId, setAccountId] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -87,7 +158,7 @@ export default function Orders() {
 
   const params = {
     page,
-    limit: 20,
+    limit: rowsPerPage,
     ...(statusFilter !== "all" ? { status: statusFilter } : {}),
     ...(accountId !== "all" ? { account_id: accountId } : {}),
     ...(dateFrom ? { date_from: dateFrom } : {}),
@@ -99,212 +170,137 @@ export default function Orders() {
   });
   const orders: Order[] = (data?.data ?? []) as Order[];
   const pagination = data?.pagination;
+  const totalPages = pagination?.totalPages ?? 1;
 
   const { data: accountsData } = useListAccounts();
   const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Pedidos</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{pagination?.total ?? 0} pedidos encontrados</p>
+    <div className="h-full flex flex-col overflow-hidden bg-[#080f1e]">
+      <div className="sticky top-0 z-10 bg-[#080f1e] border-b border-[#1a3055]/60 flex-shrink-0 px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-base font-bold text-white">Pedidos</h1>
+            <p className="text-blue-400/70 text-xs">{pagination?.total ?? 0} pedidos encontrados</p>
+          </div>
+          <div className="flex items-center gap-1">
+            {([20, 50] as const).map((n) => (
+              <button
+                key={n}
+                onClick={() => { setRowsPerPage(n); setPage(1); }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors ${rowsPerPage === n ? "bg-blue-600 text-white" : "border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040]"}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-48 bg-slate-800 border-slate-700 text-slate-300 text-sm h-8">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent className="bg-slate-800 border-slate-700">
-            <SelectItem value="all" className="text-slate-300">Todos os status</SelectItem>
-            <SelectItem value="confirmed" className="text-slate-300">Confirmado</SelectItem>
-            <SelectItem value="paid" className="text-slate-300">Pago</SelectItem>
-            <SelectItem value="payment_required" className="text-slate-300">Aguardando pagamento</SelectItem>
-            <SelectItem value="cancelled" className="text-slate-300">Cancelado</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {accounts.length > 0 && (
-          <Select value={accountId} onValueChange={(v) => { setAccountId(v); setPage(1); }}>
-            <SelectTrigger className="w-40 bg-slate-800 border-slate-700 text-slate-300 text-sm h-8">
-              <SelectValue />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-44 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-xs h-7">
+              <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700">
-              <SelectItem value="all" className="text-slate-300">Todas as contas</SelectItem>
-              {accounts.map((a) => (
-                <SelectItem key={a.id} value={a.id} className="text-slate-300">
-                  {a.mlNickname ?? a.id.slice(0, 8)}
-                </SelectItem>
-              ))}
+            <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
+              <SelectItem value="all" className="text-blue-200">Todos os status</SelectItem>
+              <SelectItem value="confirmed" className="text-blue-200">Confirmado</SelectItem>
+              <SelectItem value="paid" className="text-blue-200">Pago</SelectItem>
+              <SelectItem value="payment_required" className="text-blue-200">Aguardando pagamento</SelectItem>
+              <SelectItem value="cancelled" className="text-blue-200">Cancelado</SelectItem>
             </SelectContent>
           </Select>
-        )}
 
-        <Input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-          className="w-36 bg-slate-800 border-slate-700 text-slate-300 h-8 text-xs"
-          placeholder="De"
-        />
-        <Input
-          type="date"
-          value={dateTo}
-          onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-          className="w-36 bg-slate-800 border-slate-700 text-slate-300 h-8 text-xs"
-          placeholder="Até"
-        />
+          {accounts.length > 0 && (
+            <Select value={accountId} onValueChange={(v) => { setAccountId(v); setPage(1); }}>
+              <SelectTrigger className="w-36 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-xs h-7">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
+                <SelectItem value="all" className="text-blue-200">Todas as contas</SelectItem>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id} className="text-blue-200">
+                    {a.mlNickname ?? a.id.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            className="w-32 bg-[#122040] border-[#1a3055]/70 text-blue-200 h-7 text-xs"
+          />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            className="w-32 bg-[#122040] border-[#1a3055]/70 text-blue-200 h-7 text-xs"
+          />
+        </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800">
-                <th className="text-left px-4 py-3 text-slate-400 text-xs font-medium">Pedido</th>
-                <th className="text-left px-4 py-3 text-slate-400 text-xs font-medium">Produto</th>
-                <th className="text-left px-4 py-3 text-slate-400 text-xs font-medium">Comprador / Loja</th>
-                <th className="text-center px-4 py-3 text-slate-400 text-xs font-medium">Logística</th>
-                <th className="text-center px-4 py-3 text-slate-400 text-xs font-medium">Status</th>
-                <th className="text-right px-4 py-3 text-slate-400 text-xs font-medium">Total</th>
-                <th className="text-right px-4 py-3 text-slate-400 text-xs font-medium">Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-800/50">
-                    {[1, 2, 3, 4, 5, 6, 7].map((j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-slate-800 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : orders.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <ShoppingCart className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                    <p className="text-slate-500 text-sm">Nenhum pedido encontrado</p>
-                  </td>
-                </tr>
-              ) : (
-                orders.map((o) => {
-                  const items = (o.itemsJson as unknown as OrderItem[]) ?? [];
-                  const firstItem = items[0];
-                  const totalQty = items.reduce((s, i) => s + (i.quantity ?? 0), 0);
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-16 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24">
+            <ShoppingCart className="w-10 h-10 text-blue-400/30 mb-3" />
+            <p className="text-blue-400/60 text-sm">Nenhum pedido encontrado</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {orders.map((o) => <OrderCard key={o.id} o={o} />)}
+          </div>
+        )}
 
-                  return (
-                    <tr key={o.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <Link to={`/orders/${o.id}`} className="text-blue-400 hover:text-blue-300 text-xs font-mono">
-                          #{o.mlOrderId ?? o.id.slice(0, 8)}
-                        </Link>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {firstItem?.thumbnail ? (
-                            <img
-                              src={firstItem.thumbnail}
-                              alt=""
-                              className="w-8 h-8 rounded object-cover flex-shrink-0 bg-slate-800"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
-                              <Package className="w-4 h-4 text-slate-600" />
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-slate-200 text-xs truncate max-w-[160px]">
-                              {firstItem?.title ?? "—"}
-                              {items.length > 1 && (
-                                <span className="text-slate-500 ml-1">+{items.length - 1}</span>
-                              )}
-                            </p>
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              {firstItem?.sku && (
-                                <span className="text-[10px] text-slate-500 font-mono">SKU: {firstItem.sku}</span>
-                              )}
-                              {totalQty > 0 && (
-                                <span className="text-[10px] text-slate-500">× {totalQty}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <p className="text-slate-200 text-sm">{o.buyerNickname ?? "—"}</p>
-                        {o.account?.mlNickname && (
-                          <p className="text-[10px] text-blue-400 mt-0.5 flex items-center gap-1">
-                            <Truck className="w-2.5 h-2.5" />
-                            {o.account.mlNickname}
-                          </p>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {items.length > 0 ? (
-                            [...new Set(items.map((i) => i.logistic_type).filter(Boolean))].map((lt) => (
-                              <LogisticBadge key={lt} type={lt} />
-                            ))
-                          ) : (
-                            <span className="text-slate-600 text-xs">—</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${STATUS_COLORS[o.status ?? ""] ?? "bg-slate-800 text-slate-500 border-slate-700"}`}>
-                          {STATUS_LABELS[o.status ?? ""] ?? o.status ?? "—"}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-slate-200 text-sm font-medium">
-                          {formatCurrency(o.totalAmount, o.currencyId ?? "BRL")}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-slate-400 text-xs">{formatDateTime(o.createdAt)}</span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {pagination && pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
-            <p className="text-slate-500 text-xs">
-              Página {page} de {pagination.totalPages}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 py-2">
+            <p className="text-blue-400/60 text-xs">
+              Página {page} de {totalPages} · {pagination?.total ?? 0} registros
             </p>
             <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
+              <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="h-7 px-2 text-xs border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+                className="w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-30 flex items-center justify-center transition-colors"
               >
-                Anterior
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page >= pagination.totalPages}
-                className="h-7 px-2 text-xs border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <div className="flex items-center gap-1">
+                {(() => {
+                  const btnCls = (n: number) =>
+                    `w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${page === n ? "bg-blue-600 text-white" : "border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040]"}`;
+                  const ellipsis = (key: string) => (
+                    <span key={key} className="text-blue-400/60 text-xs px-0.5">…</span>
+                  );
+                  const btn = (n: number) => (
+                    <button key={n} onClick={() => setPage(n)} className={btnCls(n)}>{n}</button>
+                  );
+                  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => btn(i + 1));
+                  const delta = 1;
+                  const left = Math.max(2, page - delta);
+                  const right = Math.min(totalPages - 1, page + delta);
+                  const pages: React.ReactNode[] = [btn(1)];
+                  if (left > 2) pages.push(ellipsis("l"));
+                  for (let n = left; n <= right; n++) pages.push(btn(n));
+                  if (right < totalPages - 1) pages.push(ellipsis("r"));
+                  pages.push(btn(totalPages));
+                  return pages;
+                })()}
+              </div>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-30 flex items-center justify-center transition-colors"
               >
-                Próxima
-              </Button>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         )}

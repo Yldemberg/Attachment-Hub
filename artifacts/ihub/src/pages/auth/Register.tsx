@@ -31,19 +31,19 @@ export default function Register() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8">
+      <div className="min-h-screen bg-[#080f1e] flex items-center justify-center p-8">
         <div className="max-w-sm w-full text-center">
-          <div className="w-12 h-12 rounded-full bg-emerald-900/50 border border-emerald-700 flex items-center justify-center mx-auto mb-4">
+          <div className="w-12 h-12 rounded-full bg-emerald-900/50 border border-emerald-700/60 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
           <h1 className="text-xl font-bold text-white mb-2">Conta criada</h1>
-          <p className="text-slate-400 text-sm mb-6">
+          <p className="text-blue-300 text-sm mb-6">
             Confira seu email para verificar sua conta antes de entrar.
           </p>
           <Link to="/auth/login">
-            <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800">
+            <Button variant="outline" className="border-[#1a3055]/70 text-blue-300 hover:text-white hover:bg-[#122040]">
               Ir para o login
             </Button>
           </Link>
@@ -53,23 +53,23 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8">
+    <div className="min-h-screen bg-[#080f1e] flex flex-col items-center justify-center p-8">
       <div className="w-full max-w-sm">
         <div className="mb-8">
           <img src={logo} alt="iHub" className="h-28 w-auto object-contain" />
         </div>
 
         <h1 className="text-2xl font-bold text-white mb-1">Criar conta</h1>
-        <p className="text-slate-400 text-sm mb-8">
-          Ja tem conta?{" "}
-          <Link to="/auth/login" className="text-blue-400 hover:text-blue-300 transition-colors">
+        <p className="text-blue-300 text-sm mb-8">
+          Já tem conta?{" "}
+          <Link to="/auth/login" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
             Entrar
           </Link>
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-slate-300 text-sm">Email</Label>
+            <Label htmlFor="email" className="text-blue-200 text-sm">Email</Label>
             <Input
               id="email"
               type="email"
@@ -77,12 +77,12 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+              className="bg-[#122040] border-[#1a3055]/70 text-white placeholder:text-blue-400/60 focus:border-blue-500"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="password" className="text-slate-300 text-sm">Senha</Label>
+            <Label htmlFor="password" className="text-blue-200 text-sm">Senha</Label>
             <Input
               id="password"
               type="password"
@@ -91,12 +91,12 @@ export default function Register() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+              className="bg-[#122040] border-[#1a3055]/70 text-white placeholder:text-blue-400/60 focus:border-blue-500"
             />
           </div>
 
           {error && (
-            <div className="bg-red-900/40 border border-red-800 rounded-md px-3 py-2 text-sm text-red-400">
+            <div className="bg-red-900/40 border border-red-800/60 rounded-xl px-3 py-2 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -106,12 +106,12 @@ export default function Register() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium"
           >
-            {loading ? "Criando conta..." : "Criar conta — 30 dias gratis"}
+            {loading ? "Criando conta..." : "Criar conta — 30 dias grátis"}
           </Button>
         </form>
 
-        <p className="text-slate-600 text-xs mt-4 text-center">
-          Trial de 30 dias. Nenhum cartao de credito necessario.
+        <p className="text-blue-400/50 text-xs mt-4 text-center">
+          Trial de 30 dias. Nenhum cartão de crédito necessário.
         </p>
       </div>
     </div>

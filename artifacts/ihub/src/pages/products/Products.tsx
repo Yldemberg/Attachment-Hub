@@ -69,7 +69,7 @@ const ROWS_OPTIONS = [10, 20, 50] as const;
 type RowsOption = typeof ROWS_OPTIONS[number];
 
 function stockTextColor(qty: number | null | undefined): string {
-  if (qty == null || qty === 0) return "text-slate-400";
+  if (qty == null || qty === 0) return "text-blue-400/60";
   if (qty < 3) return "text-red-400";
   if (qty <= 7) return "text-amber-400";
   return "text-emerald-400";
@@ -85,8 +85,8 @@ function ProductCard({
   const isPromo =
     p.regularAmount != null && p.amount != null && p.regularAmount > p.amount;
 
-  let accentBg = "bg-slate-600";
-  let accentBorder = "border-slate-500";
+  let accentBg = "bg-[#1a3055]";
+  let accentBorder = "border-[#1a3055]";
   let LogIcon: React.ElementType = Package;
   let logText = "Normal";
 
@@ -111,10 +111,10 @@ function ProductCard({
   const stockColor = stockTextColor(p.availableQuantity);
 
   return (
-    <div className="relative bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden group hover:border-slate-500 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
+    <div className="relative bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl overflow-hidden group hover:border-blue-600/40 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
       <Link
         to={`/products/${p.id}`}
-        className="relative w-28 flex-shrink-0 overflow-hidden bg-slate-800 focus:outline-none"
+        className="relative w-28 flex-shrink-0 overflow-hidden bg-[#122040] focus:outline-none"
       >
         {p.thumbnail ? (
           <img
@@ -124,7 +124,7 @@ function ProductCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-8 h-8 text-slate-600" />
+            <Package className="w-8 h-8 text-blue-400/30" />
           </div>
         )}
         <div
@@ -148,12 +148,12 @@ function ProductCard({
         <div className="min-w-0">
           <Link
             to={`/products/${p.id}`}
-            className="text-xs font-semibold text-slate-100 hover:text-blue-300 transition-colors leading-snug line-clamp-2 block"
+            className="text-xs font-semibold text-white hover:text-blue-300 transition-colors leading-snug line-clamp-2 block"
             title={p.title ?? ""}
           >
             {p.title ?? p.id}
           </Link>
-          <p className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
+          <p className="text-[10px] font-mono text-blue-400/70 truncate mt-0.5">
             {p.sku ?? "—"}
           </p>
         </div>
@@ -172,8 +172,8 @@ function ProductCard({
             </span>
           )}
           {p.status === "closed" && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-400/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400/60" />
               Encerrado
             </span>
           )}
@@ -196,7 +196,7 @@ function ProductCard({
             <span className={`text-2xl font-black leading-none ${stockColor}`}>
               {qty}
             </span>
-            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">
+            <span className="text-[9px] text-blue-400/60 uppercase tracking-widest font-bold">
               un
             </span>
             {qty > 0 && qty < 3 && (
@@ -209,11 +209,11 @@ function ProductCard({
 
           <div className="flex items-center gap-2">
             <div className="text-right">
-              <p className="text-xs font-bold text-slate-200">
+              <p className="text-xs font-bold text-white">
                 {formatCurrency(p.amount ?? p.price)}
               </p>
               {isPromo && (
-                <p className="text-[9px] text-slate-500 line-through leading-none">
+                <p className="text-[9px] text-blue-400/60 line-through leading-none">
                   {formatCurrency(p.regularAmount)}
                 </p>
               )}
@@ -224,7 +224,7 @@ function ProductCard({
                 href={p.permalink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-700 border border-slate-600/50 hover:border-slate-500 transition-colors flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-400/60 hover:text-blue-400 hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
                 title="Ver no Mercado Livre"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -232,13 +232,13 @@ function ProductCard({
             )}
 
             {p.isFull ? (
-              <span className="text-[9px] text-slate-500 italic px-1">
+              <span className="text-[9px] text-blue-400/50 italic px-1">
                 FULL
               </span>
             ) : (
               <button
                 onClick={onEdit}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-600 border border-slate-600/50 hover:border-slate-500 transition-colors flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-400/60 hover:text-white hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
                 title="Editar estoque"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -253,12 +253,12 @@ function ProductCard({
 
 function SkeletonCard() {
   return (
-    <div className="bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden flex h-24 animate-pulse">
-      <div className="w-28 flex-shrink-0 bg-slate-700" />
+    <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl overflow-hidden flex h-24 animate-pulse">
+      <div className="w-28 flex-shrink-0 bg-[#122040]" />
       <div className="flex-1 px-3 py-2.5 flex flex-col gap-2">
-        <div className="h-3 bg-slate-700 rounded w-3/4" />
-        <div className="h-2.5 bg-slate-700 rounded w-1/4" />
-        <div className="h-2.5 bg-slate-700 rounded w-1/5 mt-auto" />
+        <div className="h-3 bg-[#122040] rounded w-3/4" />
+        <div className="h-2.5 bg-[#122040] rounded w-1/4" />
+        <div className="h-2.5 bg-[#122040] rounded w-1/5 mt-auto" />
       </div>
     </div>
   );
@@ -410,14 +410,14 @@ export default function Products() {
   const endItem = Math.min(page * limit, total);
 
   const selectCls =
-    "bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400";
+    "bg-[#122040] border border-[#1a3055]/70 text-xs rounded-lg px-2.5 py-1.5 text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-slate-600">
-      <div className="sticky top-0 z-10 bg-slate-600 border-b border-slate-500 px-4 py-2.5">
+    <div className="h-full flex flex-col overflow-hidden bg-[#080f1e]">
+      <div className="sticky top-0 z-10 bg-[#080f1e] border-b border-[#1a3055]/60 px-4 py-2.5">
         <div className="flex gap-2 items-center flex-wrap">
           <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-300" />
             <input
               type="text"
               placeholder="Buscar título ou SKU..."
@@ -426,7 +426,7 @@ export default function Products() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full bg-slate-800 border border-slate-700 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="w-full bg-[#122040] border border-[#1a3055]/70 text-xs rounded-lg pl-8 pr-3 py-1.5 text-blue-200 placeholder:text-blue-400/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
 
@@ -464,10 +464,10 @@ export default function Products() {
 
           <div className="flex items-center gap-2 ml-auto">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-200 whitespace-nowrap font-medium hidden sm:block">
+              <span className="text-[10px] text-blue-200 whitespace-nowrap font-medium hidden sm:block">
                 Itens/pág.:
               </span>
-              <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+              <div className="flex items-center bg-[#122040] border border-[#1a3055]/70 rounded-lg overflow-hidden">
                 {ROWS_OPTIONS.map((opt) => (
                   <button
                     key={opt}
@@ -475,10 +475,10 @@ export default function Products() {
                       setLimit(opt);
                       setPage(1);
                     }}
-                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-slate-700 last:border-r-0 ${
+                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-[#1a3055]/70 last:border-r-0 ${
                       limit === opt
                         ? "bg-blue-600 text-white"
-                        : "text-slate-300 hover:bg-slate-700 hover:text-white"
+                        : "text-blue-300 hover:bg-[#122040] hover:text-white"
                     }`}
                   >
                     {opt}
@@ -488,7 +488,7 @@ export default function Products() {
             </div>
 
             {total > 0 && (
-              <span className="text-[10px] text-slate-200 whitespace-nowrap hidden sm:block">
+              <span className="text-[10px] text-blue-200 whitespace-nowrap hidden sm:block">
                 <span className="text-white font-semibold">{total}</span>{" "}
                 anúncios
               </span>
@@ -507,11 +507,11 @@ export default function Products() {
           </div>
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Package className="w-10 h-10 text-slate-500 mb-3" />
-            <p className="text-slate-300 text-sm font-medium">
+            <Package className="w-10 h-10 text-blue-400/30 mb-3" />
+            <p className="text-blue-200 text-sm font-medium">
               Nenhum produto encontrado
             </p>
-            <p className="text-slate-400 text-xs mt-1">
+            <p className="text-blue-300/70 text-xs mt-1">
               Tente ajustar os filtros ou a busca
             </p>
           </div>
@@ -524,8 +524,8 @@ export default function Products() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-500/50">
-            <p className="text-[10px] text-slate-200">
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#1a3055]/40">
+            <p className="text-[10px] text-blue-200">
               Mostrando{" "}
               <span className="text-white font-medium">
                 {startItem}–{endItem}
@@ -538,7 +538,7 @@ export default function Products() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -546,9 +546,9 @@ export default function Products() {
               <div className="flex items-center gap-1">
                 {(() => {
                   const btnCls = (n: number) =>
-                    `w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${page === n ? "bg-blue-600 text-white" : "border border-slate-700 text-slate-300 hover:bg-slate-800"}`;
+                    `w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${page === n ? "bg-blue-600 text-white" : "border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040]"}`;
                   const ellipsis = (key: string) => (
-                    <span key={key} className="text-slate-400 text-xs px-0.5">…</span>
+                    <span key={key} className="text-blue-400/60 text-xs px-0.5">…</span>
                   );
                   const btn = (n: number) => (
                     <button key={n} onClick={() => setPage(n)} className={btnCls(n)}>{n}</button>
@@ -571,7 +571,7 @@ export default function Products() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -590,7 +590,7 @@ export default function Products() {
           }
         }}
       >
-        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-sm">
+        <DialogContent className="bg-[#0d1b2e] border border-[#1a3055]/60 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white text-base">
               Editar Estoque
@@ -598,18 +598,18 @@ export default function Products() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <p className="text-slate-400 text-xs truncate">
+              <p className="text-blue-300 text-xs truncate">
                 {stockDialog?.title}
               </p>
               {stockDialog?.sku && (
-                <p className="text-slate-500 text-[10px] font-mono">
+                <p className="text-blue-400/60 text-[10px] font-mono">
                   SKU: {stockDialog.sku}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-300 text-sm">
+              <Label className="text-blue-200 text-sm">
                 Escopo da atualização
               </Label>
               <div className="space-y-2">
@@ -623,10 +623,10 @@ export default function Products() {
                     className="mt-0.5 accent-blue-500"
                   />
                   <div>
-                    <p className="text-slate-200 text-xs font-medium">
+                    <p className="text-white text-xs font-medium">
                       Somente este anúncio
                     </p>
-                    <p className="text-slate-500 text-[10px]">
+                    <p className="text-blue-400/60 text-[10px]">
                       Atualiza apenas este item
                     </p>
                   </div>
@@ -643,10 +643,10 @@ export default function Products() {
                         className="mt-0.5 accent-blue-500"
                       />
                       <div>
-                        <p className="text-slate-200 text-xs font-medium">
+                        <p className="text-white text-xs font-medium">
                           Mesma conta — SKU {stockDialog.sku}
                         </p>
-                        <p className="text-slate-500 text-[10px]">
+                        <p className="text-blue-400/60 text-[10px]">
                           Todos os anúncios desta conta com o mesmo SKU
                         </p>
                       </div>
@@ -661,10 +661,10 @@ export default function Products() {
                         className="mt-0.5 accent-blue-500"
                       />
                       <div>
-                        <p className="text-slate-200 text-xs font-medium">
+                        <p className="text-white text-xs font-medium">
                           Todas as contas — SKU {stockDialog.sku}
                         </p>
-                        <p className="text-slate-500 text-[10px]">
+                        <p className="text-blue-400/60 text-[10px]">
                           Reflete em todos os anúncios de todas as contas com
                           este SKU
                         </p>
@@ -676,14 +676,14 @@ export default function Products() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-slate-300 text-sm">Nova quantidade</Label>
+              <Label className="text-blue-200 text-sm">Nova quantidade</Label>
               <Input
                 type="number"
                 min={0}
                 value={newQuantity}
                 onChange={(e) => setNewQuantity(e.target.value)}
                 placeholder="0"
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-[#122040] border-[#1a3055]/70 text-white"
               />
             </div>
           </div>
@@ -694,7 +694,7 @@ export default function Products() {
                 setStockDialog(null);
                 setNewQuantity("");
               }}
-              className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+              className="border-[#1a3055]/60 text-blue-400/70 hover:text-white hover:bg-[#122040]"
             >
               Cancelar
             </Button>

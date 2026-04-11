@@ -66,7 +66,7 @@ function TrialBanner({ trialEndsAt }: { trialEndsAt: string }) {
 
   return (
     <div className={cn(
-      "flex items-center justify-between px-4 py-2 text-xs font-medium",
+      "flex items-center justify-between px-4 py-2 text-xs font-medium flex-shrink-0",
       expired
         ? "bg-red-950/80 border-b border-red-900/50 text-red-300"
         : "bg-amber-950/80 border-b border-amber-900/50 text-amber-300"
@@ -119,9 +119,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900">
-        <div className="h-14 flex items-center px-4 border-b border-slate-800">
+    <div className="flex h-screen bg-[#080f1e] text-white overflow-hidden">
+      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-[#1a3055]/60 bg-[#0d1b2e]">
+        <div className="h-14 flex items-center px-4 border-b border-[#1a3055]/60 flex-shrink-0">
           <img src={logo} alt="iHub" className="h-9 w-auto object-contain" />
         </div>
 
@@ -136,8 +136,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 className={cn(
                   "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors relative",
                   active
-                    ? "bg-blue-600/15 text-blue-400 font-medium"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800",
+                    ? "bg-blue-600/20 text-blue-400 font-medium"
+                    : "text-blue-300 hover:text-white hover:bg-[#122040]",
                 )}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
@@ -155,12 +155,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           })}
         </nav>
 
-        <div className="p-2 border-t border-slate-800">
+        <div className="p-2 border-t border-[#1a3055]/60 flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors">
+              <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-blue-300 hover:text-white hover:bg-[#122040] transition-colors">
                 <Avatar className="w-6 h-6">
-                  <AvatarFallback className="text-[10px] bg-slate-700 text-slate-300">
+                  <AvatarFallback className="text-[10px] bg-[#122040] text-blue-200">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -169,17 +169,17 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="top" className="w-48 bg-slate-800 border-slate-700">
-              <DropdownMenuItem asChild className="text-slate-300 hover:text-white focus:text-white focus:bg-slate-700">
+            <DropdownMenuContent align="end" side="top" className="w-48 bg-[#0d1b2e] border-[#1a3055]/70">
+              <DropdownMenuItem asChild className="text-blue-200 hover:text-white focus:text-white focus:bg-[#122040]">
                 <Link to="/profile">
                   <User className="w-4 h-4 mr-2" />
                   Perfil
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-700" />
+              <DropdownMenuSeparator className="bg-[#1a3055]/60" />
               <DropdownMenuItem
                 onClick={signOut}
-                className="text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-slate-700 cursor-pointer"
+                className="text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-[#122040] cursor-pointer"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sair
@@ -190,7 +190,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="md:hidden h-14 flex items-center px-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+        <header className="md:hidden h-14 flex items-center px-4 border-b border-[#1a3055]/60 bg-[#0d1b2e] flex-shrink-0">
           <img src={logo} alt="iHub" className="h-8 w-auto object-contain" />
         </header>
 
@@ -198,11 +198,11 @@ export function AppLayout({ children }: AppLayoutProps) {
           <TrialBanner trialEndsAt={me.trialEndsAt} />
         )}
 
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <main className="flex-1 overflow-hidden pb-16 md:pb-0">
           {children}
         </main>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 z-50">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0d1b2e] border-t border-[#1a3055]/60 z-50">
           <div className="flex items-stretch overflow-x-auto">
             {allNavItems.map(({ path, label, icon: Icon, badge }) => {
               const active = location === path || location.startsWith(path + "/");
@@ -213,7 +213,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   to={path}
                   className={cn(
                     "flex-1 min-w-[52px] flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors",
-                    active ? "text-blue-400" : "text-slate-500 hover:text-slate-300"
+                    active ? "text-blue-400" : "text-blue-400/50 hover:text-blue-300"
                   )}
                 >
                   <div className="relative">
