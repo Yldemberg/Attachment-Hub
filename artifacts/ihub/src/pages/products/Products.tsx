@@ -86,9 +86,9 @@ const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.Rea
     icon: <Zap className="w-2.5 h-2.5" />,
   },
   self_service_in: {
-    label: "Coleta",
+    label: "Flex",
     cls: "bg-orange-900/40 text-orange-400 border-orange-800/50",
-    icon: <Truck className="w-2.5 h-2.5" />,
+    icon: <Zap className="w-2.5 h-2.5" />,
   },
 };
 
