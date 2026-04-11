@@ -19,6 +19,7 @@ import {
   MlQuestion,
   enrichMlItemForSellerSku,
   fetchMlItemVariations,
+  getMlEffectiveLogisticType,
   getMlItemRepresentativeSku,
   getMlVariationSku,
   mergeMlVariation,
@@ -228,6 +229,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
 
         const item = await ml.get<MlItem>(account.id, `/items/${itemId}`);
         const isFull = item.shipping?.logistic_type === "fulfillment";
+        const logisticType = getMlEffectiveLogisticType(item);
 
         const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
         let workItem: MlItem = item;
@@ -274,7 +276,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             soldQuantity: item.sold_quantity,
             status: item.status,
             listingType: item.listing_type_id,
-            logisticType: item.shipping?.logistic_type ?? null,
+            logisticType,
             isFull,
             thumbnail: item.thumbnail,
             permalink: item.permalink,

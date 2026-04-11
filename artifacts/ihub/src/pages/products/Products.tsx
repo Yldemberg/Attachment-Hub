@@ -85,6 +85,11 @@ const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.Rea
     cls: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50",
     icon: <Zap className="w-2.5 h-2.5" />,
   },
+  self_service_in: {
+    label: "Coleta",
+    cls: "bg-orange-900/40 text-orange-400 border-orange-800/50",
+    icon: <Truck className="w-2.5 h-2.5" />,
+  },
 };
 
 function LogisticBadge({ type }: { type?: string | null }) {

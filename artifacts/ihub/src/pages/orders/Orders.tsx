@@ -56,6 +56,7 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   fulfillment: { label: "Full", cls: "bg-blue-900/40 text-blue-400 border-blue-800/50" },
   cross_docking: { label: "Cross-docking", cls: "bg-yellow-900/40 text-yellow-400 border-yellow-800/50" },
   self_service: { label: "Flex", cls: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50" },
+  self_service_in: { label: "Coleta", cls: "bg-orange-900/40 text-orange-400 border-orange-800/50" },
   default: { label: "Padrão", cls: "bg-slate-800 text-slate-400 border-slate-700" },
 };
 

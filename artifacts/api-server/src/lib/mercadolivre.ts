@@ -242,6 +242,8 @@ export type MlItem = {
   seller_custom_field?: string | null;
   /** Root-level attributes on GET /items/{id} (SELLER_SKU for listings without variations). */
   attributes?: MlAttributeRow[] | null;
+  /** Item-level tags (e.g. "self_service_in" for ME2 / coleta logistics). */
+  tags?: string[] | null;
   thumbnail: string;
   permalink: string;
   category_id: string;
@@ -274,6 +276,19 @@ function trimNonEmpty(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim();
   return t.length > 0 ? t : null;
+}
+
+/**
+ * Derive the effective logistic type for storage/display.
+ * ML reports coleta/ME2 logistics via `tags: ["self_service_in"]` rather than
+ * `shipping.logistic_type`, so we must check both sources.
+ * Precedence: self_service_in tag → shipping.logistic_type.
+ */
+export function getMlEffectiveLogisticType(item: MlItem): string | null {
+  if (Array.isArray(item.tags) && item.tags.includes("self_service_in")) {
+    return "self_service_in";
+  }
+  return item.shipping?.logistic_type ?? null;
 }
 
 const SKU_ATTR_ID = "SELLER_SKU";

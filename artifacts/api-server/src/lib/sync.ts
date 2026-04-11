@@ -6,6 +6,7 @@ import {
   MlQuestion,
   enrichMlItemForSellerSku,
   fetchMlItemVariations,
+  getMlEffectiveLogisticType,
   getMlItemRepresentativeSku,
   getMlVariationSku,
   mergeMlVariation,
@@ -51,6 +52,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
     for (const { code, body: item } of items) {
       if (code !== 200 || !item) continue;
       const isFull = item.shipping?.logistic_type === "fulfillment";
+      const logisticType = getMlEffectiveLogisticType(item);
 
       const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
 
@@ -100,7 +102,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         soldQuantity: item.sold_quantity,
         status: item.status,
         listingType: item.listing_type_id,
-        logisticType: item.shipping?.logistic_type ?? null,
+        logisticType,
         isFull,
         thumbnail: item.thumbnail,
         permalink: item.permalink,
