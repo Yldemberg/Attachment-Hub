@@ -7,18 +7,24 @@ import {
   getListProductsQueryKey,
   ListProductsStatus,
 } from "@workspace/api-client-react";
-import { formatCurrency, stockBgColor } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Package, RefreshCw, Warehouse, Truck, Zap } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Search,
+  Package,
+  RefreshCw,
+  Warehouse,
+  Truck,
+  Zap,
+  Tag,
+  AlertTriangle,
+  AlertCircle,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +33,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,9 +44,7 @@ interface Product {
   availableQuantity?: number | null;
   price?: number | null;
   originalPrice?: number | null;
-  /** GET /items/{id}/prices → prices[].amount */
   amount?: number | null;
-  /** GET /items/{id}/prices → prices[].regular_amount */
   regularAmount?: number | null;
   status?: string | null;
   isFull?: boolean | null;
@@ -60,59 +65,210 @@ interface StockUpdateDialog {
   title: string;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  active: "Ativo",
-  paused: "Pausado",
-  closed: "Encerrado",
-  under_review: "Em revisão",
-};
+const ROWS_OPTIONS = [10, 20, 50] as const;
+type RowsOption = typeof ROWS_OPTIONS[number];
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50",
-  paused: "bg-amber-900/40 text-amber-400 border-amber-800/50",
-  closed: "bg-slate-800 text-slate-500 border-slate-700",
-  under_review: "bg-blue-900/40 text-blue-400 border-blue-800/50",
-};
+function stockTextColor(qty: number | null | undefined): string {
+  if (qty == null || qty === 0) return "text-slate-400";
+  if (qty < 3) return "text-red-400";
+  if (qty <= 7) return "text-amber-400";
+  return "text-emerald-400";
+}
 
-const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-  fulfillment: {
-    label: "Full",
-    cls: "bg-blue-900/40 text-blue-400 border-blue-800/50",
-    icon: <Warehouse className="w-2.5 h-2.5" />,
-  },
-  cross_docking: {
-    label: "Cross-docking",
-    cls: "bg-yellow-900/40 text-yellow-400 border-yellow-800/50",
-    icon: <Truck className="w-2.5 h-2.5" />,
-  },
-  self_service: {
-    label: "Flex",
-    cls: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50",
-    icon: <Zap className="w-2.5 h-2.5" />,
-  },
-};
+function ProductCard({
+  p,
+  onEdit,
+}: {
+  p: Product;
+  onEdit: () => void;
+}) {
+  const isPromo =
+    p.regularAmount != null && p.amount != null && p.regularAmount > p.amount;
 
-const FLEX_BADGE = (
-  <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-orange-900/40 text-orange-400 border-orange-800/50">
-    <Zap className="w-2.5 h-2.5" />
-    Flex
-  </span>
-);
+  let accentBg = "bg-slate-600";
+  let accentBorder = "border-slate-500";
+  let LogIcon: React.ElementType = Package;
+  let logText = "Normal";
 
-function LogisticBadge({ type }: { type?: string | null }) {
-  if (!type) return null;
-  const types = type.split(",").map((t) => t.trim()).filter(Boolean);
-  const badges = types.map((t) => LOGISTIC_MAP[t]).filter(Boolean);
-  if (badges.length === 0) return null;
+  if (p.logisticType === "fulfillment" || p.isFull) {
+    accentBg = "bg-blue-600";
+    accentBorder = "border-blue-700";
+    LogIcon = Warehouse;
+    logText = "Full";
+  } else if (p.logisticType === "self_service" || p.isFlex) {
+    accentBg = "bg-orange-500";
+    accentBorder = "border-orange-600";
+    LogIcon = Zap;
+    logText = "Flex";
+  } else if (p.logisticType === "cross_docking") {
+    accentBg = "bg-amber-500";
+    accentBorder = "border-amber-600";
+    LogIcon = Truck;
+    logText = "Cross";
+  }
+
+  const qty = p.availableQuantity ?? 0;
+  const stockColor = stockTextColor(p.availableQuantity);
+
   return (
-    <span className="inline-flex flex-wrap gap-1">
-      {badges.map((info, i) => (
-        <span key={i} className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${info!.cls}`}>
-          {info!.icon}
-          {info!.label}
-        </span>
-      ))}
-    </span>
+    <div className="relative bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden group hover:border-slate-500 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
+      {/* Left: thumbnail */}
+      <Link
+        to={`/products/${p.id}`}
+        className="relative w-28 flex-shrink-0 overflow-hidden bg-slate-800 focus:outline-none"
+      >
+        {p.thumbnail ? (
+          <img
+            src={p.thumbnail}
+            alt={p.title ?? ""}
+            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${qty === 0 ? "grayscale opacity-40" : ""}`}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Package className="w-8 h-8 text-slate-600" />
+          </div>
+        )}
+        {/* Logistic chip */}
+        <div
+          className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1 ${accentBg} border-t ${accentBorder}`}
+        >
+          <LogIcon className="w-3 h-3 text-white" />
+          <span className="text-[9px] font-bold text-white uppercase tracking-wide">
+            {logText}
+          </span>
+        </div>
+        {qty === 0 && (
+          <div className="absolute inset-x-0 top-[32%] flex justify-center">
+            <span className="bg-red-600/90 text-white text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">
+              Esgot.
+            </span>
+          </div>
+        )}
+      </Link>
+
+      {/* Right: content */}
+      <div className="flex-1 flex flex-col px-3 py-2.5 gap-1.5 min-w-0">
+        {/* Title + SKU */}
+        <div className="min-w-0">
+          <Link
+            to={`/products/${p.id}`}
+            className="text-xs font-semibold text-slate-100 hover:text-blue-300 transition-colors leading-snug line-clamp-2 block"
+            title={p.title ?? ""}
+          >
+            {p.title ?? p.id}
+          </Link>
+          <p className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
+            {p.sku ?? "—"}
+          </p>
+        </div>
+
+        {/* Badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {p.status === "active" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Ativo
+            </span>
+          )}
+          {p.status === "paused" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              Pausado
+            </span>
+          )}
+          {p.status === "closed" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              Encerrado
+            </span>
+          )}
+          {p.status === "under_review" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              Em revisão
+            </span>
+          )}
+          {isPromo && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-400 bg-pink-400/10 border border-pink-400/20 px-1.5 py-0.5 rounded-full">
+              <Tag className="w-2.5 h-2.5" />
+              Promo
+            </span>
+          )}
+        </div>
+
+        {/* Stock + price + actions — bottom row */}
+        <div className="flex items-end justify-between mt-auto gap-2">
+          {/* Stock */}
+          <div className="flex items-baseline gap-1">
+            <span className={`text-2xl font-black leading-none ${stockColor}`}>
+              {qty}
+            </span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">
+              un
+            </span>
+            {qty > 0 && qty < 3 && (
+              <AlertTriangle className="w-3 h-3 text-red-400 ml-0.5" />
+            )}
+            {qty >= 3 && qty <= 7 && (
+              <AlertCircle className="w-3 h-3 text-amber-400 ml-0.5" />
+            )}
+          </div>
+
+          {/* Price + actions */}
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-xs font-bold text-slate-200">
+                {formatCurrency(p.amount ?? p.price)}
+              </p>
+              {isPromo && (
+                <p className="text-[9px] text-slate-500 line-through leading-none">
+                  {formatCurrency(p.regularAmount)}
+                </p>
+              )}
+            </div>
+
+            {p.permalink && (
+              <a
+                href={p.permalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-700 border border-slate-600/50 hover:border-slate-500 transition-colors flex-shrink-0"
+                title="Ver no Mercado Livre"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+
+            {p.isFull ? (
+              <span className="text-[9px] text-slate-500 italic px-1">
+                FULL
+              </span>
+            ) : (
+              <button
+                onClick={onEdit}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-600 border border-slate-600/50 hover:border-slate-500 transition-colors flex-shrink-0"
+                title="Editar estoque"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden flex h-24 animate-pulse">
+      <div className="w-28 flex-shrink-0 bg-slate-700" />
+      <div className="flex-1 px-3 py-2.5 flex flex-col gap-2">
+        <div className="h-3 bg-slate-700 rounded w-3/4" />
+        <div className="h-2.5 bg-slate-700 rounded w-1/4" />
+        <div className="h-2.5 bg-slate-700 rounded w-1/5 mt-auto" />
+      </div>
+    </div>
   );
 }
 
@@ -123,15 +279,22 @@ export default function Products() {
   const [status, setStatus] = useState<string>("all");
   const [accountId, setAccountId] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const [stockDialog, setStockDialog] = useState<StockUpdateDialog | null>(null);
+  const [limit, setLimit] = useState<RowsOption>(10);
+  const [stockDialog, setStockDialog] = useState<StockUpdateDialog | null>(
+    null
+  );
   const [newQuantity, setNewQuantity] = useState("");
   const [stockScope, setStockScope] = useState<StockScope>("single");
 
   const params = {
     page,
-    limit: 20,
+    limit,
     ...(search ? { search } : {}),
-    ...(status !== "all" ? { status: status as (typeof ListProductsStatus)[keyof typeof ListProductsStatus] } : {}),
+    ...(status !== "all"
+      ? {
+          status: status as (typeof ListProductsStatus)[keyof typeof ListProductsStatus],
+        }
+      : {}),
     ...(accountId !== "all" ? { account_id: accountId } : {}),
   };
 
@@ -139,44 +302,75 @@ export default function Products() {
     query: { queryKey: getListProductsQueryKey(params) },
   });
 
-  const products: Product[] = (data as { data?: Product[] } | null)?.data ?? [];
-  const pagination = (data as { pagination?: { total: number; totalPages: number } } | null)?.pagination;
+  const products: Product[] =
+    (data as { data?: Product[] } | null)?.data ?? [];
+  const pagination = (
+    data as {
+      pagination?: { total: number; totalPages: number };
+    } | null
+  )?.pagination;
 
   const { data: accountsData } = useListAccounts();
-  const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
+  const accounts = (
+    accountsData as {
+      data?: { id: string; mlNickname?: string | null }[];
+    } | null
+  )?.data ?? [];
 
-  const { mutate: updateSingleStock, isPending: updatingSingle } = useUpdateProductStock({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-        setStockDialog(null);
-        setNewQuantity("");
-        toast({ title: "Estoque atualizado", description: "Estoque deste anúncio atualizado com sucesso." });
+  const { mutate: updateSingleStock, isPending: updatingSingle } =
+    useUpdateProductStock({
+      mutation: {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getListProductsQueryKey({}),
+          });
+          setStockDialog(null);
+          setNewQuantity("");
+          toast({
+            title: "Estoque atualizado",
+            description: "Estoque deste anúncio atualizado com sucesso.",
+          });
+        },
+        onError: (err) => {
+          const msg =
+            (
+              err as {
+                payload?: { error?: { message?: string } };
+              }
+            )?.payload?.error?.message ?? "Não foi possível atualizar o estoque.";
+          toast({
+            variant: "destructive",
+            title: "Erro ao atualizar",
+            description: msg,
+          });
+        },
       },
-      onError: (err) => {
-        const msg = (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ?? "Não foi possível atualizar o estoque.";
-        toast({ variant: "destructive", title: "Erro ao atualizar", description: msg });
-      },
-    },
-  });
+    });
 
-  const { mutate: updateSkuStock, isPending: updatingBySku } = useUpdateStockBySku({
-    mutation: {
-      onSuccess: (result) => {
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-        setStockDialog(null);
-        setNewQuantity("");
-        const r = result as { updated?: number; skipped?: number };
-        toast({
-          title: "Estoque atualizado",
-          description: `${r.updated ?? 0} anúncio(s) atualizado(s)${r.skipped ? `, ${r.skipped} ignorado(s) (FULL)` : ""}.`,
-        });
+  const { mutate: updateSkuStock, isPending: updatingBySku } =
+    useUpdateStockBySku({
+      mutation: {
+        onSuccess: (result) => {
+          queryClient.invalidateQueries({
+            queryKey: getListProductsQueryKey({}),
+          });
+          setStockDialog(null);
+          setNewQuantity("");
+          const r = result as { updated?: number; skipped?: number };
+          toast({
+            title: "Estoque atualizado",
+            description: `${r.updated ?? 0} anúncio(s) atualizado(s)${r.skipped ? `, ${r.skipped} ignorado(s) (FULL)` : ""}.`,
+          });
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Erro ao atualizar",
+            description: "Não foi possível atualizar o estoque.",
+          });
+        },
       },
-      onError: () => {
-        toast({ variant: "destructive", title: "Erro ao atualizar", description: "Não foi possível atualizar o estoque." });
-      },
-    },
-  });
+    });
 
   const isUpdating = updatingSingle || updatingBySku;
 
@@ -185,11 +379,23 @@ export default function Products() {
     const qty = Number(newQuantity);
 
     if (stockScope === "single") {
-      updateSingleStock({ id: stockDialog.productId, data: { quantity: qty } });
+      updateSingleStock({
+        id: stockDialog.productId,
+        data: { quantity: qty },
+      });
     } else if (!stockDialog.sku) {
-      toast({ variant: "destructive", title: "Erro", description: "Produto sem SKU — use o escopo 'somente este anúncio'." });
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description:
+          "Produto sem SKU — use o escopo 'somente este anúncio'.",
+      });
     } else if (stockScope === "account") {
-      updateSkuStock({ sku: stockDialog.sku, data: { quantity: qty }, params: { account_id: stockDialog.accountId } });
+      updateSkuStock({
+        sku: stockDialog.sku,
+        data: { quantity: qty },
+        params: { account_id: stockDialog.accountId },
+      });
     } else {
       updateSkuStock({ sku: stockDialog.sku, data: { quantity: qty } });
     }
@@ -206,233 +412,233 @@ export default function Products() {
     setStockScope("single");
   };
 
+  const totalPages = pagination?.totalPages ?? 1;
+  const total = pagination?.total ?? 0;
+  const startItem = (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
+
+  const selectCls =
+    "bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400";
+
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Produtos</h1>
-          <p className="text-slate-400 text-sm mt-0.5">
-            {pagination?.total ?? 0} produtos encontrados
-          </p>
-        </div>
-      </div>
+    <div className="min-h-full flex flex-col bg-slate-600">
+      {/* ── Sticky header ── */}
+      <div className="sticky top-0 z-10 bg-slate-600 border-b border-slate-500 px-4 py-2.5">
+        <div className="flex gap-2 items-center flex-wrap">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar título ou SKU..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-slate-800 border border-slate-700 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input
-            placeholder="Buscar por título ou SKU..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="pl-8 bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500 h-8 text-sm"
-          />
-        </div>
+          {/* Status filter */}
+          <select
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+            className={selectCls}
+          >
+            <option value="all">Todos os status</option>
+            <option value="active">Ativo</option>
+            <option value="paused">Pausado</option>
+            <option value="closed">Encerrado</option>
+          </select>
 
-        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-          <SelectTrigger className="w-36 bg-slate-800 border-slate-700 text-slate-300 text-sm h-8">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent className="bg-slate-800 border-slate-700">
-            <SelectItem value="all" className="text-slate-300">Todos</SelectItem>
-            <SelectItem value="active" className="text-slate-300">Ativos</SelectItem>
-            <SelectItem value="paused" className="text-slate-300">Pausados</SelectItem>
-            <SelectItem value="closed" className="text-slate-300">Encerrados</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {accounts.length > 0 && (
-          <Select value={accountId} onValueChange={(v) => { setAccountId(v); setPage(1); }}>
-            <SelectTrigger className="w-40 bg-slate-800 border-slate-700 text-slate-300 text-sm h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700">
-              <SelectItem value="all" className="text-slate-300">Todas as contas</SelectItem>
+          {/* Account filter */}
+          {accounts.length > 0 && (
+            <select
+              value={accountId}
+              onChange={(e) => {
+                setAccountId(e.target.value);
+                setPage(1);
+              }}
+              className={selectCls}
+            >
+              <option value="all">Todas as contas</option>
               {accounts.map((a) => (
-                <SelectItem key={a.id} value={a.id} className="text-slate-300">
+                <option key={a.id} value={a.id}>
                   {a.mlNickname ?? a.id.slice(0, 8)}
-                </SelectItem>
+                </option>
               ))}
-            </SelectContent>
-          </Select>
-        )}
+            </select>
+          )}
+
+          {/* Right controls */}
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Rows per page */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-200 whitespace-nowrap font-medium hidden sm:block">
+                Itens/pág.:
+              </span>
+              <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+                {ROWS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => {
+                      setLimit(opt);
+                      setPage(1);
+                    }}
+                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-slate-700 last:border-r-0 ${
+                      limit === opt
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:bg-slate-700 hover:text-white"
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Total count */}
+            {total > 0 && (
+              <span className="text-[10px] text-slate-200 whitespace-nowrap hidden sm:block">
+                <span className="text-white font-semibold">{total}</span>{" "}
+                anúncios
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800">
-                <th className="text-left px-4 py-3 text-slate-400 text-xs font-medium">Produto</th>
-                <th className="text-left px-4 py-3 text-slate-400 text-xs font-medium">SKU</th>
-                <th className="text-center px-4 py-3 text-slate-400 text-xs font-medium">Logística</th>
-                <th className="text-right px-4 py-3 text-slate-400 text-xs font-medium">Estoque</th>
-                <th className="text-right px-4 py-3 text-slate-400 text-xs font-medium">Preço</th>
-                <th className="text-center px-4 py-3 text-slate-400 text-xs font-medium">Status</th>
-                <th className="text-center px-4 py-3 text-slate-400 text-xs font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-800/50">
-                    {[1, 2, 3, 4, 5, 6, 7].map((j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-slate-800 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : products.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <Package className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                    <p className="text-slate-500 text-sm">Nenhum produto encontrado</p>
-                  </td>
-                </tr>
-              ) : (
-                products.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link to={`/products/${p.id}`} className="flex items-center gap-2 group">
-                        {p.thumbnail ? (
-                          <img
-                            src={p.thumbnail}
-                            alt=""
-                            className="w-12 h-12 rounded object-cover flex-shrink-0 bg-slate-800"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
-                            <Package className="w-6 h-6 text-slate-600" />
-                          </div>
-                        )}
-                        <span className="text-slate-200 group-hover:text-blue-400 transition-colors truncate max-w-40">
-                          {p.title}
-                        </span>
-                      </Link>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span className="text-slate-400 text-xs font-mono">{p.sku ?? "—"}</span>
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-flex flex-wrap gap-1 justify-center">
-                        <LogisticBadge type={p.logisticType} />
-                        {p.isFlex && FLEX_BADGE}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 text-right">
-                      <span className={`text-sm font-bold px-2 py-0.5 rounded ${stockBgColor(p.availableQuantity)}`}>
-                        {p.availableQuantity ?? 0}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 text-right">
-                      {p.regularAmount != null &&
-                      p.amount != null &&
-                      p.regularAmount > p.amount ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex flex-col items-end gap-0">
-                            <span className="text-slate-500 text-[9px] uppercase tracking-wide">
-                              Regular (De:)
-                            </span>
-                            <span className="text-slate-500 text-xs line-through">
-                              {formatCurrency(p.regularAmount)}
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-end gap-0">
-                            <span className="text-emerald-500/90 text-[9px] uppercase tracking-wide">
-                              Promocional (Por:)
-                            </span>
-                            <span className="text-emerald-400 text-xs font-semibold">
-                              {formatCurrency(p.amount)}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="text-slate-200 text-xs">
-                            {formatCurrency(p.amount ?? p.price)}
-                          </span>
-                          {p.amount != null && p.regularAmount == null && (
-                            <span className="text-slate-500 text-[10px]">Fora de promoção</span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${STATUS_COLORS[p.status ?? ""] ?? "bg-slate-800 text-slate-500 border-slate-700"}`}>
-                        {STATUS_LABELS[p.status ?? ""] ?? p.status ?? "—"}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      {p.isFull ? (
-                        <span className="text-[10px] text-slate-500 italic">FULL</span>
-                      ) : (
-                        <button
-                          onClick={() => openStockDialog(p)}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                        >
-                          Editar estoque
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {pagination && pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
-            <p className="text-slate-500 text-xs">
-              Página {page} de {pagination.totalPages}
+      {/* ── Scrollable body ── */}
+      <div className="flex-1 px-4 py-4">
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-2.5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Package className="w-10 h-10 text-slate-500 mb-3" />
+            <p className="text-slate-300 text-sm font-medium">
+              Nenhum produto encontrado
             </p>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
+            <p className="text-slate-400 text-xs mt-1">
+              Tente ajustar os filtros ou a busca
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2.5">
+            {products.map((p) => (
+              <ProductCard key={p.id} p={p} onEdit={() => openStockDialog(p)} />
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-500/50">
+            <p className="text-[10px] text-slate-200">
+              Mostrando{" "}
+              <span className="text-white font-medium">
+                {startItem}–{endItem}
+              </span>{" "}
+              de{" "}
+              <span className="text-white font-medium">{total}</span>{" "}
+              anúncios
+            </p>
+            <div className="flex items-center gap-1.5">
+              <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="h-7 px-2 text-xs border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+                className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Anterior
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page >= pagination.totalPages}
-                className="h-7 px-2 text-xs border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from(
+                  { length: Math.min(totalPages, 5) },
+                  (_, i) => i + 1
+                ).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPage(n)}
+                    className={`w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${
+                      page === n
+                        ? "bg-blue-600 text-white"
+                        : "border border-slate-700 text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {totalPages > 5 && (
+                  <>
+                    <span className="text-slate-400 text-xs px-0.5">…</span>
+                    <button
+                      onClick={() => setPage(totalPages)}
+                      className={`w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${
+                        page === totalPages
+                          ? "bg-blue-600 text-white"
+                          : "border border-slate-700 text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Próxima
-              </Button>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      <Dialog open={!!stockDialog} onOpenChange={(o) => { if (!o) { setStockDialog(null); setNewQuantity(""); } }}>
+      {/* ── Stock edit dialog (with 3-scope logic preserved) ── */}
+      <Dialog
+        open={!!stockDialog}
+        onOpenChange={(o) => {
+          if (!o) {
+            setStockDialog(null);
+            setNewQuantity("");
+          }
+        }}
+      >
         <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white text-base">Editar Estoque</DialogTitle>
+            <DialogTitle className="text-white text-base">
+              Editar Estoque
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <p className="text-slate-400 text-xs truncate">{stockDialog?.title}</p>
+              <p className="text-slate-400 text-xs truncate">
+                {stockDialog?.title}
+              </p>
               {stockDialog?.sku && (
-                <p className="text-slate-500 text-[10px] font-mono">SKU: {stockDialog.sku}</p>
+                <p className="text-slate-500 text-[10px] font-mono">
+                  SKU: {stockDialog.sku}
+                </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-300 text-sm">Escopo da atualização</Label>
+              <Label className="text-slate-300 text-sm">
+                Escopo da atualização
+              </Label>
               <div className="space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer group">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="radio"
                     name="scope"
@@ -442,13 +648,17 @@ export default function Products() {
                     className="mt-0.5 accent-blue-500"
                   />
                   <div>
-                    <p className="text-slate-200 text-xs font-medium">Somente este anúncio</p>
-                    <p className="text-slate-500 text-[10px]">Atualiza apenas este item</p>
+                    <p className="text-slate-200 text-xs font-medium">
+                      Somente este anúncio
+                    </p>
+                    <p className="text-slate-500 text-[10px]">
+                      Atualiza apenas este item
+                    </p>
                   </div>
                 </label>
                 {stockDialog?.sku && (
                   <>
-                    <label className="flex items-start gap-2 cursor-pointer group">
+                    <label className="flex items-start gap-2 cursor-pointer">
                       <input
                         type="radio"
                         name="scope"
@@ -458,11 +668,15 @@ export default function Products() {
                         className="mt-0.5 accent-blue-500"
                       />
                       <div>
-                        <p className="text-slate-200 text-xs font-medium">Mesma conta — SKU {stockDialog.sku}</p>
-                        <p className="text-slate-500 text-[10px]">Todos os anúncios desta conta com o mesmo SKU</p>
+                        <p className="text-slate-200 text-xs font-medium">
+                          Mesma conta — SKU {stockDialog.sku}
+                        </p>
+                        <p className="text-slate-500 text-[10px]">
+                          Todos os anúncios desta conta com o mesmo SKU
+                        </p>
                       </div>
                     </label>
-                    <label className="flex items-start gap-2 cursor-pointer group">
+                    <label className="flex items-start gap-2 cursor-pointer">
                       <input
                         type="radio"
                         name="scope"
@@ -472,8 +686,13 @@ export default function Products() {
                         className="mt-0.5 accent-blue-500"
                       />
                       <div>
-                        <p className="text-slate-200 text-xs font-medium">Todas as contas — SKU {stockDialog.sku}</p>
-                        <p className="text-slate-500 text-[10px]">Reflete em todos os anúncios de todas as contas com este SKU</p>
+                        <p className="text-slate-200 text-xs font-medium">
+                          Todas as contas — SKU {stockDialog.sku}
+                        </p>
+                        <p className="text-slate-500 text-[10px]">
+                          Reflete em todos os anúncios de todas as contas com
+                          este SKU
+                        </p>
                       </div>
                     </label>
                   </>
@@ -496,7 +715,10 @@ export default function Products() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => { setStockDialog(null); setNewQuantity(""); }}
+              onClick={() => {
+                setStockDialog(null);
+                setNewQuantity("");
+              }}
               className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
             >
               Cancelar
