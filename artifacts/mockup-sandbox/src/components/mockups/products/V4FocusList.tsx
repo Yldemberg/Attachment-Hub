@@ -285,30 +285,18 @@ export function V4FocusList() {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 flex flex-col justify-between min-w-0 gap-3 sm:gap-0">
+                <div className="flex-1 flex flex-col justify-between min-w-0 gap-2">
                   
-                  {/* Top Row */}
-                  <div className="flex items-start justify-between gap-4">
-                    <button
-                      onClick={() => setDetailProduct(product)}
-                      className="text-base font-semibold text-white hover:text-blue-400 transition-colors leading-snug text-left line-clamp-2"
-                    >
-                      {product.title}
-                    </button>
-                    <div className="text-right shrink-0">
-                      {hasPromo && (
-                        <div className="text-xs text-slate-500 line-through mb-0.5">
-                          {formatCurrency(product.regularAmount)}
-                        </div>
-                      )}
-                      <div className="text-lg font-bold text-white leading-none">
-                        {formatCurrency(product.amount)}
-                      </div>
-                    </div>
-                  </div>
+                  {/* Title Row */}
+                  <button
+                    onClick={() => setDetailProduct(product)}
+                    className="text-base font-semibold text-white hover:text-blue-400 transition-colors leading-snug text-left line-clamp-2"
+                  >
+                    {product.title}
+                  </button>
 
-                  {/* Middle Row - Badges */}
-                  <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
+                  {/* Badges Row */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <LogisticBadge product={product} />
                     <StatusBadge status={product.status} />
                     {hasPromo && (
@@ -319,13 +307,23 @@ export function V4FocusList() {
                     )}
                   </div>
 
-                  {/* Bottom Row */}
-                  <div className="flex items-center gap-4 mt-3 sm:mt-0 pt-3 sm:pt-0 border-t border-[#1e1e2a] sm:border-0">
-                    <span className="font-mono text-xs text-slate-500 bg-[#1a1a24] px-2 py-0.5 rounded">
-                      {product.sku}
-                    </span>
-                    <div className="w-1 h-1 rounded-full bg-[#2a2a3a] hidden sm:block" />
-                    <StockDisplay qty={product.availableQuantity} />
+                  {/* KPI Row — Estoque | Preço | SKU */}
+                  <div className="flex items-stretch gap-2 pt-2 border-t border-[#1e1e2a]">
+                    <div className="flex-1 bg-[#1a1a24] rounded-lg px-2.5 py-2 border border-[#2a2a3a]">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 font-medium">Estoque</p>
+                      <StockDisplay qty={product.availableQuantity} />
+                    </div>
+                    <div className="flex-1 bg-[#1a1a24] rounded-lg px-2.5 py-2 border border-[#2a2a3a]">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 font-medium">Preço</p>
+                      <div>
+                        <p className="text-xs font-bold text-white leading-none">{formatCurrency(product.amount)}</p>
+                        {hasPromo && <p className="text-[10px] text-slate-500 line-through mt-0.5">{formatCurrency(product.regularAmount)}</p>}
+                      </div>
+                    </div>
+                    <div className="flex-1 bg-[#1a1a24] rounded-lg px-2.5 py-2 border border-[#2a2a3a] min-w-0">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 font-medium">SKU</p>
+                      <p className="font-mono text-xs text-slate-400 truncate">{product.sku}</p>
+                    </div>
                   </div>
                 </div>
 

@@ -190,6 +190,137 @@ function DetailDialog({ product, onClose }: { product: Product; onClose: () => v
   );
 }
 
+type HealthConfig = ReturnType<typeof getHealthConfig>;
+
+function ProductCard({
+  product,
+  config,
+  hasPromo,
+  onEdit,
+  onDetail,
+}: {
+  product: Product;
+  config: HealthConfig;
+  hasPromo: boolean;
+  onEdit: () => void;
+  onDetail: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group relative flex flex-col sm:flex-row bg-slate-900 rounded-xl overflow-hidden border-x border-b border-t-4 border-slate-800 transition-all duration-300 transform hover:-translate-y-1",
+        config.glow,
+        config.border
+      )}
+    >
+      {/* Left Indicator Strip */}
+      <div className={cn("w-full sm:w-16 flex items-center justify-center py-3 sm:py-0 border-b sm:border-b-0 sm:border-r border-slate-800/50", config.bg)}>
+        {config.icon}
+      </div>
+
+      {/* Card Body */}
+      <div className="flex-1 flex flex-col sm:flex-row p-4 gap-6 items-center">
+
+        {/* Thumbnail & Info */}
+        <div className="flex-1 flex gap-4 w-full items-start">
+          <img
+            src={product.thumbnail}
+            alt={product.title}
+            className="w-16 h-16 rounded-lg object-cover bg-slate-800 flex-shrink-0 border border-slate-700/50"
+          />
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <button
+              onClick={onDetail}
+              className="text-sm font-semibold text-white hover:text-indigo-400 transition-colors leading-tight line-clamp-2 text-left"
+              title={product.title}
+            >
+              {product.title}
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-slate-400">{product.sku}</span>
+              {product.status === "paused" && (
+                <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-sm">
+                  Pausado
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {product.isFull && (
+                <div className="flex items-center gap-1 bg-[#00A650]/10 text-[#00A650] border border-[#00A650]/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                  <Warehouse className="w-3 h-3" /> Full
+                </div>
+              )}
+              {product.isFlex && (
+                <div className="flex items-center gap-1 bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                  <Zap className="w-3 h-3" /> Flex
+                </div>
+              )}
+              {!product.isFull && !product.isFlex && product.logisticType === "cross_docking" && (
+                <div className="flex items-center gap-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                  <Truck className="w-3 h-3" /> Cross
+                </div>
+              )}
+              {hasPromo && (
+                <div className="flex items-center gap-1 bg-pink-500/10 text-pink-500 border border-pink-500/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                  <Tag className="w-3 h-3" /> Promo
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Stock + Price */}
+        <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 sm:gap-2 pl-0 sm:pl-6 sm:border-l border-slate-800/50">
+          <div className="flex flex-col items-end text-right">
+            <span className={cn("text-3xl font-black leading-none tracking-tight", config.color)}>
+              {product.availableQuantity}
+            </span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-1">Unidades</span>
+          </div>
+          <div className="flex flex-col items-end text-right mt-1 sm:mt-2">
+            {hasPromo && (
+              <span className="text-xs text-slate-500 line-through">{formatCurrency(product.regularAmount)}</span>
+            )}
+            <span className="text-sm font-medium text-slate-300">{formatCurrency(product.amount)}</span>
+          </div>
+        </div>
+
+        {/* Edit Action */}
+        <div className="hidden sm:flex flex-col justify-center items-center gap-2 pl-4">
+          <div className="flex flex-col items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md transition-colors whitespace-nowrap"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Editar Estoque
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile action button */}
+      <button
+        onClick={onEdit}
+        className="sm:hidden absolute top-4 right-4 p-2 rounded-md bg-slate-800 text-slate-300"
+        title="Editar estoque"
+      >
+        <Pencil className="w-4 h-4" />
+      </button>
+
+      {/* Banner overlay if paused & 0 stock */}
+      {product.availableQuantity === 0 && product.status === "paused" && (
+        <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+          <div className="flex items-center gap-2 bg-slate-800 px-4 py-2.5 rounded-full border border-amber-500/20 shadow-2xl shadow-amber-500/10">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <span className="text-sm font-medium text-amber-500">Pausado — sem estoque</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function V3HealthDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -197,13 +328,15 @@ export function V3HealthDashboard() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
-  // Sort products by urgency
-  const sortedProducts = [...mockProducts].sort((a, b) => {
-    const levelA = getHealthLevel(a.availableQuantity);
-    const levelB = getHealthLevel(b.availableQuantity);
-    const order = { critical: 1, attention: 2, ok: 3 };
-    return order[levelA] - order[levelB];
-  });
+  // Group products by urgency for distinct alert sections
+  const alertProducts = [...mockProducts]
+    .filter(p => getHealthLevel(p.availableQuantity) !== "ok")
+    .sort((a, b) => {
+      const order = { critical: 1, attention: 2, ok: 3 };
+      return order[getHealthLevel(a.availableQuantity)] - order[getHealthLevel(b.availableQuantity)];
+    });
+  const okProducts = mockProducts.filter(p => getHealthLevel(p.availableQuantity) === "ok");
+  const sortedProducts = [...alertProducts, ...okProducts];
 
   const stats = {
     critical: mockProducts.filter(p => getHealthLevel(p.availableQuantity) === "critical").length,
@@ -276,148 +409,69 @@ export function V3HealthDashboard() {
           </div>
         </div>
 
-        {/* Product List */}
-        <div className="space-y-4">
-          {sortedProducts.map((product) => {
-            const level = getHealthLevel(product.availableQuantity);
-            const config = getHealthConfig(level);
-            const hasPromo = product.regularAmount != null && product.regularAmount > product.amount;
-            
-            return (
-              <div 
-                key={product.id}
-                className={cn(
-                  "group relative flex flex-col sm:flex-row bg-slate-900 rounded-xl overflow-hidden border-x border-b border-t-4 border-slate-800 transition-all duration-300 transform hover:-translate-y-1",
-                  config.glow,
-                  config.border
-                )}
-              >
-                {/* Left Indicator Strip */}
-                <div className={cn("w-full sm:w-16 flex items-center justify-center py-3 sm:py-0 border-b sm:border-b-0 sm:border-r border-slate-800/50", config.bg)}>
-                  {config.icon}
-                </div>
+        {/* Alert Section */}
+        {alertProducts.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                Atenção necessária
+              </h2>
+              <span className="ml-auto text-xs font-bold text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full">
+                {alertProducts.length}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {alertProducts.map((product) => {
+                const level = getHealthLevel(product.availableQuantity);
+                const config = getHealthConfig(level);
+                const hasPromo = product.regularAmount != null && product.regularAmount > product.amount;
+                return (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    config={config}
+                    hasPromo={hasPromo}
+                    onEdit={() => setEditingProduct(product)}
+                    onDetail={() => setDetailProduct(product)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                {/* Card Body */}
-                <div className="flex-1 flex flex-col sm:flex-row p-4 gap-6 items-center">
-                  
-                  {/* Thumbnail & Info */}
-                  <div className="flex-1 flex gap-4 w-full items-start">
-                    <img 
-                      src={product.thumbnail} 
-                      alt={product.title} 
-                      className="w-16 h-16 rounded-lg object-cover bg-slate-800 flex-shrink-0 border border-slate-700/50"
-                    />
-                    <div className="flex flex-col gap-1.5 min-w-0">
-                      <button
-                        onClick={() => setDetailProduct(product)}
-                        className="text-sm font-semibold text-white hover:text-indigo-400 transition-colors leading-tight line-clamp-2 text-left"
-                        title={product.title}
-                      >
-                        {product.title}
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-slate-400">
-                          {product.sku}
-                        </span>
-                        
-                        {product.status === "paused" && (
-                          <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-sm">
-                            Pausado
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Logistic Badges */}
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {product.isFull && (
-                          <div className="flex items-center gap-1 bg-[#00A650]/10 text-[#00A650] border border-[#00A650]/20 px-2 py-0.5 rounded-full text-xs font-medium">
-                            <Warehouse className="w-3 h-3" />
-                            Full
-                          </div>
-                        )}
-                        {product.isFlex && (
-                          <div className="flex items-center gap-1 bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/20 px-2 py-0.5 rounded-full text-xs font-medium">
-                            <Zap className="w-3 h-3" />
-                            Flex
-                          </div>
-                        )}
-                        {!product.isFull && !product.isFlex && product.logisticType === "cross_docking" && (
-                          <div className="flex items-center gap-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2 py-0.5 rounded-full text-xs font-medium">
-                            <Truck className="w-3 h-3" />
-                            Cross
-                          </div>
-                        )}
-                        {hasPromo && (
-                          <div className="flex items-center gap-1 bg-pink-500/10 text-pink-500 border border-pink-500/20 px-2 py-0.5 rounded-full text-xs font-medium">
-                            <Tag className="w-3 h-3" />
-                            Promo
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Action Cluster */}
-                  <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 sm:gap-2 pl-0 sm:pl-6 sm:border-l border-slate-800/50">
-                    
-                    {/* Stock Block */}
-                    <div className="flex flex-col items-end text-right">
-                      <span className={cn("text-3xl font-black leading-none tracking-tight", config.color)}>
-                        {product.availableQuantity}
-                      </span>
-                      <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-1">
-                        Unidades
-                      </span>
-                    </div>
-
-                    {/* Price Block */}
-                    <div className="flex flex-col items-end text-right mt-1 sm:mt-2">
-                      {hasPromo && (
-                        <span className="text-xs text-slate-500 line-through">
-                          {formatCurrency(product.regularAmount)}
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-slate-300">
-                        {formatCurrency(product.amount)}
-                      </span>
-                    </div>
-
-                  </div>
-
-                  {/* Actions / Status */}
-                  <div className="hidden sm:flex flex-col justify-center items-center gap-2 pl-4">
-                    <div className="flex flex-col items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => setEditingProduct(product)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md transition-colors whitespace-nowrap"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Editar Estoque
-                      </button>
-                    </div>
-                  </div>
-                  
-                </div>
-
-                {/* Mobile action button */}
-                <button className="sm:hidden absolute top-4 right-4 p-2 rounded-md bg-slate-800 text-slate-300">
-                  <Pencil className="w-4 h-4" />
-                </button>
-
-                {/* Banner overlay if paused & 0 stock */}
-                {product.availableQuantity === 0 && product.status === "paused" && (
-                  <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                    <div className="flex items-center gap-2 bg-slate-800 px-4 py-2.5 rounded-full border border-amber-500/20 shadow-2xl shadow-amber-500/10">
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
-                      <span className="text-sm font-medium text-amber-500">Pausado — sem estoque</span>
-                    </div>
-                  </div>
-                )}
-                
-              </div>
-            );
-          })}
-        </div>
+        {/* OK Section */}
+        {okProducts.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                Em dia
+              </h2>
+              <span className="ml-auto text-xs font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                {okProducts.length}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {okProducts.map((product) => {
+                const level = getHealthLevel(product.availableQuantity);
+                const config = getHealthConfig(level);
+                const hasPromo = product.regularAmount != null && product.regularAmount > product.amount;
+                return (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    config={config}
+                    hasPromo={hasPromo}
+                    onEdit={() => setEditingProduct(product)}
+                    onDetail={() => setDetailProduct(product)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-slate-800 pt-4 pb-8">
