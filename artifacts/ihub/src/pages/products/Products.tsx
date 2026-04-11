@@ -94,12 +94,17 @@ const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.Rea
 
 function LogisticBadge({ type }: { type?: string | null }) {
   if (!type) return null;
-  const info = LOGISTIC_MAP[type];
-  if (!info) return null;
+  const types = type.split(",").filter(Boolean);
+  const badges = types.map((t) => LOGISTIC_MAP[t]).filter(Boolean);
+  if (badges.length === 0) return null;
   return (
-    <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${info.cls}`}>
-      {info.icon}
-      {info.label}
+    <span className="inline-flex flex-wrap gap-1">
+      {badges.map((info, i) => (
+        <span key={i} className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${info!.cls}`}>
+          {info!.icon}
+          {info!.label}
+        </span>
+      ))}
     </span>
   );
 }

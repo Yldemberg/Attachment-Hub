@@ -62,10 +62,18 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
 
 function LogisticBadge({ type }: { type?: string | null }) {
   if (!type) return null;
-  const { label, cls } = LOGISTIC_LABELS[type] ?? LOGISTIC_LABELS.default;
+  const types = type.split(",").filter(Boolean);
+  if (types.length === 0) return null;
   return (
-    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${cls}`}>
-      {label}
+    <span className="inline-flex flex-wrap gap-1">
+      {types.map((t) => {
+        const { label, cls } = LOGISTIC_LABELS[t] ?? LOGISTIC_LABELS.default;
+        return (
+          <span key={t} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${cls}`}>
+            {label}
+          </span>
+        );
+      })}
     </span>
   );
 }

@@ -279,16 +279,20 @@ function trimNonEmpty(v: unknown): string | null {
 }
 
 /**
- * Derive the effective logistic type for storage/display.
- * ML reports coleta/ME2 logistics via `tags: ["self_service_in"]` rather than
- * `shipping.logistic_type`, so we must check both sources.
- * Precedence: self_service_in tag → shipping.logistic_type.
+ * Derive all applicable logistic types for storage/display.
+ * A product can simultaneously have a shipping.logistic_type (e.g. "fulfillment")
+ * AND the "self_service_in" tag. Both are collected and returned as a
+ * comma-separated string so multiple badges can be rendered.
+ * Examples: "fulfillment" | "self_service_in" | "fulfillment,self_service_in"
  */
 export function getMlEffectiveLogisticType(item: MlItem): string | null {
+  const types: string[] = [];
+  const shippingType = item.shipping?.logistic_type;
+  if (shippingType) types.push(shippingType);
   if (Array.isArray(item.tags) && item.tags.includes("self_service_in")) {
-    return "self_service_in";
+    if (!types.includes("self_service_in")) types.push("self_service_in");
   }
-  return item.shipping?.logistic_type ?? null;
+  return types.length > 0 ? types.join(",") : null;
 }
 
 const SKU_ATTR_ID = "SELLER_SKU";
