@@ -94,7 +94,7 @@ const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.Rea
 
 function LogisticBadge({ type }: { type?: string | null }) {
   if (!type) return null;
-  const types = type.split(",").filter(Boolean);
+  const types = type.split(",").map((t) => t.trim()).filter(Boolean);
   const badges = types.map((t) => LOGISTIC_MAP[t]).filter(Boolean);
   if (badges.length === 0) return null;
   return (

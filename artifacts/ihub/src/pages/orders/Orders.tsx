@@ -62,7 +62,7 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
 
 function LogisticBadge({ type }: { type?: string | null }) {
   if (!type) return null;
-  const types = type.split(",").filter(Boolean);
+  const types = type.split(",").map((t) => t.trim()).filter(Boolean);
   if (types.length === 0) return null;
   return (
     <span className="inline-flex flex-wrap gap-1">
