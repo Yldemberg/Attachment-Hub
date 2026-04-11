@@ -229,10 +229,10 @@ export function V9DenseGrid() {
   const endItem = Math.min(currentPage * itemsPerPage, TOTAL_SIMULATED);
 
   return (
-    <div className="h-screen flex flex-col bg-[#07101e] font-sans text-slate-200 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-600 font-sans text-slate-200 overflow-hidden">
 
       {/* ── Sticky header ── */}
-      <div className="flex-shrink-0 bg-[#07101e]/98 backdrop-blur-sm border-b border-slate-700/50 px-4 py-2.5 z-10">
+      <div className="flex-shrink-0 bg-slate-600 border-b border-slate-500 px-4 py-2.5 z-10">
         <div className="flex gap-2 items-center flex-wrap">
 
           {/* Search */}
@@ -241,19 +241,19 @@ export function V9DenseGrid() {
             <input
               type="text"
               placeholder="Buscar título ou SKU..."
-              className="w-full bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full bg-slate-800 border border-slate-700 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
 
           {/* Status filter */}
-          <select className="bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <select className="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400">
             <option>Todos os status</option>
             <option>Ativo</option>
             <option>Pausado</option>
           </select>
 
           {/* Logistics filter */}
-          <select className="bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <select className="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400">
             <option>Toda logística</option>
             <option>Full</option>
             <option>Flex</option>
@@ -265,16 +265,16 @@ export function V9DenseGrid() {
 
             {/* Rows per page selector */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-500 whitespace-nowrap">Linhas por pág.:</span>
-              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+              <span className="text-[10px] text-slate-200 whitespace-nowrap font-medium">Linhas por pág.:</span>
+              <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
                 {ROWS_OPTIONS.map(opt => (
                   <button
                     key={opt}
                     onClick={() => { setRowsPerPage(opt); setCurrentPage(1); }}
-                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-slate-800 last:border-r-0 ${
+                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-slate-700 last:border-r-0 ${
                       rowsPerPage === opt
                         ? "bg-blue-600 text-white"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                        : "text-slate-300 hover:bg-slate-700 hover:text-white"
                     }`}
                   >
                     {opt}
@@ -284,22 +284,22 @@ export function V9DenseGrid() {
             </div>
 
             {/* Layout toggle */}
-            <div className="flex items-center gap-0.5 bg-slate-900 border border-slate-800 rounded-lg p-0.5">
-              <button className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700 text-white">
+            <div className="flex items-center gap-0.5 bg-slate-800 border border-slate-700 rounded-lg p-0.5">
+              <button className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-600 text-white">
                 <LayoutGrid className="w-3 h-3" />
               </button>
-              <button className="w-6 h-6 flex items-center justify-center rounded-md text-slate-500 hover:text-slate-300 transition-colors">
+              <button className="w-6 h-6 flex items-center justify-center rounded-md text-slate-300 hover:text-white transition-colors">
                 <List className="w-3 h-3" />
               </button>
             </div>
 
-            <button className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs rounded-lg px-2 py-1.5 text-slate-400 transition-colors">
+            <button className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs rounded-lg px-2 py-1.5 text-slate-200 transition-colors">
               <SlidersHorizontal className="w-3 h-3" />
               Filtros
             </button>
 
-            <span className="text-[10px] text-slate-500 whitespace-nowrap hidden sm:block">
-              <span className="text-slate-300 font-semibold">{TOTAL_SIMULATED}</span> anúncios
+            <span className="text-[10px] text-slate-200 whitespace-nowrap hidden sm:block">
+              <span className="text-white font-semibold">{TOTAL_SIMULATED}</span> anúncios
             </span>
           </div>
         </div>
@@ -322,12 +322,12 @@ export function V9DenseGrid() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800/50">
-            <p className="text-[10px] text-slate-500">
-              Mostrando <span className="text-slate-300 font-medium">{startItem}–{endItem}</span> de{" "}
-              <span className="text-slate-300 font-medium">{TOTAL_SIMULATED}</span> anúncios
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-500/50">
+            <p className="text-[10px] text-slate-200">
+              Mostrando <span className="text-white font-medium">{startItem}–{endItem}</span> de{" "}
+              <span className="text-white font-medium">{TOTAL_SIMULATED}</span> anúncios
               &nbsp;·&nbsp;
-              <span className="text-slate-400">{rowsPerPage} linhas/pág. · {itemsPerPage} cards/pág.</span>
+              <span className="text-slate-300">{rowsPerPage} linhas/pág. · {itemsPerPage} cards/pág.</span>
             </p>
             <div className="flex items-center gap-1.5">
               <button
