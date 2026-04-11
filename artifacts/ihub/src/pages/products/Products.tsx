@@ -544,37 +544,28 @@ export default function Products() {
               </button>
 
               <div className="flex items-center gap-1">
-                {Array.from(
-                  { length: Math.min(totalPages, 5) },
-                  (_, i) => i + 1
-                ).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    className={`w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${
-                      page === n
-                        ? "bg-blue-600 text-white"
-                        : "border border-slate-700 text-slate-300 hover:bg-slate-800"
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-                {totalPages > 5 && (
-                  <>
-                    <span className="text-slate-400 text-xs px-0.5">…</span>
-                    <button
-                      onClick={() => setPage(totalPages)}
-                      className={`w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${
-                        page === totalPages
-                          ? "bg-blue-600 text-white"
-                          : "border border-slate-700 text-slate-300 hover:bg-slate-800"
-                      }`}
-                    >
-                      {totalPages}
-                    </button>
-                  </>
-                )}
+                {(() => {
+                  const btnCls = (n: number) =>
+                    `w-7 h-7 rounded-lg text-[10px] font-semibold transition-colors ${page === n ? "bg-blue-600 text-white" : "border border-slate-700 text-slate-300 hover:bg-slate-800"}`;
+                  const ellipsis = (key: string) => (
+                    <span key={key} className="text-slate-400 text-xs px-0.5">…</span>
+                  );
+                  const btn = (n: number) => (
+                    <button key={n} onClick={() => setPage(n)} className={btnCls(n)}>{n}</button>
+                  );
+                  if (totalPages <= 7) {
+                    return Array.from({ length: totalPages }, (_, i) => btn(i + 1));
+                  }
+                  const delta = 1;
+                  const left = Math.max(2, page - delta);
+                  const right = Math.min(totalPages - 1, page + delta);
+                  const pages: React.ReactNode[] = [btn(1)];
+                  if (left > 2) pages.push(ellipsis("l"));
+                  for (let n = left; n <= right; n++) pages.push(btn(n));
+                  if (right < totalPages - 1) pages.push(ellipsis("r"));
+                  pages.push(btn(totalPages));
+                  return pages;
+                })()}
               </div>
 
               <button
