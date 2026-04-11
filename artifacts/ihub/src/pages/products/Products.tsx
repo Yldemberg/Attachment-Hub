@@ -85,12 +85,14 @@ const LOGISTIC_MAP: Record<string, { label: string; cls: string; icon: React.Rea
     cls: "bg-emerald-900/40 text-emerald-400 border-emerald-800/50",
     icon: <Zap className="w-2.5 h-2.5" />,
   },
-  self_service_in: {
-    label: "Flex",
-    cls: "bg-orange-900/40 text-orange-400 border-orange-800/50",
-    icon: <Zap className="w-2.5 h-2.5" />,
-  },
 };
+
+const FLEX_BADGE = (
+  <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-orange-900/40 text-orange-400 border-orange-800/50">
+    <Zap className="w-2.5 h-2.5" />
+    Flex
+  </span>
+);
 
 function LogisticBadge({ type }: { type?: string | null }) {
   if (!type) return null;
@@ -309,7 +311,10 @@ export default function Products() {
                     </td>
 
                     <td className="px-4 py-3 text-center">
-                      <LogisticBadge type={p.logisticType} />
+                      <span className="inline-flex flex-wrap gap-1 justify-center">
+                        <LogisticBadge type={p.logisticType} />
+                        {p.isFlex && FLEX_BADGE}
+                      </span>
                     </td>
 
                     <td className="px-4 py-3 text-right">

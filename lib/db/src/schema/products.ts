@@ -19,6 +19,7 @@ export const productsTable = pgTable("products", {
   listingType: text("listing_type"),
   logisticType: text("logistic_type"),
   isFull: boolean("is_full").default(false).notNull(),
+  isFlex: boolean("is_flex").default(false).notNull(),
   thumbnail: text("thumbnail"),
   permalink: text("permalink"),
   mlCategoryId: text("ml_category_id"),

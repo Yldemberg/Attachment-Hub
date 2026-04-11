@@ -77,6 +77,7 @@ export interface Product {
   listingType?: string | null;
   logisticType?: string | null;
   isFull: boolean;
+  isFlex: boolean;
   thumbnail?: string | null;
   permalink?: string | null;
   mlCategoryId?: string | null;

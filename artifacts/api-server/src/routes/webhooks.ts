@@ -229,6 +229,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
 
         const item = await ml.get<MlItem>(account.id, `/items/${itemId}`);
         const isFull = item.shipping?.logistic_type === "fulfillment";
+        const isFlex = Array.isArray(item.tags) && item.tags.includes("self_service_in");
         const logisticType = getMlEffectiveLogisticType(item);
 
         const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
@@ -278,6 +279,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             listingType: item.listing_type_id,
             logisticType,
             isFull,
+            isFlex,
             thumbnail: item.thumbnail,
             permalink: item.permalink,
             mlCategoryId: item.category_id,
@@ -297,6 +299,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               listingType: item.listing_type_id,
               logisticType,
               isFull,
+              isFlex,
               thumbnail: item.thumbnail,
               permalink: item.permalink,
               variationsJson,

@@ -52,6 +52,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
     for (const { code, body: item } of items) {
       if (code !== 200 || !item) continue;
       const isFull = item.shipping?.logistic_type === "fulfillment";
+      const isFlex = Array.isArray(item.tags) && item.tags.includes("self_service_in");
       const logisticType = getMlEffectiveLogisticType(item);
 
       const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
@@ -104,6 +105,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         listingType: item.listing_type_id,
         logisticType,
         isFull,
+        isFlex,
         thumbnail: item.thumbnail,
         permalink: item.permalink,
         mlCategoryId: item.category_id,
@@ -127,6 +129,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
             listingType: values.listingType,
             logisticType: values.logisticType,
             isFull: values.isFull,
+            isFlex: values.isFlex,
             thumbnail: values.thumbnail,
             permalink: values.permalink,
             mlCategoryId: values.mlCategoryId,

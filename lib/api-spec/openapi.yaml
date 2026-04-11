@@ -893,6 +893,8 @@ components:
           nullable: true
         isFull:
           type: boolean
+        isFlex:
+          type: boolean
         thumbnail:
           type: string
           nullable: true
@@ -915,7 +917,7 @@ components:
         account:
           $ref: "#/components/schemas/AccountSummary"
           nullable: true
-      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, createdAt, updatedAt]
+      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, isFlex, createdAt, updatedAt]
 
     AccountSummary:
       type: object
