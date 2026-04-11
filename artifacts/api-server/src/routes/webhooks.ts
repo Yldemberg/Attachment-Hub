@@ -152,7 +152,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             mlQuestionId: BigInt(q.id),
             mlItemId: q.item_id,
             text: q.text,
-            status: q.status,
+            status: q.status.toLowerCase(),
             fromUserId: q.from?.id ? BigInt(q.from.id) : null,
             fromUserNickname: q.from?.nickname ?? null,
             answerText: q.answer?.text ?? null,
@@ -162,13 +162,13 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           .onConflictDoUpdate({
             target: [questionsTable.accountId, questionsTable.mlQuestionId],
             set: {
-              status: q.status,
+              status: q.status.toLowerCase(),
               answerText: q.answer?.text ?? null,
               answerDate: q.answer?.date_created ? new Date(q.answer.date_created) : null,
             },
           });
 
-        if (q.status === "unanswered") {
+        if (q.status.toLowerCase() === "unanswered") {
           await db.insert(notificationsTable).values({
             userId: account.userId,
             accountId: account.id,

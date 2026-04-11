@@ -251,7 +251,7 @@ async function syncQuestions(accountId: string, mlUserId: string): Promise<void>
           mlQuestionId: BigInt(q.id),
           mlItemId: q.item_id,
           text: q.text,
-          status: q.status,
+          status: q.status.toLowerCase(),
           fromUserId: q.from?.id ? BigInt(q.from.id) : null,
           fromUserNickname: q.from?.nickname ?? null,
           answerText: q.answer?.text ?? null,
@@ -261,7 +261,7 @@ async function syncQuestions(accountId: string, mlUserId: string): Promise<void>
         .onConflictDoUpdate({
           target: [questionsTable.accountId, questionsTable.mlQuestionId],
           set: {
-            status: q.status,
+            status: q.status.toLowerCase(),
             answerText: q.answer?.text ?? null,
             answerDate: q.answer?.date_created ? new Date(q.answer.date_created) : null,
           },
