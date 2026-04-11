@@ -8,5 +8,6 @@ export const modules: ModuleMap = {
   "./components/mockups/products/V5BentoSignal.tsx": () => import("../components/mockups/products/V5BentoSignal.tsx"),
   "./components/mockups/products/V6SquareFirst.tsx": () => import("../components/mockups/products/V6SquareFirst.tsx"),
   "./components/mockups/products/V7HalfPhoto.tsx": () => import("../components/mockups/products/V7HalfPhoto.tsx"),
-  "./components/mockups/products/V8SideThumb.tsx": () => import("../components/mockups/products/V8SideThumb.tsx")
+  "./components/mockups/products/V8SideThumb.tsx": () => import("../components/mockups/products/V8SideThumb.tsx"),
+  "./components/mockups/products/V9DenseGrid.tsx": () => import("../components/mockups/products/V9DenseGrid.tsx")
 };
