@@ -118,84 +118,95 @@ function ProductCard({ product, onEdit, onDetail }: { product: Product; onEdit: 
   else if (product.logisticType === "cross_docking")                  { accentBg = "bg-amber-500";  accentBorder = "border-amber-600";  Icon = Truck;     logText = "Cross"; }
 
   let stockColor = "text-emerald-400";
-  if (product.availableQuantity === 0)     stockColor = "text-slate-500";
-  else if (product.availableQuantity < 3)  stockColor = "text-red-500";
+  if (product.availableQuantity === 0)     stockColor = "text-slate-400";
+  else if (product.availableQuantity < 3)  stockColor = "text-red-400";
   else if (product.availableQuantity <= 7) stockColor = "text-amber-400";
 
   return (
-    <div className="relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden group hover:border-slate-600 hover:shadow-md hover:shadow-black/30 transition-all duration-200 flex">
-      {/* Left: thumbnail */}
+    <div className="relative bg-[#1e293b] border border-slate-600/40 rounded-xl overflow-hidden group hover:border-slate-500 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
+
+      {/* Left: wider thumbnail */}
       <button
         onClick={onDetail}
-        className="relative w-16 flex-shrink-0 overflow-hidden bg-slate-800 focus:outline-none"
+        className="relative w-28 flex-shrink-0 overflow-hidden bg-slate-800 focus:outline-none"
         title="Ver detalhes"
       >
         <img
           src={product.thumbnail}
           alt={product.title}
-          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${product.availableQuantity === 0 ? "grayscale opacity-50" : ""}`}
+          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${product.availableQuantity === 0 ? "grayscale opacity-40" : ""}`}
         />
-        <div className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-0.5 py-[3px] ${accentBg} border-t ${accentBorder}`}>
-          <Icon className="w-2.5 h-2.5 text-white" />
-          <span className="text-[8px] font-bold text-white uppercase tracking-wide">{logText}</span>
+        {/* Logistic chip */}
+        <div className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1 ${accentBg} border-t ${accentBorder}`}>
+          <Icon className="w-3 h-3 text-white" />
+          <span className="text-[9px] font-bold text-white uppercase tracking-wide">{logText}</span>
         </div>
         {product.availableQuantity === 0 && (
-          <div className="absolute inset-x-0 top-[35%] flex justify-center">
-            <span className="bg-red-600/90 text-white text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded rotate-[-8deg]">Esgot.</span>
+          <div className="absolute inset-x-0 top-[32%] flex justify-center">
+            <span className="bg-red-600/90 text-white text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">Esgot.</span>
           </div>
         )}
       </button>
 
-      {/* Right: content */}
-      <div className="flex-1 flex flex-col p-2 gap-1 min-w-0">
+      {/* Right: content — more padding, larger text, full horizontal use */}
+      <div className="flex-1 flex flex-col px-3 py-2.5 gap-1.5 min-w-0">
+
+        {/* Title + SKU */}
         <div className="min-w-0">
           <button
             onClick={onDetail}
-            className="text-[10px] font-semibold text-slate-200 hover:text-blue-300 transition-colors leading-snug line-clamp-2 text-left w-full"
+            className="text-xs font-semibold text-slate-100 hover:text-blue-300 transition-colors leading-snug line-clamp-2 text-left w-full"
             title={product.title}
           >
             {product.title}
           </button>
-          <p className="text-[9px] font-mono text-slate-600 truncate mt-0.5">{product.sku}</p>
+          <p className="text-[10px] font-mono text-slate-500 truncate mt-0.5">{product.sku}</p>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Badges */}
+        <div className="flex items-center gap-2 flex-wrap">
           {product.status === "active" ? (
-            <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold text-emerald-400">
-              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" /> Ativo
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Ativo
             </span>
           ) : (
-            <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold text-amber-400">
-              <span className="w-1 h-1 rounded-full bg-amber-400" /> Pausado
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Pausado
             </span>
           )}
           {isPromo && (
-            <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold text-pink-400">
-              <Tag className="w-2 h-2" /> Promo
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-400 bg-pink-400/10 border border-pink-400/20 px-1.5 py-0.5 rounded-full">
+              <Tag className="w-2.5 h-2.5" /> Promo
             </span>
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-auto">
-          <div className="flex items-baseline gap-0.5">
-            <span className={`text-xl font-black leading-none ${stockColor}`}>{product.availableQuantity}</span>
-            <span className="text-[8px] text-slate-600 ml-0.5 uppercase tracking-widest font-semibold">un</span>
-            {product.availableQuantity > 0 && product.availableQuantity < 3 && <AlertTriangle className="w-2.5 h-2.5 text-red-500 ml-0.5" />}
-            {product.availableQuantity >= 3 && product.availableQuantity <= 7 && <AlertCircle className="w-2.5 h-2.5 text-amber-400 ml-0.5" />}
+        {/* Stock + edit — bottom row */}
+        <div className="flex items-end justify-between mt-auto gap-2">
+          {/* Stock */}
+          <div className="flex items-baseline gap-1">
+            <span className={`text-2xl font-black leading-none ${stockColor}`}>{product.availableQuantity}</span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">un</span>
+            {product.availableQuantity > 0 && product.availableQuantity < 3 && <AlertTriangle className="w-3 h-3 text-red-400 ml-0.5" />}
+            {product.availableQuantity >= 3 && product.availableQuantity <= 7 && <AlertCircle className="w-3 h-3 text-amber-400 ml-0.5" />}
           </div>
-          <button
-            onClick={onEdit}
-            className="w-5 h-5 flex items-center justify-center rounded text-slate-600 hover:text-white hover:bg-slate-700 transition-colors"
-            title="Editar estoque"
-          >
-            <Pencil className="w-2.5 h-2.5" />
-          </button>
+
+          {/* Price + edit */}
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-xs font-bold text-slate-200">{fmt(product.amount)}</p>
+              {isPromo && <p className="text-[9px] text-slate-500 line-through leading-none">{fmt(product.regularAmount)}</p>}
+            </div>
+            <button
+              onClick={onEdit}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-600 border border-slate-600/50 hover:border-slate-500 transition-colors flex-shrink-0"
+              title="Editar estoque"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-baseline gap-1">
-          <span className="text-[10px] font-bold text-slate-300">{fmt(product.amount)}</span>
-          {isPromo && <span className="text-[8px] text-slate-600 line-through">{fmt(product.regularAmount)}</span>}
-        </div>
       </div>
     </div>
   );
@@ -218,10 +229,10 @@ export function V9DenseGrid() {
   const endItem = Math.min(currentPage * itemsPerPage, TOTAL_SIMULATED);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-950 font-sans text-slate-200 overflow-hidden">
+    <div className="h-screen flex flex-col bg-[#07101e] font-sans text-slate-200 overflow-hidden">
 
       {/* ── Sticky header ── */}
-      <div className="flex-shrink-0 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800 px-4 py-2.5 z-10">
+      <div className="flex-shrink-0 bg-[#07101e]/98 backdrop-blur-sm border-b border-slate-700/50 px-4 py-2.5 z-10">
         <div className="flex gap-2 items-center flex-wrap">
 
           {/* Search */}
@@ -230,19 +241,19 @@ export function V9DenseGrid() {
             <input
               type="text"
               placeholder="Buscar título ou SKU..."
-              className="w-full bg-slate-900 border border-slate-800 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
           {/* Status filter */}
-          <select className="bg-slate-900 border border-slate-800 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <select className="bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option>Todos os status</option>
             <option>Ativo</option>
             <option>Pausado</option>
           </select>
 
           {/* Logistics filter */}
-          <select className="bg-slate-900 border border-slate-800 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <select className="bg-[#0d1a2e] border border-slate-700/60 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option>Toda logística</option>
             <option>Full</option>
             <option>Flex</option>
