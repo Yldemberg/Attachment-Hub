@@ -302,9 +302,10 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           resourceId: order.id.toString(),
         });
 
-        // Propagate post-sale stock to all same-SKU non-Full listings.
-        // Only trigger on confirmed paid orders to avoid reacting to interim statuses.
-        if (order.status === "paid") {
+        // Propagate stock to all same-SKU non-Full listings on sale confirmation
+        // AND on cancellation (ML restores stock of the original listing on cancel;
+        // we fetch the current ML quantity and push it to all siblings).
+        if (order.status === "paid" || order.status === "cancelled") {
           await propagateStockFromSale(account.id, order.order_items);
         }
       } else if (topic === "items") {
