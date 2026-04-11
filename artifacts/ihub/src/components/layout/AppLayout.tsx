@@ -122,7 +122,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
       <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="h-14 flex items-center px-4 border-b border-slate-800">
-          <img src={logo} alt="iHub" className="h-7 w-auto object-contain" />
+          <img src={logo} alt="iHub" className="h-9 w-auto object-contain" />
         </div>
 
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
@@ -190,6 +190,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="md:hidden h-14 flex items-center px-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+          <img src={logo} alt="iHub" className="h-8 w-auto object-contain" />
+        </header>
+
         {me?.plan === "trial" && me.trialEndsAt && (
           <TrialBanner trialEndsAt={me.trialEndsAt} />
         )}

@@ -56,7 +56,7 @@ export default function Register() {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8">
       <div className="w-full max-w-sm">
         <div className="mb-8">
-          <img src={logo} alt="iHub" className="h-9 w-auto object-contain" />
+          <img src={logo} alt="iHub" className="h-28 w-auto object-contain" />
         </div>
 
         <h1 className="text-2xl font-bold text-white mb-1">Criar conta</h1>
