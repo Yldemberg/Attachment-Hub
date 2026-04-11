@@ -102,10 +102,100 @@ const getHealthConfig = (level: ReturnType<typeof getHealthLevel>) => {
   }
 };
 
+function StockEditDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [qty, setQty] = useState(String(product.availableQuantity));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Editar Estoque</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <MoreVertical className="w-5 h-5 rotate-45" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mb-5 p-3 bg-slate-800 rounded-xl border border-slate-700">
+          <img src={product.thumbnail} alt={product.title} className="w-10 h-10 rounded-lg object-cover" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-white truncate">{product.title}</p>
+            <p className="text-xs font-mono text-slate-500">{product.sku}</p>
+          </div>
+        </div>
+        <label className="block text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+          Nova quantidade disponível
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-lg font-semibold text-center text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-5"
+        />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 border border-slate-700 rounded-lg py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button onClick={onClose} className="flex-1 bg-indigo-600 hover:bg-indigo-700 rounded-lg py-2 text-sm text-white font-medium transition-colors">
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const level = getHealthLevel(product.availableQuantity);
+  const config = getHealthConfig(level);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Detalhes do Produto</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <CheckCircle2 className="w-5 h-5 rotate-45" />
+          </button>
+        </div>
+        <div className="flex gap-4 mb-5">
+          <img src={product.thumbnail} alt={product.title} className="w-20 h-20 rounded-xl object-cover bg-slate-800 border border-slate-700" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-white leading-snug mb-1">{product.title}</h3>
+            <p className="text-xs font-mono text-slate-500 mb-2">{product.sku}</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-slate-400">{product.status === 'active' ? 'Ativo' : 'Pausado'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preço</p>
+            <p className="text-base font-bold text-white">{formatCurrency(product.amount)}</p>
+          </div>
+          <div className={cn("rounded-xl p-3 border", config.bg, config.borderCore)}>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Estoque</p>
+            <p className={cn("text-base font-bold", config.color)}>{product.availableQuantity} un.</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-3 border border-slate-700 col-span-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Logística</p>
+            <p className="text-sm font-medium text-white">
+              {product.isFull ? 'Full (Mercado Envios Full)' : product.isFlex ? 'Flex' : 'Cross-docking'}
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full border border-slate-700 rounded-xl py-2.5 text-sm text-slate-300 font-medium hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-center gap-2">
+          Ver no Mercado Livre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function V3HealthDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [logisticFilter, setLogisticFilter] = useState("all");
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
   // Sort products by urgency
   const sortedProducts = [...mockProducts].sort((a, b) => {
@@ -218,9 +308,13 @@ export function V3HealthDashboard() {
                       className="w-16 h-16 rounded-lg object-cover bg-slate-800 flex-shrink-0 border border-slate-700/50"
                     />
                     <div className="flex flex-col gap-1.5 min-w-0">
-                      <h3 className="text-sm font-semibold text-white leading-tight line-clamp-2" title={product.title}>
+                      <button
+                        onClick={() => setDetailProduct(product)}
+                        className="text-sm font-semibold text-white hover:text-indigo-400 transition-colors leading-tight line-clamp-2 text-left"
+                        title={product.title}
+                      >
                         {product.title}
-                      </h3>
+                      </button>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono text-slate-400">
                           {product.sku}
@@ -292,8 +386,11 @@ export function V3HealthDashboard() {
 
                   {/* Actions / Status */}
                   <div className="hidden sm:flex flex-col justify-center items-center gap-2 pl-4">
-                    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md transition-colors whitespace-nowrap">
+                    <div className="flex flex-col items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditingProduct(product)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md transition-colors whitespace-nowrap"
+                      >
                         <Pencil className="w-3.5 h-3.5" />
                         Editar Estoque
                       </button>
@@ -339,6 +436,13 @@ export function V3HealthDashboard() {
         </div>
 
       </div>
+
+      {editingProduct && (
+        <StockEditDialog product={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
+      {detailProduct && (
+        <DetailDialog product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { 
   Warehouse, 
   Zap, 
@@ -10,7 +10,9 @@ import {
   Package,
   ChevronLeft,
   ChevronRight,
-  Edit2
+  Edit2,
+  X,
+  ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,10 +56,102 @@ const mockProducts = [
   },
 ];
 
+type Product = typeof mockProducts[0];
+
 const formatCurrency = (v: number | null | undefined) => 
   v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-function LogisticBadge({ product }: { product: any }) {
+function StockEditDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [qty, setQty] = useState(String(product.availableQuantity));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-[#111118] border border-[#2a2a3a] rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Editar Estoque</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mb-5 p-3 bg-[#1a1a24] rounded-xl border border-[#2a2a3a]">
+          <img src={product.thumbnail} alt={product.title} className="w-10 h-10 rounded-lg object-cover" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-white truncate">{product.title}</p>
+            <p className="text-xs font-mono text-slate-500">{product.sku}</p>
+          </div>
+        </div>
+        <label className="block text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+          Nova quantidade disponível
+        </label>
+        <Input
+          type="number"
+          min="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          className="bg-[#1a1a24] border-[#2a2a3a] text-white text-lg font-semibold text-center mb-5 focus-visible:ring-blue-500"
+        />
+        <div className="flex gap-3">
+          <Button variant="ghost" onClick={onClose} className="flex-1 text-slate-400 hover:text-white border border-[#2a2a3a] hover:bg-[#1a1a24]">
+            Cancelar
+          </Button>
+          <Button onClick={onClose} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-[#111118] border border-[#2a2a3a] rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Detalhes do Produto</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex gap-4 mb-5">
+          <img src={product.thumbnail} alt={product.title} className="w-20 h-20 rounded-xl object-cover bg-[#1a1a24] border border-[#2a2a3a]" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-white leading-snug mb-1">{product.title}</h3>
+            <p className="text-xs font-mono text-slate-500 mb-2">{product.sku}</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-slate-400">{product.status === 'active' ? 'Ativo' : 'Pausado'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-[#1a1a24] rounded-xl p-3 border border-[#2a2a3a]">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preço</p>
+            <p className="text-base font-bold text-white">{formatCurrency(product.amount)}</p>
+            {product.regularAmount && <p className="text-xs text-slate-500 line-through">{formatCurrency(product.regularAmount)}</p>}
+          </div>
+          <div className="bg-[#1a1a24] rounded-xl p-3 border border-[#2a2a3a]">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Estoque</p>
+            <p className={`text-base font-bold ${product.availableQuantity < 3 ? 'text-red-400' : product.availableQuantity <= 7 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {product.availableQuantity} un.
+            </p>
+          </div>
+          <div className="bg-[#1a1a24] rounded-xl p-3 border border-[#2a2a3a] col-span-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Logística</p>
+            <p className="text-sm font-medium text-white">
+              {product.isFull ? 'Full (Mercado Envios Full)' : product.isFlex ? 'Flex' : 'Cross-docking'}
+            </p>
+          </div>
+        </div>
+        <Button onClick={onClose} className="w-full border-[#2a2a3a] bg-[#1a1a24] text-slate-200 hover:bg-[#2a2a3a]" variant="outline">
+          <ExternalLink className="w-4 h-4 mr-2" />
+          Ver no Mercado Livre
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LogisticBadge({ product }: { product: Product }) {
   if (product.isFull) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 border border-green-500/20 px-2.5 py-1 text-xs font-medium text-green-400">
@@ -133,6 +227,9 @@ function StockDisplay({ qty }: { qty: number }) {
 }
 
 export function V4FocusList() {
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-slate-200 p-6 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -192,9 +289,12 @@ export function V4FocusList() {
                   
                   {/* Top Row */}
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-base font-semibold text-white leading-snug truncate whitespace-normal line-clamp-2">
+                    <button
+                      onClick={() => setDetailProduct(product)}
+                      className="text-base font-semibold text-white hover:text-blue-400 transition-colors leading-snug text-left line-clamp-2"
+                    >
                       {product.title}
-                    </h3>
+                    </button>
                     <div className="text-right shrink-0">
                       {hasPromo && (
                         <div className="text-xs text-slate-500 line-through mb-0.5">
@@ -231,9 +331,14 @@ export function V4FocusList() {
 
                 {/* Edit Button (Hover) */}
                 <div className="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:block">
-                  <Button size="sm" variant="secondary" className="bg-[#1a1a24] text-white hover:bg-[#2a2a3a] border border-[#2a2a3a]">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setEditingProduct(product)}
+                    className="bg-[#1a1a24] text-white hover:bg-[#2a2a3a] border border-[#2a2a3a]"
+                  >
                     <Edit2 className="h-4 w-4 mr-2" />
-                    Editar
+                    Editar Estoque
                   </Button>
                 </div>
               </div>
@@ -259,6 +364,13 @@ export function V4FocusList() {
         </div>
 
       </div>
+
+      {editingProduct && (
+        <StockEditDialog product={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
+      {detailProduct && (
+        <DetailDialog product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
     </div>
   );
 }

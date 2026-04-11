@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Package,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -54,11 +56,105 @@ const mockProducts = [
   },
 ];
 
+type Product = typeof mockProducts[0];
+
 const formatCurrency = (v: number | null | undefined) =>
   v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+function StockEditDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [qty, setQty] = useState(String(product.availableQuantity));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-gray-900">Editar Estoque</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mb-5 p-3 bg-gray-50 rounded-xl border border-gray-200">
+          <img src={product.thumbnail} alt={product.title} className="w-10 h-10 rounded-lg object-cover" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">{product.title}</p>
+            <p className="text-xs font-mono text-gray-400">{product.sku}</p>
+          </div>
+        </div>
+        <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">
+          Nova quantidade disponível
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-lg font-semibold text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
+        />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancelar
+          </button>
+          <button onClick={onClose} className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-lg py-2 text-sm text-white font-medium transition-colors">
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-gray-900">Detalhes do Produto</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex gap-4 mb-5">
+          <img src={product.thumbnail} alt={product.title} className="w-20 h-20 rounded-xl object-cover bg-gray-100 border border-gray-200" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 leading-snug mb-1">{product.title}</h3>
+            <p className="text-xs font-mono text-gray-400 mb-2">{product.sku}</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-gray-500">{product.status === 'active' ? 'Ativo' : 'Pausado'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Preço</p>
+            <p className="text-base font-bold text-gray-900">{formatCurrency(product.amount)}</p>
+            {product.regularAmount && <p className="text-xs text-gray-400 line-through">{formatCurrency(product.regularAmount)}</p>}
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Estoque</p>
+            <p className={`text-base font-bold ${product.availableQuantity < 3 ? 'text-red-500' : product.availableQuantity <= 7 ? 'text-amber-500' : 'text-emerald-600'}`}>
+              {product.availableQuantity} un.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 col-span-2">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Logística</p>
+            <p className="text-sm font-medium text-gray-900">
+              {product.isFull ? 'Full (Mercado Envios Full)' : product.isFlex ? 'Flex' : 'Cross-docking'}
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full border border-gray-200 rounded-xl py-2.5 text-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+          <ExternalLink className="w-4 h-4" />
+          Ver no Mercado Livre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function V2CommerceGrid() {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-6 md:p-8 font-sans">
@@ -180,18 +276,32 @@ export function V2CommerceGrid() {
                   )}
 
                   {/* Quick Action Overlay on Hover */}
-                  <div className={`absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 transition-opacity duration-200 ${hoveredCardId === product.id ? 'opacity-100' : ''} pointer-events-none`}>
-                     <Button className="pointer-events-auto bg-white text-gray-900 hover:bg-gray-100 font-semibold" size="sm">
-                        Editar Produto
+                  <div className={`absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-0 transition-opacity duration-200 ${hoveredCardId === product.id ? 'opacity-100' : ''}`}>
+                     <Button
+                       className="pointer-events-auto bg-white text-gray-900 hover:bg-gray-100 font-semibold"
+                       size="sm"
+                       onClick={() => setEditingProduct(product)}
+                     >
+                       Editar Estoque
+                     </Button>
+                     <Button
+                       className="pointer-events-auto bg-blue-600 text-white hover:bg-blue-700 font-semibold"
+                       size="sm"
+                       onClick={() => setDetailProduct(product)}
+                     >
+                       Ver Detalhes
                      </Button>
                   </div>
                 </div>
 
                 {/* Body */}
                 <div className="p-4 flex-1 flex flex-col">
-                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight flex-1">
+                  <button
+                    onClick={() => setDetailProduct(product)}
+                    className="text-sm font-semibold text-gray-900 hover:text-blue-600 transition-colors line-clamp-2 leading-tight flex-1 text-left"
+                  >
                     {product.title}
-                  </h3>
+                  </button>
                   <div className="text-xs text-gray-400 font-mono mt-2 truncate">
                     {product.sku}
                   </div>
@@ -259,6 +369,13 @@ export function V2CommerceGrid() {
           </div>
         </div>
       </div>
+
+      {editingProduct && (
+        <StockEditDialog product={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
+      {detailProduct && (
+        <DetailDialog product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
     </div>
   );
 }

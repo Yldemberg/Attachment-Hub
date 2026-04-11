@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { 
   Warehouse, Zap, Truck, Tag, AlertTriangle, AlertCircle, 
-  Search, Package, Pencil, ChevronLeft, ChevronRight, CheckCircle2
+  Search, Package, Pencil, ChevronLeft, ChevronRight, CheckCircle2, X, ExternalLink
 } from "lucide-react";
 
 const mockProducts = [
@@ -43,10 +43,105 @@ const mockProducts = [
   },
 ];
 
+type Product = typeof mockProducts[0];
+
 const formatCurrency = (v: number | null | undefined) => 
   v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+function StockEditDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [qty, setQty] = useState(String(product.availableQuantity));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Editar Estoque</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mb-5 p-3 bg-slate-800 rounded-xl border border-slate-700">
+          <img src={product.thumbnail} alt={product.title} className="w-10 h-10 rounded-lg object-cover" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-white truncate">{product.title}</p>
+            <p className="text-xs font-mono text-slate-500">{product.sku}</p>
+          </div>
+        </div>
+        <label className="block text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+          Nova quantidade disponível
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-lg font-semibold text-center text-white focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
+        />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 border border-slate-700 rounded-lg py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button onClick={onClose} className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-lg py-2 text-sm text-white font-medium transition-colors">
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Detalhes do Produto</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex gap-4 mb-5">
+          <img src={product.thumbnail} alt={product.title} className="w-20 h-20 rounded-xl object-cover bg-slate-800 border border-slate-700" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-white leading-snug mb-1">{product.title}</h3>
+            <p className="text-xs font-mono text-slate-500 mb-2">{product.sku}</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-slate-400">{product.status === 'active' ? 'Ativo' : 'Pausado'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preço</p>
+            <p className="text-base font-bold text-white">{formatCurrency(product.amount)}</p>
+            {product.regularAmount && <p className="text-xs text-slate-500 line-through">{formatCurrency(product.regularAmount)}</p>}
+          </div>
+          <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Estoque</p>
+            <p className={`text-base font-bold ${product.availableQuantity < 3 ? 'text-red-400' : product.availableQuantity <= 7 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {product.availableQuantity} un.
+            </p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-3 border border-slate-700 col-span-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Logística</p>
+            <p className="text-sm font-medium text-white">
+              {product.isFull ? 'Full (Mercado Envios Full)' : product.isFlex ? 'Flex' : 'Cross-docking'}
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full border border-slate-700 rounded-xl py-2.5 text-sm text-slate-300 font-medium hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-center gap-2">
+          <ExternalLink className="w-4 h-4" />
+          Ver no Mercado Livre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function V5BentoSignal() {
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+
   return (
     <div className="min-h-screen bg-slate-950 p-4 md:p-8 font-sans text-slate-200">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -140,15 +235,25 @@ export function V5BentoSignal() {
                   
                   {/* Row 1: Image & Title */}
                   <div className="flex gap-3 h-[40px]">
-                    <img 
-                      src={product.thumbnail} 
-                      alt={product.title} 
-                      className={`w-[40px] h-[40px] rounded-lg object-cover bg-slate-700 ${product.availableQuantity === 0 ? 'grayscale' : ''}`}
-                    />
+                    <button
+                      onClick={() => setDetailProduct(product)}
+                      className={`w-[40px] h-[40px] rounded-lg overflow-hidden bg-slate-700 hover:ring-2 hover:ring-white/30 transition-all flex-shrink-0 focus:outline-none ${product.availableQuantity === 0 ? 'grayscale' : ''}`}
+                      title="Ver detalhes"
+                    >
+                      <img 
+                        src={product.thumbnail} 
+                        alt={product.title} 
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
                     <div className="flex-1 overflow-hidden">
-                      <h3 className="text-xs font-semibold text-white leading-tight line-clamp-2" title={product.title}>
+                      <button
+                        onClick={() => setDetailProduct(product)}
+                        className="text-xs font-semibold text-white hover:text-blue-300 transition-colors leading-tight line-clamp-2 text-left w-full"
+                        title={product.title}
+                      >
                         {product.title}
-                      </h3>
+                      </button>
                       <p className="text-[10px] text-slate-400 truncate mt-0.5">{product.sku}</p>
                     </div>
                   </div>
@@ -197,7 +302,11 @@ export function V5BentoSignal() {
                     )}
                   </div>
                   
-                  <button className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-700 transition-colors z-20" title="Editar estoque">
+                  <button
+                    onClick={() => setEditingProduct(product)}
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-700 transition-colors z-20"
+                    title="Editar estoque"
+                  >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -235,6 +344,13 @@ export function V5BentoSignal() {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
+
+      {editingProduct && (
+        <StockEditDialog product={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
+      {detailProduct && (
+        <DetailDialog product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
     </div>
   );
 }

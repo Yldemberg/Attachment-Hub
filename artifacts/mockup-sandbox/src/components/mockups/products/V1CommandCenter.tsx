@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Warehouse, Zap, Truck, Tag, AlertTriangle, AlertCircle, 
-  Search, Package, ChevronLeft, ChevronRight, Edit2
+  Search, Package, ChevronLeft, ChevronRight, Edit2, X, ExternalLink
 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,105 @@ const mockProducts = [
   },
 ];
 
+type Product = typeof mockProducts[0];
+
 const formatCurrency = (v: number | null | undefined) => 
   v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+function StockEditDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [qty, setQty] = useState(String(product.availableQuantity));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Editar Estoque</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mb-5 p-3 bg-slate-800 rounded-lg">
+          <img src={product.thumbnail} alt={product.title} className="w-10 h-10 rounded-md object-cover" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-white truncate">{product.title}</p>
+            <p className="text-xs font-mono text-slate-500">{product.sku}</p>
+          </div>
+        </div>
+        <label className="block text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+          Nova quantidade disponível
+        </label>
+        <Input
+          type="number"
+          min="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          className="bg-slate-800 border-slate-700 text-white text-lg font-semibold text-center mb-5"
+        />
+        <div className="flex gap-3">
+          <Button variant="ghost" onClick={onClose} className="flex-1 text-slate-400 hover:text-white border border-slate-700 hover:bg-slate-800">
+            Cancelar
+          </Button>
+          <Button onClick={onClose} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-white">Detalhes do Produto</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex gap-4 mb-5">
+          <img src={product.thumbnail} alt={product.title} className="w-20 h-20 rounded-xl object-cover bg-slate-800 border border-slate-700" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-white leading-snug mb-1">{product.title}</h3>
+            <p className="text-xs font-mono text-slate-500 mb-2">{product.sku}</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-slate-400">{product.status === 'active' ? 'Ativo' : 'Pausado'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-slate-800 rounded-lg p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preço</p>
+            <p className="text-base font-bold text-white">{formatCurrency(product.amount)}</p>
+            {product.regularAmount && <p className="text-xs text-slate-500 line-through">{formatCurrency(product.regularAmount)}</p>}
+          </div>
+          <div className="bg-slate-800 rounded-lg p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Estoque</p>
+            <p className={`text-base font-bold ${product.availableQuantity < 3 ? 'text-red-400' : product.availableQuantity <= 7 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {product.availableQuantity} un.
+            </p>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-3 col-span-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Logística</p>
+            <p className="text-sm font-medium text-white">
+              {product.isFull ? 'Full (Mercado Envios Full)' : product.isFlex ? 'Flex' : 'Cross-docking'}
+            </p>
+          </div>
+        </div>
+        <Button onClick={onClose} className="w-full" variant="outline">
+          <ExternalLink className="w-4 h-4 mr-2" />
+          Ver no Mercado Livre
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function V1CommandCenter() {
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+
   return (
     <div className="min-h-screen bg-slate-950 p-6 text-slate-200 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -108,7 +203,6 @@ export function V1CommandCenter() {
         {/* Product List */}
         <div className="space-y-3">
           {mockProducts.map((product) => {
-            // Determine left border color based on logistics
             let borderClass = "";
             if (product.isFull) borderClass = "border-l-[4px] border-l-green-500";
             else if (product.isFlex) borderClass = "border-l-[4px] border-l-orange-500";
@@ -119,18 +213,21 @@ export function V1CommandCenter() {
                 key={product.id}
                 className={`bg-slate-900 rounded-xl shadow-sm border border-slate-800 ${borderClass} p-4 flex flex-col md:flex-row items-start md:items-center gap-4 transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_4px_20px_-4px_rgba(59,130,246,0.15)] group`}
               >
-                {/* Left Side: Thumbnail & Logistic Badges */}
+                {/* Left Side: Thumbnail */}
                 <div className="flex flex-col items-center gap-2 shrink-0">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-800 border border-slate-700">
+                  <button
+                    onClick={() => setDetailProduct(product)}
+                    className="w-14 h-14 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 hover:ring-2 hover:ring-blue-500 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    title="Ver detalhes"
+                  >
                     <img 
                       src={product.thumbnail} 
                       alt={product.title}
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
-                  </div>
+                  </button>
                   
-                  {/* Logistic Badge Stacked Below Thumbnail in Mobile, or maybe just leave it there */}
                   <div className="flex flex-col gap-1 w-full items-center md:items-start md:hidden">
                     {product.isFull && (
                       <Badge className="bg-green-500/10 text-green-400 hover:bg-green-500/20 border-green-500/20 text-[10px] px-1.5 py-0 h-5 w-full justify-center">
@@ -153,9 +250,13 @@ export function V1CommandCenter() {
                 {/* Center: Title & SKU & Inline Badges for Desktop */}
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-sm font-semibold text-white truncate line-clamp-2 leading-tight" title={product.title}>
+                    <button
+                      onClick={() => setDetailProduct(product)}
+                      className="text-sm font-semibold text-white hover:text-blue-400 transition-colors truncate line-clamp-2 leading-tight text-left"
+                      title={product.title}
+                    >
                       {product.title}
-                    </h3>
+                    </button>
                   </div>
                   
                   <div className="flex items-center gap-3 flex-wrap">
@@ -185,13 +286,12 @@ export function V1CommandCenter() {
                       )}
                     </div>
                   </div>
-                  {/* Promo badge for mobile */}
                   <div className="md:hidden mt-2">
-                     {product.regularAmount != null && product.regularAmount > product.amount && (
-                        <Badge className="bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 border-pink-500/20 text-xs px-2 py-0.5">
-                          <Tag className="w-3 h-3 mr-1.5" /> Promo
-                        </Badge>
-                      )}
+                    {product.regularAmount != null && product.regularAmount > product.amount && (
+                      <Badge className="bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 border-pink-500/20 text-xs px-2 py-0.5">
+                        <Tag className="w-3 h-3 mr-1.5" /> Promo
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -239,8 +339,14 @@ export function V1CommandCenter() {
                     </div>
                   </div>
 
-                  {/* Action */}
-                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white hover:bg-slate-800 h-9 w-9 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Edit Stock Action */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setEditingProduct(product)}
+                    className="text-slate-400 hover:text-white hover:bg-slate-800 h-9 w-9 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Editar estoque"
+                  >
                     <Edit2 className="w-4 h-4" />
                     <span className="sr-only">Editar estoque</span>
                   </Button>
@@ -269,6 +375,13 @@ export function V1CommandCenter() {
         </div>
 
       </div>
+
+      {editingProduct && (
+        <StockEditDialog product={editingProduct} onClose={() => setEditingProduct(null)} />
+      )}
+      {detailProduct && (
+        <DetailDialog product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
     </div>
   );
 }
