@@ -1,0 +1,771 @@
+[
+  {
+    "id": "MLB1955907315",
+    "site_id": "MLB",
+    "title": "Kit 12 Pares Meia Feminina Cano Medio Atacado Revenda 34-41  Sortidas Meias Coloridas Divertidas 35 Ao 40",
+    "family_name": "Kit 12 Pares Meia Feminina Cano Medio Atacado Revenda 34-41 ",
+    "family_id": 4315561764376981,
+    "seller_id": 454545147,
+    "category_id": "MLB108791",
+    "user_product_id": "MLBU1930351168",
+    "official_store_id": 319644,
+    "price": 59.9,
+    "base_price": 59.9,
+    "original_price": null,
+    "inventory_id": "UFAT85810",
+    "currency_id": "BRL",
+    "initial_quantity": 7904,
+    "available_quantity": 119,
+    "sold_quantity": 7785,
+    "sale_terms": [
+      {
+        "id": "PURCHASE_MAX_QUANTITY",
+        "name": "Quantidade máxima de compra",
+        "value_id": null,
+        "value_name": "500",
+        "value_struct": null,
+        "values": [
+          {
+            "id": null,
+            "name": "500",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "WARRANTY_TYPE",
+        "name": "Tipo de garantia",
+        "value_id": "2230280",
+        "value_name": "Garantia do vendedor",
+        "value_struct": null,
+        "values": [
+          {
+            "id": "2230280",
+            "name": "Garantia do vendedor",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "WARRANTY_TIME",
+        "name": "Tempo de garantia",
+        "value_id": null,
+        "value_name": "15 dias",
+        "value_struct": {
+          "number": 15,
+          "unit": "dias"
+        },
+        "values": [
+          {
+            "id": null,
+            "name": "15 dias",
+            "struct": {
+              "number": 15,
+              "unit": "dias"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      }
+    ],
+    "buying_mode": "buy_it_now",
+    "listing_type_id": "gold_special",
+    "start_time": "2021-07-22T14:16:28.000Z",
+    "stop_time": "2045-05-16T13:54:12.887Z",
+    "end_time": "2045-05-16T13:54:12.887Z",
+    "expiration_time": "2026-10-11T12:09:12.643Z",
+    "condition": "new",
+    "permalink": "https://produto.mercadolivre.com.br/MLB-1955907315-kit-12-pares-meia-feminina-cano-medio-atacado-revenda-34-41-sortidas-meias-coloridas-divertidas-35-ao-40-_JM",
+    "thumbnail_id": "782107-MLB54839938798_042023",
+    "thumbnail": "http://http2.mlstatic.com/D_782107-MLB54839938798_042023-I.jpg",
+    "pictures": [
+      {
+        "id": "782107-MLB54839938798_042023",
+        "url": "http://http2.mlstatic.com/D_782107-MLB54839938798_042023-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_782107-MLB54839938798_042023-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "611204-MLB93385644845_092025",
+        "url": "http://http2.mlstatic.com/D_611204-MLB93385644845_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_611204-MLB93385644845_092025-O.jpg",
+        "size": "388x500",
+        "max_size": "932x1200",
+        "quality": ""
+      },
+      {
+        "id": "946933-MLB53159169894_012023",
+        "url": "http://http2.mlstatic.com/D_946933-MLB53159169894_012023-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_946933-MLB53159169894_012023-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "929181-MLB93385068781_092025",
+        "url": "http://http2.mlstatic.com/D_929181-MLB93385068781_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_929181-MLB93385068781_092025-O.jpg",
+        "size": "388x500",
+        "max_size": "896x1152",
+        "quality": ""
+      },
+      {
+        "id": "997039-MLB54909738739_042023",
+        "url": "http://http2.mlstatic.com/D_997039-MLB54909738739_042023-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_997039-MLB54909738739_042023-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "751010-MLB51695242854_092022",
+        "url": "http://http2.mlstatic.com/D_751010-MLB51695242854_092022-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_751010-MLB51695242854_092022-O.jpg",
+        "size": "313x500",
+        "max_size": "753x1200",
+        "quality": ""
+      },
+      {
+        "id": "887084-MLB51695307531_092022",
+        "url": "http://http2.mlstatic.com/D_887084-MLB51695307531_092022-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_887084-MLB51695307531_092022-O.jpg",
+        "size": "263x500",
+        "max_size": "633x1200",
+        "quality": ""
+      },
+      {
+        "id": "646232-MLB51695462099_092022",
+        "url": "http://http2.mlstatic.com/D_646232-MLB51695462099_092022-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_646232-MLB51695462099_092022-O.jpg",
+        "size": "247x500",
+        "max_size": "595x1200",
+        "quality": ""
+      },
+      {
+        "id": "708303-MLB93385068007_092025",
+        "url": "http://http2.mlstatic.com/D_708303-MLB93385068007_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_708303-MLB93385068007_092025-O.jpg",
+        "size": "388x500",
+        "max_size": "896x1152",
+        "quality": ""
+      },
+      {
+        "id": "727123-MLB93385069077_092025",
+        "url": "http://http2.mlstatic.com/D_727123-MLB93385069077_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_727123-MLB93385069077_092025-O.jpg",
+        "size": "388x500",
+        "max_size": "896x1152",
+        "quality": ""
+      }
+    ],
+    "video_id": null,
+    "descriptions": [],
+    "accepts_mercadopago": true,
+    "non_mercado_pago_payment_methods": [],
+    "shipping": {
+      "mode": "me2",
+      "methods": [],
+      "tags": [
+        "self_service_in"
+      ],
+      "dimensions": null,
+      "local_pick_up": false,
+      "free_shipping": false,
+      "logistic_type": "fulfillment",
+      "store_pick_up": false
+    },
+    "international_delivery_mode": "none",
+    "seller_address": {
+      "comment": "ULOCK",
+      "address_line": "Rua Clímaco Barbosa 700",
+      "zip_code": "01523000",
+      "city": {
+        "id": "BR-SP-44",
+        "name": "São Paulo"
+      },
+      "state": {
+        "id": "BR-SP",
+        "name": "São Paulo"
+      },
+      "country": {
+        "id": "BR",
+        "name": "Brasil"
+      },
+      "search_location": {
+        "neighborhood": {
+          "id": "TUxCQkNBTTYzMzc",
+          "name": "Cambuci"
+        },
+        "city": {
+          "id": "TUxCQ1NQLTkxMjE",
+          "name": "São Paulo Zona Sul"
+        },
+        "state": {
+          "id": "TUxCUFNBT085N2E4",
+          "name": "São Paulo"
+        }
+      },
+      "latitude": -23.5666719,
+      "longitude": -46.61462299999999,
+      "id": 1405311117
+    },
+    "seller_contact": null,
+    "location": {},
+    "geolocation": {
+      "latitude": -23.5666719,
+      "longitude": -46.61462299999999
+    },
+    "coverage_areas": [],
+    "attributes": [
+      {
+        "id": "BRAND",
+        "name": "Marca",
+        "value_id": "73770662",
+        "value_name": "OTM SHOP",
+        "values": [
+          {
+            "id": "73770662",
+            "name": "OTM SHOP",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "MODEL",
+        "name": "Modelo",
+        "value_id": null,
+        "value_name": "Kit 12 Pares de Meia Feminina Médio,Kit com 12 Pares de Meias Coloridas de Cano Médio, Kit de Meias Femininas de Algodão Colorida, Kit de Meias Femininas de Atacado em Promoção, Kit de Meias Infantis Femininas Divertidas, Kit de Meias Juvenis Feminina",
+        "values": [
+          {
+            "id": null,
+            "name": "Kit 12 Pares de Meia Feminina Médio,Kit com 12 Pares de Meias Coloridas de Cano Médio, Kit de Meias Femininas de Algodão Colorida, Kit de Meias Femininas de Atacado em Promoção, Kit de Meias Infantis Femininas Divertidas, Kit de Meias Juvenis Feminina",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "AGE_GROUP",
+        "name": "Idade",
+        "value_id": "6725189",
+        "value_name": "Adultos",
+        "values": [
+          {
+            "id": "6725189",
+            "name": "Adultos",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "CHARACTER",
+        "name": "Personagem",
+        "value_id": "3678050",
+        "value_name": "Coração",
+        "values": [
+          {
+            "id": "3678050",
+            "name": "Coração",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "COLOR",
+        "name": "Cor",
+        "value_id": null,
+        "value_name": "Sortidas Meias Coloridas Divertidas",
+        "values": [
+          {
+            "id": null,
+            "name": "Sortidas Meias Coloridas Divertidas",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "COMPOSITION",
+        "name": "Composição",
+        "value_id": null,
+        "value_name": "40% algodão,5% elastano,55% poliéster",
+        "values": [
+          {
+            "id": "13751581",
+            "name": "40% algodão",
+            "struct": null
+          },
+          {
+            "id": "4682228",
+            "name": "5% elastano",
+            "struct": null
+          },
+          {
+            "id": "6561689",
+            "name": "55% poliéster",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "FILTRABLE_GENDER",
+        "name": "Gênero filtrável",
+        "value_id": "18549361",
+        "value_name": "Feminino",
+        "values": [
+          {
+            "id": "18549361",
+            "name": "Feminino",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "GENDER",
+        "name": "Gênero",
+        "value_id": "339665",
+        "value_name": "Feminino",
+        "values": [
+          {
+            "id": "339665",
+            "name": "Feminino",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "GTIN",
+        "name": "Código universal de produto",
+        "value_id": null,
+        "value_name": "7908096955279",
+        "values": [
+          {
+            "id": null,
+            "name": "7908096955279",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "IS_EMERGING_BRAND",
+        "name": "É marca emergente",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_HIGHLIGHT_BRAND",
+        "name": "É marca destacada",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_KIT",
+        "name": "É kit",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_TOM_BRAND",
+        "name": "É marca TOM",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "ITEM_CONDITION",
+        "name": "Condição do item",
+        "value_id": "2230284",
+        "value_name": "Novo",
+        "values": [
+          {
+            "id": "2230284",
+            "name": "Novo",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "LENGTH_TYPE",
+        "name": "Tipo de comprimento",
+        "value_id": "433368",
+        "value_name": "Longo",
+        "values": [
+          {
+            "id": "433368",
+            "name": "Longo",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "MAIN_COLOR",
+        "name": "Cor principal",
+        "value_id": null,
+        "value_name": "Sortidas",
+        "values": [
+          {
+            "id": null,
+            "name": "Sortidas",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "MAIN_MATERIAL",
+        "name": "Material principal",
+        "value_id": "466794",
+        "value_name": "Poliéster",
+        "values": [
+          {
+            "id": "466794",
+            "name": "Poliéster",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "PACKAGE_HEIGHT",
+        "name": "Altura da embalagem",
+        "value_id": null,
+        "value_name": "4.6 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "4.6 cm",
+            "struct": {
+              "number": 4.6,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_LENGTH",
+        "name": "Comprimento da embalagem",
+        "value_id": null,
+        "value_name": "37 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "37 cm",
+            "struct": {
+              "number": 37,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WEIGHT",
+        "name": "Peso da embalagem",
+        "value_id": null,
+        "value_name": "340 g",
+        "values": [
+          {
+            "id": null,
+            "name": "340 g",
+            "struct": {
+              "number": 340,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WIDTH",
+        "name": "Largura da embalagem",
+        "value_id": null,
+        "value_name": "31.9 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "31.9 cm",
+            "struct": {
+              "number": 31.9,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PAIRS_NUMBER",
+        "name": "Quantidade de pares",
+        "value_id": null,
+        "value_name": "12",
+        "values": [
+          {
+            "id": null,
+            "name": "12",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "PRODUCT_FEATURES",
+        "name": "Características do produto",
+        "value_id": null,
+        "value_name": "Sem validade,Dobrável",
+        "values": [
+          {
+            "id": "8847339",
+            "name": "Sem validade",
+            "struct": null
+          },
+          {
+            "id": "41722098",
+            "name": "Dobrável",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "RELEASE_SEASON",
+        "name": "Temporada de lançamento",
+        "value_id": "994284",
+        "value_name": "Outono/Inverno",
+        "values": [
+          {
+            "id": "994284",
+            "name": "Outono/Inverno",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "SELLER_PACKAGE_HEIGHT",
+        "name": "Altura da embalagem do vendor",
+        "value_id": null,
+        "value_name": "37 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "37 cm",
+            "struct": {
+              "number": 37,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_LENGTH",
+        "name": "Comprimento da embalagem do vendor",
+        "value_id": null,
+        "value_name": "5 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "5 cm",
+            "struct": {
+              "number": 5,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_WEIGHT",
+        "name": "Peso da embalagem do vendor",
+        "value_id": null,
+        "value_name": "426 g",
+        "values": [
+          {
+            "id": null,
+            "name": "426 g",
+            "struct": {
+              "number": 426,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_WIDTH",
+        "name": "Largura da embalagem do vendor",
+        "value_id": null,
+        "value_name": "32 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "32 cm",
+            "struct": {
+              "number": 32,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_SKU",
+        "name": "SKU",
+        "value_id": null,
+        "value_name": "K12MeCMe",
+        "values": [
+          {
+            "id": null,
+            "name": "K12MeCMe",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SHIPMENT_PACKING",
+        "name": "Embalagem do envío",
+        "value_id": "7435891",
+        "value_name": "Flyer",
+        "values": [
+          {
+            "id": "7435891",
+            "name": "Flyer",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "SIZE",
+        "name": "Tamanho",
+        "value_id": "74973979",
+        "value_name": "35 ao 40",
+        "values": [
+          {
+            "id": "74973979",
+            "name": "35 ao 40",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SOCKS_TYPE",
+        "name": "Tipo de meias",
+        "value_id": "1211124",
+        "value_name": "Esportivas",
+        "values": [
+          {
+            "id": "1211124",
+            "name": "Esportivas",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "TOE_TYPE",
+        "name": "Tipo de ponta",
+        "value_id": "44992024",
+        "value_name": "Reforzada",
+        "values": [
+          {
+            "id": "44992024",
+            "name": "Reforzada",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "WITH_RECYCLED_MATERIALS",
+        "name": "Com materiais reciclados",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      }
+    ],
+    "warnings": [],
+    "listing_source": "",
+    "variations": [],
+    "status": "active",
+    "sub_status": [],
+    "tags": [
+      "user_product_listing",
+      "good_quality_picture",
+      "good_quality_thumbnail",
+      "standard_price_by_quantity",
+      "immediate_payment",
+      "cart_eligible"
+    ],
+    "warranty": "Garantia do vendedor: 15 dias",
+    "catalog_product_id": null,
+    "domain_id": "MLB-SOCKS",
+    "seller_custom_field": "K12MeCM",
+    "parent_item_id": null,
+    "differential_pricing": null,
+    "deal_ids": [],
+    "automatic_relist": false,
+    "date_created": "2021-07-22T14:16:28.000Z",
+    "last_updated": "2026-04-11T02:37:10.663Z",
+    "health": 0.85,
+    "catalog_listing": false,
+    "item_relations": [],
+    "channels": [
+      "marketplace",
+      "mshops"
+    ]
+  }
+]

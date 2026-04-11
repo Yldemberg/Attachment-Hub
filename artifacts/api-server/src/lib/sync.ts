@@ -70,9 +70,9 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         }
       }
 
-      // Batch endpoint does not return `tags`; enrich from individual endpoint if missing.
+      // Batch endpoint may omit shipping.tags; enrich from individual endpoint if missing.
       const taggedItem = await enrichMlItemWithTags(accountId, workItem);
-      const isFlex = Array.isArray(taggedItem.tags) && taggedItem.tags.includes("self_service_in");
+      const isFlex = Array.isArray(taggedItem.shipping?.tags) && taggedItem.shipping.tags!.includes("self_service_in");
       const logisticType = getMlEffectiveLogisticType(taggedItem);
 
       const sku = getMlItemRepresentativeSku(workItem);

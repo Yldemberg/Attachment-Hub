@@ -238,12 +238,14 @@ export type MlItem = {
   sold_quantity: number;
   status: string;
   listing_type_id: string;
-  shipping: { logistic_type: string };
+  shipping: {
+    logistic_type: string;
+    /** Shipping-level tags — "self_service_in" signals Flex/Coleta logistics. */
+    tags?: string[] | null;
+  };
   seller_custom_field?: string | null;
   /** Root-level attributes on GET /items/{id} (SELLER_SKU for listings without variations). */
   attributes?: MlAttributeRow[] | null;
-  /** Item-level tags (e.g. "self_service_in" for ME2 / coleta logistics). */
-  tags?: string[] | null;
   thumbnail: string;
   permalink: string;
   category_id: string;
@@ -289,7 +291,8 @@ export function getMlEffectiveLogisticType(item: MlItem): string | null {
   const types: string[] = [];
   const shippingType = item.shipping?.logistic_type;
   if (shippingType) types.push(shippingType);
-  if (Array.isArray(item.tags) && item.tags.includes("self_service_in")) {
+  // "self_service_in" lives in shipping.tags, not root-level tags.
+  if (Array.isArray(item.shipping?.tags) && item.shipping.tags!.includes("self_service_in")) {
     if (!types.includes("self_service_in")) types.push("self_service_in");
   }
   return types.length > 0 ? types.join(",") : null;
@@ -409,7 +412,9 @@ export async function enrichMlItemForSellerSku(accountId: string, item: MlItem):
  * item on failure.
  */
 export async function enrichMlItemWithTags(accountId: string, item: MlItem): Promise<MlItem> {
-  if (Array.isArray(item.tags)) return item;
+  // shipping.tags is the correct field (self_service_in lives there, not root-level tags).
+  // Batch endpoint may strip shipping.tags; fetch individual if missing.
+  if (Array.isArray(item.shipping?.tags)) return item;
   try {
     return await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
   } catch (err) {
