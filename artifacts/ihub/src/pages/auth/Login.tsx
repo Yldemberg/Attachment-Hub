@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Zap } from "lucide-react";
+import logo from "@/assets/ihub-logo.png";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -32,11 +32,8 @@ export default function Login() {
     <div className="min-h-screen bg-slate-950 flex">
       <div className="hidden lg:flex flex-1 bg-slate-900 items-center justify-center p-12">
         <div className="max-w-md">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-white">iHub</span>
+          <div className="mb-8">
+            <img src={logo} alt="iHub" className="h-12 w-auto object-contain" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
             Gestao total do seu Mercado Livre
@@ -63,11 +60,8 @@ export default function Login() {
 
       <div className="flex-1 lg:max-w-md flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-xl font-bold text-white">iHub</span>
+          <div className="mb-8 lg:hidden">
+            <img src={logo} alt="iHub" className="h-8 w-auto object-contain" />
           </div>
 
           <h1 className="text-2xl font-bold text-white mb-1">Entrar na conta</h1>

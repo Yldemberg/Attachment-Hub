@@ -19,10 +19,10 @@ import {
   User,
   LogOut,
   ChevronRight,
-  Zap,
   X,
   Clock,
 } from "lucide-react";
+import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import {
@@ -122,12 +122,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
       <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="h-14 flex items-center px-4 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-semibold text-white tracking-tight">iHub</span>
-          </div>
+          <img src={logo} alt="iHub" className="h-7 w-auto object-contain" />
         </div>
 
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
