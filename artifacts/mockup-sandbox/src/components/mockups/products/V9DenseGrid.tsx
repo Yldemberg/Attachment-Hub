@@ -218,8 +218,8 @@ export function V9DenseGrid() {
   const [rowsPerPage, setRowsPerPage] = useState<RowsOption>(10);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // 2 cards per row, so items per page = rows × 2
-  const itemsPerPage = rowsPerPage * 2;
+  // 1 card per row, so items per page = rows × 1
+  const itemsPerPage = rowsPerPage * 1;
   const totalPages = Math.ceil(TOTAL_SIMULATED / itemsPerPage);
 
   // Slice mock data to simulate the current page
@@ -310,7 +310,7 @@ export function V9DenseGrid() {
         <div className="px-4 py-4">
 
           {/* 2-column grid */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 gap-2.5">
             {pageProducts.map(product => (
               <ProductCard
                 key={product.id}
@@ -327,7 +327,7 @@ export function V9DenseGrid() {
               Mostrando <span className="text-white font-medium">{startItem}–{endItem}</span> de{" "}
               <span className="text-white font-medium">{TOTAL_SIMULATED}</span> anúncios
               &nbsp;·&nbsp;
-              <span className="text-slate-300">{rowsPerPage} linhas/pág. · {itemsPerPage} cards/pág.</span>
+              <span className="text-slate-300">{rowsPerPage} cards/pág.</span>
             </p>
             <div className="flex items-center gap-1.5">
               <button
