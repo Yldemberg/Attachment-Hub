@@ -17,6 +17,7 @@ import {
   MlItem,
   MlOrder,
   MlQuestion,
+  enrichMlItemForSellerSku,
   fetchMlItemVariations,
   getMlItemRepresentativeSku,
   getMlVariationSku,
@@ -239,6 +240,10 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               variations: item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id))),
             };
           }
+        } else {
+          // The individual fetch already returns attributes, but enrich as safety-net
+          // in case the endpoint returns a partial response without attributes.
+          workItem = await enrichMlItemForSellerSku(account.id, item);
         }
         const sku = getMlItemRepresentativeSku(workItem);
         const variationsJson = hasVariations

@@ -276,10 +276,22 @@ function trimNonEmpty(v: unknown): string | null {
   return t.length > 0 ? t : null;
 }
 
+const SKU_ATTR_ID = "SELLER_SKU";
+/** Names that ML uses in different locales/contexts for the seller SKU attribute. */
+const SKU_ATTR_NAME_RE = /\bSKU\b|SELLER[_ ]?SKU|SKU\s*do\s*vendedor|C[oó]digo\s*(SKU|do\s*vendedor)/i;
+
 export function getMlSellerSkuFromAttributes(attrs?: MlAttributeRow[] | null): string | null {
   if (!attrs) return null;
+  // First pass: strict id match — the most reliable signal
   for (const a of attrs) {
-    if (a.id === "SELLER_SKU") {
+    if (a.id === SKU_ATTR_ID) {
+      const s = trimNonEmpty(a.value_name);
+      if (s) return s;
+    }
+  }
+  // Second pass: name-based match for accounts where ML returns a different attribute id
+  for (const a of attrs) {
+    if (a.name && SKU_ATTR_NAME_RE.test(a.name)) {
       const s = trimNonEmpty(a.value_name);
       if (s) return s;
     }
@@ -296,10 +308,16 @@ export function getMlVariationSku(v: MlVariation): string | null {
   if (fromCustom) return fromCustom;
   const fromSellerSku = trimNonEmpty(v.seller_sku);
   if (fromSellerSku) return fromSellerSku;
+  // Check per-variation attributes (available from /items/{id}/variations endpoint)
   const fromAttrs = getMlSellerSkuFromAttributes(v.attributes ?? undefined);
   if (fromAttrs) return fromAttrs;
-  const combo = (v.attribute_combinations ?? []).find((x) => x.id === "SELLER_SKU");
-  return trimNonEmpty(combo?.value_name);
+  // Check attribute_combinations by strict id first, then name-based fallback
+  const combos = v.attribute_combinations ?? [];
+  const byId = combos.find((x) => x.id === SKU_ATTR_ID);
+  if (byId) return trimNonEmpty(byId.value_name);
+  // Name-based fallback for attribute_combinations (handles name === value_name ML quirk)
+  const byName = combos.find((x) => x.name && SKU_ATTR_NAME_RE.test(x.name));
+  return trimNonEmpty(byName?.value_name) ?? null;
 }
 
 /** Item-level custom field, SELLER_SKU on the item, or first variation SKU. */
