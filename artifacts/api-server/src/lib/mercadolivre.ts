@@ -221,19 +221,12 @@ export type MlUser = {
   email: string;
 };
 
-export type MlVariation = {
-  id: number;
-  price: number;
-  available_quantity: number;
-  sold_quantity: number;
-  seller_custom_field?: string | null;
-  attribute_combinations: Array<{
-    id: string;
-    name: string;
-    value_id: string;
-    value_name: string;
-  }>;
-  picture_ids?: string[];
+/** Item or variation attribute row (e.g. id SELLER_SKU, value_name = SKU). */
+export type MlAttributeRow = {
+  id?: string;
+  name?: string;
+  value_id?: string | null;
+  value_name?: string | null;
 };
 
 export type MlItem = {
@@ -247,11 +240,130 @@ export type MlItem = {
   listing_type_id: string;
   shipping: { logistic_type: string };
   seller_custom_field?: string | null;
+  /** Root-level attributes on GET /items/{id} (SELLER_SKU for listings without variations). */
+  attributes?: MlAttributeRow[] | null;
   thumbnail: string;
   permalink: string;
   category_id: string;
   variations?: MlVariation[];
 };
+
+export type MlVariation = {
+  id: number;
+  price: number;
+  available_quantity: number;
+  sold_quantity: number;
+  seller_custom_field?: string | null;
+  /** Some API responses expose SKU here. */
+  seller_sku?: string | null;
+  /**
+   * Per-variation attributes from GET /items/{id}/variations (e.g. SELLER_SKU).
+   * Multiget /items?ids= often omits these.
+   */
+  attributes?: MlAttributeRow[] | null;
+  attribute_combinations?: Array<{
+    id: string;
+    name: string;
+    value_id: string;
+    value_name: string;
+  }>;
+  picture_ids?: string[];
+};
+
+function trimNonEmpty(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length > 0 ? t : null;
+}
+
+export function getMlSellerSkuFromAttributes(attrs?: MlAttributeRow[] | null): string | null {
+  if (!attrs) return null;
+  for (const a of attrs) {
+    if (a.id === "SELLER_SKU") {
+      const s = trimNonEmpty(a.value_name);
+      if (s) return s;
+    }
+  }
+  return null;
+}
+
+/**
+ * ML stores the stock code in seller_custom_field and/or the SELLER_SKU attribute
+ * (variation `attributes` or `attribute_combinations`). These are not interchangeable in their API.
+ */
+export function getMlVariationSku(v: MlVariation): string | null {
+  const fromCustom = trimNonEmpty(v.seller_custom_field);
+  if (fromCustom) return fromCustom;
+  const fromSellerSku = trimNonEmpty(v.seller_sku);
+  if (fromSellerSku) return fromSellerSku;
+  const fromAttrs = getMlSellerSkuFromAttributes(v.attributes ?? undefined);
+  if (fromAttrs) return fromAttrs;
+  const combo = (v.attribute_combinations ?? []).find((x) => x.id === "SELLER_SKU");
+  return trimNonEmpty(combo?.value_name);
+}
+
+/** Item-level custom field, SELLER_SKU on the item, or first variation SKU. */
+export function getMlItemRepresentativeSku(item: MlItem): string | null {
+  const fromCustom = trimNonEmpty(item.seller_custom_field);
+  if (fromCustom) return fromCustom;
+  const fromAttr = getMlSellerSkuFromAttributes(item.attributes ?? undefined);
+  if (fromAttr) return fromAttr;
+  const vars = item.variations;
+  if (!Array.isArray(vars) || vars.length === 0) return null;
+  for (const v of vars) {
+    const s = getMlVariationSku(v);
+    if (s) return s;
+  }
+  return null;
+}
+
+/** Prefer detailed variation payload (from /items/{id}/variations) for SKU-related fields. */
+export function mergeMlVariation(batch: MlVariation, detailed?: MlVariation): MlVariation {
+  if (!detailed) return batch;
+  const combinations =
+    detailed.attribute_combinations?.length ? detailed.attribute_combinations : batch.attribute_combinations;
+  return {
+    ...batch,
+    ...detailed,
+    attribute_combinations: combinations,
+  };
+}
+
+/**
+ * GET /items/{id}/variations returns each variation with `attributes` (SELLER_SKU), which multiget often skips.
+ */
+export async function fetchMlItemVariations(accountId: string, itemId: string): Promise<MlVariation[]> {
+  const path = `/items/${encodeURIComponent(itemId)}/variations`;
+  try {
+    const data = await ml.get<unknown>(accountId, path);
+    if (Array.isArray(data)) return data as MlVariation[];
+    if (
+      data &&
+      typeof data === "object" &&
+      "variations" in data &&
+      Array.isArray((data as { variations: unknown }).variations)
+    ) {
+      return (data as { variations: MlVariation[] }).variations;
+    }
+    return [];
+  } catch (err) {
+    logger.warn({ err, itemId }, "ML fetch /items/.../variations failed");
+    return [];
+  }
+}
+
+/** Multiget may omit item `attributes`; fetch full item when we still have no SKU (no variations). */
+export async function enrichMlItemForSellerSku(accountId: string, item: MlItem): Promise<MlItem> {
+  const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
+  if (hasVariations) return item;
+  if (getMlItemRepresentativeSku(item) !== null) return item;
+  try {
+    return await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
+  } catch (err) {
+    logger.warn({ err, itemId: item.id }, "ML fetch full item for SELLER_SKU failed");
+    return item;
+  }
+}
 
 export type MlOrder = {
   id: number;

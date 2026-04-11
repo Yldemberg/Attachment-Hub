@@ -1,5 +1,15 @@
 import { getDb } from "./db";
-import { ml, MlItem, MlOrder, MlQuestion } from "./mercadolivre";
+import {
+  ml,
+  MlItem,
+  MlOrder,
+  MlQuestion,
+  enrichMlItemForSellerSku,
+  fetchMlItemVariations,
+  getMlItemRepresentativeSku,
+  getMlVariationSku,
+  mergeMlVariation,
+} from "./mercadolivre";
 import {
   productsTable,
   ordersTable,
@@ -44,20 +54,30 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
 
       const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
 
-      const sku =
-        item.seller_custom_field ??
-        (hasVariations
-          ? (item.variations!.find((v) => v.seller_custom_field)?.seller_custom_field ?? null)
-          : null);
+      let workItem: MlItem = item;
+      if (!hasVariations) {
+        workItem = await enrichMlItemForSellerSku(accountId, item);
+      } else {
+        const detailed = await fetchMlItemVariations(accountId, item.id);
+        if (detailed.length > 0) {
+          const byId = new Map(detailed.map((d) => [d.id, d]));
+          workItem = {
+            ...item,
+            variations: item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id))),
+          };
+        }
+      }
+
+      const sku = getMlItemRepresentativeSku(workItem);
 
       const variationsJson = hasVariations
-        ? item.variations!.map((v) => ({
+        ? workItem.variations!.map((v) => ({
             id: v.id,
-            sku: v.seller_custom_field ?? null,
+            sku: getMlVariationSku(v),
             price: v.price,
             available_quantity: v.available_quantity,
             sold_quantity: v.sold_quantity,
-            attributes: v.attribute_combinations.map((a) => ({
+            attributes: (v.attribute_combinations ?? []).map((a) => ({
               name: a.name,
               value: a.value_name,
             })),

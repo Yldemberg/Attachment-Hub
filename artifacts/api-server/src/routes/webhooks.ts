@@ -12,7 +12,16 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { ml, MlItem, MlOrder, MlQuestion } from "../lib/mercadolivre";
+import {
+  ml,
+  MlItem,
+  MlOrder,
+  MlQuestion,
+  fetchMlItemVariations,
+  getMlItemRepresentativeSku,
+  getMlVariationSku,
+  mergeMlVariation,
+} from "../lib/mercadolivre";
 
 const router = Router();
 
@@ -220,19 +229,26 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const isFull = item.shipping?.logistic_type === "fulfillment";
 
         const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
-        const sku =
-          item.seller_custom_field ??
-          (hasVariations
-            ? (item.variations!.find((v) => v.seller_custom_field)?.seller_custom_field ?? null)
-            : null);
+        let workItem: MlItem = item;
+        if (hasVariations) {
+          const detailed = await fetchMlItemVariations(account.id, item.id);
+          if (detailed.length > 0) {
+            const byId = new Map(detailed.map((d) => [d.id, d]));
+            workItem = {
+              ...item,
+              variations: item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id))),
+            };
+          }
+        }
+        const sku = getMlItemRepresentativeSku(workItem);
         const variationsJson = hasVariations
-          ? item.variations!.map((v) => ({
+          ? workItem.variations!.map((v) => ({
               id: v.id,
-              sku: v.seller_custom_field ?? null,
+              sku: getMlVariationSku(v),
               price: v.price,
               available_quantity: v.available_quantity,
               sold_quantity: v.sold_quantity,
-              attributes: v.attribute_combinations.map((a) => ({ name: a.name, value: a.value_name })),
+              attributes: (v.attribute_combinations ?? []).map((a) => ({ name: a.name, value: a.value_name })),
             }))
           : null;
         const originalPrice =

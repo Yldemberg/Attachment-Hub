@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, lt, ilike, sql } from "drizzle-orm";
+import { eq, and, or, inArray, lt, ilike, sql } from "drizzle-orm";
 import { ml } from "../lib/mercadolivre";
 
 const router = Router();
@@ -36,7 +36,16 @@ router.get("/products", ...auth, async (req, res) => {
 
     const conditions = [inArray(productsTable.accountId, accountIds)];
     if (status) conditions.push(eq(productsTable.status, status));
-    if (search) conditions.push(ilike(productsTable.title, `%${search}%`));
+    if (search) {
+      const pattern = `%${search}%`;
+      conditions.push(
+        or(
+          ilike(productsTable.title, pattern),
+          ilike(productsTable.sku, pattern),
+          sql`coalesce(${productsTable.variationsJson}::text, '') ilike ${pattern}`,
+        )!,
+      );
+    }
 
     const where = and(...conditions);
 
