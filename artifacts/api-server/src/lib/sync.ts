@@ -7,8 +7,10 @@ import {
   enrichMlItemForSellerSku,
   enrichMlItemWithTags,
   fetchMlItemVariations,
+  fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
   getMlItemRepresentativeSku,
+  getMlOriginalListPrice,
   getMlVariationSku,
   mergeMlVariation,
 } from "./mercadolivre";
@@ -48,6 +50,13 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
     const items = await ml.get<Array<{ code: number; body: MlItem }>>(
       accountId,
       `/items?ids=${batch.join(",")}`,
+    );
+
+    // Fetch prices for the whole batch in one call.
+    const validItems = items.filter(({ code }) => code === 200);
+    const pricesMap = await fetchMlItemPricesBatch(
+      accountId,
+      validItems.map(({ body }) => body.id),
     );
 
     for (const { code, body: item } of items) {
@@ -91,10 +100,8 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
           }))
         : null;
 
-      const originalPrice =
-        item.original_price != null && item.original_price > item.price
-          ? item.original_price.toString()
-          : null;
+      const originalPrice = getMlOriginalListPrice(item);
+      const itemPrices = pricesMap.get(item.id) ?? { amount: null, regularAmount: null };
 
       const values = {
         accountId,
@@ -103,6 +110,8 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         sku,
         price: item.price.toString(),
         originalPrice,
+        amount: itemPrices.amount,
+        regularAmount: itemPrices.regularAmount,
         availableQuantity: item.available_quantity,
         soldQuantity: item.sold_quantity,
         status: item.status,
@@ -127,6 +136,8 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
             sku: values.sku,
             price: values.price,
             originalPrice: values.originalPrice,
+            amount: itemPrices.amount,
+            regularAmount: itemPrices.regularAmount,
             availableQuantity: values.availableQuantity,
             soldQuantity: values.soldQuantity,
             status: values.status,

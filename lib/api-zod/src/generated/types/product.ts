@@ -14,12 +14,20 @@ export interface Product {
   title?: string | null;
   sku?: string | null;
   price?: number | null;
+  originalPrice?: number | null;
+  /** Somente na resposta de GET /products: preço atual via GET /items/{id}/prices (prices[].amount). Outras rotas não consultam /prices.
+   */
+  amount?: number | null;
+  /** Somente em GET /products: preço regular (prices[].regular_amount) quando há promoção.
+   */
+  regularAmount?: number | null;
   availableQuantity: number;
   soldQuantity: number;
   status?: string | null;
   listingType?: string | null;
   logisticType?: string | null;
   isFull: boolean;
+  isFlex: boolean;
   thumbnail?: string | null;
   permalink?: string | null;
   mlCategoryId?: string | null;

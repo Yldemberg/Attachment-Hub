@@ -13,6 +13,10 @@ export const productsTable = pgTable("products", {
   sku: text("sku"),
   price: decimal("price", { precision: 10, scale: 2 }),
   originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
+  /** Current sale price from GET /items/{id}/prices → `prices[].amount` (ML). */
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  /** List / strike price from same endpoint → `prices[].regular_amount` when on promotion. */
+  regularAmount: decimal("regular_amount", { precision: 10, scale: 2 }),
   availableQuantity: integer("available_quantity").default(0).notNull(),
   soldQuantity: integer("sold_quantity").default(0).notNull(),
   status: text("status"),

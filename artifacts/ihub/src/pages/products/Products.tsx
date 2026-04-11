@@ -37,8 +37,13 @@ interface Product {
   availableQuantity?: number | null;
   price?: number | null;
   originalPrice?: number | null;
+  /** GET /items/{id}/prices → prices[].amount */
+  amount?: number | null;
+  /** GET /items/{id}/prices → prices[].regular_amount */
+  regularAmount?: number | null;
   status?: string | null;
   isFull?: boolean | null;
+  isFlex?: boolean | null;
   logisticType?: string | null;
   thumbnail?: string | null;
   mlItemId?: string | null;
@@ -293,14 +298,14 @@ export default function Products() {
                           <img
                             src={p.thumbnail}
                             alt=""
-                            className="w-8 h-8 rounded object-cover flex-shrink-0 bg-slate-800"
+                            className="w-12 h-12 rounded object-cover flex-shrink-0 bg-slate-800"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
-                            <Package className="w-4 h-4 text-slate-600" />
+                          <div className="w-12 h-12 rounded bg-slate-800 flex items-center justify-center flex-shrink-0">
+                            <Package className="w-6 h-6 text-slate-600" />
                           </div>
                         )}
-                        <span className="text-slate-200 group-hover:text-blue-400 transition-colors truncate max-w-xs">
+                        <span className="text-slate-200 group-hover:text-blue-400 transition-colors truncate max-w-40">
                           {p.title}
                         </span>
                       </Link>
@@ -324,17 +329,36 @@ export default function Products() {
                     </td>
 
                     <td className="px-4 py-3 text-right">
-                      {p.originalPrice != null && p.originalPrice > (p.price ?? 0) ? (
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="text-slate-500 text-[10px] line-through">
-                            De: {formatCurrency(p.originalPrice)}
-                          </span>
-                          <span className="text-emerald-400 text-xs font-semibold">
-                            Por: {formatCurrency(p.price)}
-                          </span>
+                      {p.regularAmount != null &&
+                      p.amount != null &&
+                      p.regularAmount > p.amount ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex flex-col items-end gap-0">
+                            <span className="text-slate-500 text-[9px] uppercase tracking-wide">
+                              Regular (De:)
+                            </span>
+                            <span className="text-slate-500 text-xs line-through">
+                              {formatCurrency(p.regularAmount)}
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-end gap-0">
+                            <span className="text-emerald-500/90 text-[9px] uppercase tracking-wide">
+                              Promocional (Por:)
+                            </span>
+                            <span className="text-emerald-400 text-xs font-semibold">
+                              {formatCurrency(p.amount)}
+                            </span>
+                          </div>
                         </div>
                       ) : (
-                        <span className="text-slate-200 text-xs">{formatCurrency(p.price)}</span>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-slate-200 text-xs">
+                            {formatCurrency(p.amount ?? p.price)}
+                          </span>
+                          {p.amount != null && p.regularAmount == null && (
+                            <span className="text-slate-500 text-[10px]">Fora de promoção</span>
+                          )}
+                        </div>
                       )}
                     </td>
 

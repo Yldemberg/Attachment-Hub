@@ -19,8 +19,10 @@ import {
   MlQuestion,
   enrichMlItemForSellerSku,
   fetchMlItemVariations,
+  fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
   getMlItemRepresentativeSku,
+  getMlOriginalListPrice,
   getMlVariationSku,
   mergeMlVariation,
 } from "../lib/mercadolivre";
@@ -259,10 +261,9 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               attributes: (v.attribute_combinations ?? []).map((a) => ({ name: a.name, value: a.value_name })),
             }))
           : null;
-        const originalPrice =
-          item.original_price != null && item.original_price > item.price
-            ? item.original_price.toString()
-            : null;
+        const originalPrice = getMlOriginalListPrice(item);
+        const pricesMap = await fetchMlItemPricesBatch(account.id, [item.id]);
+        const itemPrices = pricesMap.get(item.id) ?? { amount: null, regularAmount: null };
 
         await db
           .insert(productsTable)
@@ -273,6 +274,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             sku,
             price: item.price.toString(),
             originalPrice,
+            amount: itemPrices.amount,
+            regularAmount: itemPrices.regularAmount,
             availableQuantity: item.available_quantity,
             soldQuantity: item.sold_quantity,
             status: item.status,
@@ -293,6 +296,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               sku,
               price: item.price.toString(),
               originalPrice,
+              amount: itemPrices.amount,
+              regularAmount: itemPrices.regularAmount,
               availableQuantity: item.available_quantity,
               soldQuantity: item.sold_quantity,
               status: item.status,

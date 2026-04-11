@@ -878,6 +878,20 @@ components:
         price:
           type: number
           nullable: true
+        originalPrice:
+          type: number
+          nullable: true
+        amount:
+          type: number
+          nullable: true
+          description: >
+            Somente na resposta de GET /products: preço atual via GET /items/{id}/prices
+            (prices[].amount). Outras rotas não consultam /prices.
+        regularAmount:
+          type: number
+          nullable: true
+          description: >
+            Somente em GET /products: preço regular (prices[].regular_amount) quando há promoção.
         availableQuantity:
           type: integer
         soldQuantity:

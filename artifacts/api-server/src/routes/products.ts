@@ -4,10 +4,43 @@ import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, or, inArray, lt, ilike, sql } from "drizzle-orm";
-import { ml } from "../lib/mercadolivre";
+import { fetchMlItemPrices, ml, resolveProductPricesFromMlPricesApi } from "../lib/mercadolivre";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
+
+type ProductRow = typeof productsTable.$inferSelect;
+
+/** Live GET /items/{id}/prices for the product list UI only (chunked to reduce ML rate limits). */
+async function enrichRowsWithMlItemPrices(
+  rows: ProductRow[],
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void },
+): Promise<Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null }>> {
+  const chunkSize = 5;
+  const out: Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null }> = [];
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const part = await Promise.all(
+      chunk.map(async (p) => {
+        let mlAmount: number | null = null;
+        let mlRegularAmount: number | null = null;
+        try {
+          const data = await fetchMlItemPrices(p.accountId, p.mlItemId);
+          const r = resolveProductPricesFromMlPricesApi(data);
+          if (r) {
+            mlAmount = Number(r.amount);
+            mlRegularAmount = r.regularAmount != null ? Number(r.regularAmount) : null;
+          }
+        } catch (err) {
+          log.warn({ err, mlItemId: p.mlItemId }, "GET /items/.../prices failed for product list");
+        }
+        return { row: p, mlAmount, mlRegularAmount };
+      }),
+    );
+    out.push(...part);
+  }
+  return out;
+}
 
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
@@ -62,11 +95,15 @@ router.get("/products", ...auth, async (req, res) => {
       .where(inArray(accountsTable.id, accountIds));
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
+    const enriched = await enrichRowsWithMlItemPrices(rows, req.log);
+
     res.json({
-      data: rows.map((p) => ({
+      data: enriched.map(({ row: p, mlAmount, mlRegularAmount }) => ({
         ...p,
         price: p.price !== null ? Number(p.price) : null,
         originalPrice: p.originalPrice !== null ? Number(p.originalPrice) : null,
+        amount: mlAmount,
+        regularAmount: mlRegularAmount,
         account: accountMap[p.accountId] ?? null,
       })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },

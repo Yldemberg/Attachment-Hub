@@ -234,6 +234,8 @@ export type MlItem = {
   title: string;
   price: number;
   original_price?: number | null;
+  /** Reference price before deals; often present when `price` is a promotional sale price. */
+  base_price?: number | null;
   available_quantity: number;
   sold_quantity: number;
   status: string;
@@ -251,6 +253,103 @@ export type MlItem = {
   category_id: string;
   variations?: MlVariation[];
 };
+
+/**
+ * Fallback list price from GET /items (not /prices) when syncing DB `original_price`.
+ */
+export function getMlOriginalListPrice(item: {
+  price: number;
+  original_price?: number | null;
+  base_price?: number | null;
+}): string | null {
+  const sale = item.price;
+  if (item.original_price != null && item.original_price > sale) {
+    return item.original_price.toString();
+  }
+  if (item.base_price != null && item.base_price > sale) {
+    return item.base_price.toString();
+  }
+  return null;
+}
+
+/** Row from GET https://api.mercadolibre.com/items/{ITEM_ID}/prices → `prices[]`. */
+export type MlItemPriceRow = {
+  id?: string;
+  type?: string | null;
+  amount?: number | null;
+  regular_amount?: number | null;
+  currency_id?: string | null;
+  conditions?: {
+    context_restrictions?: string[] | null;
+    start_time?: string | null;
+    end_time?: string | null;
+  } | null;
+};
+
+export type MlItemPricesResponse = {
+  id?: string;
+  prices?: MlItemPriceRow[] | null;
+};
+
+function mlPriceRowAppliesToMarketplace(row: MlItemPriceRow): boolean {
+  const restrictions = row.conditions?.context_restrictions;
+  if (!restrictions || restrictions.length === 0) return true;
+  return restrictions.includes("channel_marketplace");
+}
+
+function isMlPromotionPriceRow(row: MlItemPriceRow): boolean {
+  const a = row.amount;
+  const r = row.regular_amount;
+  return typeof a === "number" && typeof r === "number" && r > a;
+}
+
+/**
+ * Derives DB columns `amount` and `regular_amount` from
+ * GET /items/{id}/prices → `prices[].amount` and `prices[].regular_amount`
+ * (marketplace context; best promotion = lowest `amount`).
+ */
+export function resolveProductPricesFromMlPricesApi(
+  data: MlItemPricesResponse,
+): { amount: string; regularAmount: string | null } | null {
+  const applicable = (data.prices ?? []).filter(mlPriceRowAppliesToMarketplace);
+  if (applicable.length === 0) return null;
+
+  const promos = applicable.filter(
+    (row) => (row.type === "promotion" || row.type == null) && isMlPromotionPriceRow(row),
+  );
+
+  if (promos.length > 0) {
+    const best = promos.reduce((a, b) => ((a.amount as number) <= (b.amount as number) ? a : b));
+    return {
+      amount: String(best.amount),
+      regularAmount: String(best.regular_amount),
+    };
+  }
+
+  const standard = applicable.find(
+    (row) => row.type === "standard" && typeof row.amount === "number",
+  );
+  if (standard && typeof standard.amount === "number") {
+    return { amount: String(standard.amount), regularAmount: null };
+  }
+
+  const anyAmount = applicable.find((row) => typeof row.amount === "number");
+  if (anyAmount && typeof anyAmount.amount === "number") {
+    return { amount: String(anyAmount.amount), regularAmount: null };
+  }
+
+  return null;
+}
+
+export async function fetchMlItemPrices(
+  accountId: string,
+  itemId: string,
+): Promise<MlItemPricesResponse> {
+  return ml.get<MlItemPricesResponse>(
+    accountId,
+    `/items/${encodeURIComponent(itemId)}/prices`,
+  );
+}
 
 export type MlVariation = {
   id: number;
@@ -421,6 +520,37 @@ export async function enrichMlItemWithTags(accountId: string, item: MlItem): Pro
     logger.warn({ err, itemId: item.id }, "ML fetch full item for tags failed");
     return item;
   }
+}
+
+/**
+ * Batch-fetch prices from GET /items/prices?ids=... (up to 20 IDs per call).
+ * Returns a Map of itemId → { amount, regularAmount } as decimal strings,
+ * using the same promotion-aware resolution logic as the individual endpoint.
+ * Falls back to empty map entries on error so sync continues uninterrupted.
+ */
+export async function fetchMlItemPricesBatch(
+  accountId: string,
+  itemIds: string[],
+): Promise<Map<string, { amount: string | null; regularAmount: string | null }>> {
+  const out = new Map<string, { amount: string | null; regularAmount: string | null }>();
+  if (itemIds.length === 0) return out;
+  try {
+    const data = await ml.get<MlItemPricesResponse[]>(
+      accountId,
+      `/items/prices?ids=${itemIds.join(",")}`,
+    );
+    for (const entry of data) {
+      if (!entry.id) continue;
+      const resolved = resolveProductPricesFromMlPricesApi(entry);
+      out.set(entry.id, {
+        amount: resolved?.amount ?? null,
+        regularAmount: resolved?.regularAmount ?? null,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err, itemIds }, "ML fetch /items/prices batch failed");
+  }
+  return out;
 }
 
 export type MlOrder = {

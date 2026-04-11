@@ -124,12 +124,26 @@ export const ListProductsResponse = zod.object({
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
       price: zod.number().nullish(),
+      originalPrice: zod.number().nullish(),
+      amount: zod
+        .number()
+        .nullish()
+        .describe(
+          "Somente na resposta de GET \/products: preço atual via GET \/items\/{id}\/prices (prices[].amount). Outras rotas não consultam \/prices.\n",
+        ),
+      regularAmount: zod
+        .number()
+        .nullish()
+        .describe(
+          "Somente em GET \/products: preço regular (prices[].regular_amount) quando há promoção.\n",
+        ),
       availableQuantity: zod.number(),
       soldQuantity: zod.number(),
       status: zod.string().nullish(),
       listingType: zod.string().nullish(),
       logisticType: zod.string().nullish(),
       isFull: zod.boolean(),
+      isFlex: zod.boolean(),
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       mlCategoryId: zod.string().nullish(),
@@ -174,12 +188,26 @@ export const GetLowStockProductsResponse = zod.object({
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
       price: zod.number().nullish(),
+      originalPrice: zod.number().nullish(),
+      amount: zod
+        .number()
+        .nullish()
+        .describe(
+          "Somente na resposta de GET \/products: preço atual via GET \/items\/{id}\/prices (prices[].amount). Outras rotas não consultam \/prices.\n",
+        ),
+      regularAmount: zod
+        .number()
+        .nullish()
+        .describe(
+          "Somente em GET \/products: preço regular (prices[].regular_amount) quando há promoção.\n",
+        ),
       availableQuantity: zod.number(),
       soldQuantity: zod.number(),
       status: zod.string().nullish(),
       listingType: zod.string().nullish(),
       logisticType: zod.string().nullish(),
       isFull: zod.boolean(),
+      isFlex: zod.boolean(),
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       mlCategoryId: zod.string().nullish(),
@@ -211,12 +239,26 @@ export const GetProductResponse = zod.object({
   title: zod.string().nullish(),
   sku: zod.string().nullish(),
   price: zod.number().nullish(),
+  originalPrice: zod.number().nullish(),
+  amount: zod
+    .number()
+    .nullish()
+    .describe(
+      "Somente na resposta de GET \/products: preço atual via GET \/items\/{id}\/prices (prices[].amount). Outras rotas não consultam \/prices.\n",
+    ),
+  regularAmount: zod
+    .number()
+    .nullish()
+    .describe(
+      "Somente em GET \/products: preço regular (prices[].regular_amount) quando há promoção.\n",
+    ),
   availableQuantity: zod.number(),
   soldQuantity: zod.number(),
   status: zod.string().nullish(),
   listingType: zod.string().nullish(),
   logisticType: zod.string().nullish(),
   isFull: zod.boolean(),
+  isFlex: zod.boolean(),
   thumbnail: zod.string().nullish(),
   permalink: zod.string().nullish(),
   mlCategoryId: zod.string().nullish(),
