@@ -78,34 +78,18 @@ function stockTextColor(qty: number | null | undefined): string {
 function ProductCard({
   p,
   onEdit,
+  accountNickname,
 }: {
   p: Product;
   onEdit: () => void;
+  accountNickname?: string | null;
 }) {
   const isPromo =
     p.regularAmount != null && p.amount != null && p.regularAmount > p.amount;
 
-  let accentBg = "bg-[#1a3055]";
-  let accentBorder = "border-[#1a3055]";
-  let LogIcon: React.ElementType = Package;
-  let logText = "Normal";
-
-  if (p.logisticType === "fulfillment" || p.isFull) {
-    accentBg = "bg-blue-600";
-    accentBorder = "border-blue-700";
-    LogIcon = Warehouse;
-    logText = "Full";
-  } else if (p.logisticType === "self_service" || p.isFlex) {
-    accentBg = "bg-orange-500";
-    accentBorder = "border-orange-600";
-    LogIcon = Zap;
-    logText = "Flex";
-  } else if (p.logisticType === "cross_docking") {
-    accentBg = "bg-amber-500";
-    accentBorder = "border-amber-600";
-    LogIcon = Truck;
-    logText = "Cross";
-  }
+  const isFull = p.logisticType === "fulfillment" || !!p.isFull;
+  const isFlex = p.logisticType === "self_service" || !!p.isFlex;
+  const isCross = p.logisticType === "cross_docking";
 
   const qty = p.availableQuantity ?? 0;
   const stockColor = stockTextColor(p.availableQuantity);
@@ -127,16 +111,8 @@ function ProductCard({
             <Package className="w-10 h-10 text-blue-400/30" />
           </div>
         )}
-        <div
-          className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1.5 ${accentBg} border-t ${accentBorder}`}
-        >
-          <LogIcon className="w-3.5 h-3.5 text-white" />
-          <span className="text-xs font-bold text-white uppercase tracking-wide">
-            {logText}
-          </span>
-        </div>
         {qty === 0 && (
-          <div className="absolute inset-x-0 top-[32%] flex justify-center">
+          <div className="absolute inset-x-0 top-[38%] flex justify-center">
             <span className="bg-red-600/90 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">
               Esgot.
             </span>
@@ -153,9 +129,17 @@ function ProductCard({
           >
             {p.title ?? p.id}
           </Link>
-          <p className="text-xs font-mono text-blue-400/70 truncate mt-0.5">
-            {p.sku ?? "—"}
-          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-xs font-mono text-blue-400/70 truncate">
+              <span className="text-blue-400/50 font-sans font-semibold not-italic">SKU:</span>{" "}
+              {p.sku ?? "—"}
+            </p>
+            {accountNickname && (
+              <span className="text-[10px] text-blue-300/60 truncate max-w-[120px]" title={accountNickname}>
+                {accountNickname}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -187,6 +171,24 @@ function ProductCard({
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-400 bg-pink-400/10 border border-pink-400/20 px-2 py-0.5 rounded-full">
               <Tag className="w-3 h-3" />
               Promo
+            </span>
+          )}
+          {isFull && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-300 bg-blue-600/20 border border-blue-600/30 px-2 py-0.5 rounded-full">
+              <Warehouse className="w-3 h-3" />
+              Full
+            </span>
+          )}
+          {isFlex && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-300 bg-orange-500/20 border border-orange-500/30 px-2 py-0.5 rounded-full">
+              <Zap className="w-3 h-3" />
+              Flex
+            </span>
+          )}
+          {isCross && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
+              <Truck className="w-3 h-3" />
+              Cross
             </span>
           )}
         </div>
@@ -241,11 +243,7 @@ function ProductCard({
               </a>
             )}
 
-            {p.isFull ? (
-              <span className="text-xs text-blue-400/50 italic px-1">
-                FULL
-              </span>
-            ) : (
+            {!isFull && (
               <button
                 onClick={onEdit}
                 className="w-8 h-8 flex items-center justify-center rounded-xl text-blue-400/60 hover:text-white hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
@@ -318,6 +316,10 @@ export default function Products() {
       data?: { id: string; mlNickname?: string | null }[];
     } | null
   )?.data ?? [];
+
+  const accountNicknameMap = Object.fromEntries(
+    accounts.map((a) => [a.id, a.mlNickname ?? null])
+  );
 
   const { mutate: updateSingleStock, isPending: updatingSingle } =
     useUpdateProductStock({
@@ -528,7 +530,12 @@ export default function Products() {
         ) : (
           <div className="grid grid-cols-1 gap-2.5">
             {products.map((p) => (
-              <ProductCard key={p.id} p={p} onEdit={() => openStockDialog(p)} />
+              <ProductCard
+                key={p.id}
+                p={p}
+                onEdit={() => openStockDialog(p)}
+                accountNickname={p.accountId ? accountNicknameMap[p.accountId] : null}
+              />
             ))}
           </div>
         )}
