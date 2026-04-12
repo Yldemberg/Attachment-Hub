@@ -1169,7 +1169,7 @@ components:
           nullable: true
         type:
           type: string
-          enum: [new_question, new_order, low_stock, order_update, sync_error, sync_complete, item_update]
+          enum: [new_question, new_order, low_stock, order_update, sync_error, sync_complete, item_update, stock_update]
         title:
           type: string
         message:

@@ -17,4 +17,5 @@ export const NotificationType = {
   sync_error: "sync_error",
   sync_complete: "sync_complete",
   item_update: "item_update",
+  stock_update: "stock_update",
 } as const;

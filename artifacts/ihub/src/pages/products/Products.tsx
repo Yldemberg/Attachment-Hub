@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useListProducts,
   useListAccounts,
   useUpdateProductStock,
   useUpdateStockBySku,
   getListProductsQueryKey,
+  getListNotificationsQueryKey,
+  useListNotifications,
   ListProductsStatus,
+  NotificationType,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -299,8 +302,34 @@ export default function Products() {
   };
 
   const { data, isLoading } = useListProducts(params, {
-    query: { queryKey: getListProductsQueryKey(params) },
+    query: { queryKey: getListProductsQueryKey(params), refetchInterval: 30000 },
   });
+
+  const { data: notifData } = useListNotifications(
+    { is_read: false, limit: 99 },
+    { query: { queryKey: getListNotificationsQueryKey({ is_read: false, limit: 99 }), refetchInterval: 30000 } },
+  );
+
+  const stockNotifCount = notifData?.data?.filter(
+    (n) => n.type === NotificationType.stock_update || n.type === NotificationType.low_stock,
+  ).length ?? 0;
+
+  const prevStockNotifCountRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (prevStockNotifCountRef.current === null) {
+      prevStockNotifCountRef.current = stockNotifCount;
+      return;
+    }
+    if (stockNotifCount > prevStockNotifCountRef.current) {
+      toast({
+        title: "Estoque atualizado pelo Mercado Livre",
+        description: "Um ou mais produtos tiveram o estoque atualizado.",
+      });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
+    }
+    prevStockNotifCountRef.current = stockNotifCount;
+  }, [stockNotifCount]);
 
   const products: Product[] =
     (data as { data?: Product[] } | null)?.data ?? [];

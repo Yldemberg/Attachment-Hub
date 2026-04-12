@@ -312,6 +312,12 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const itemId = resource.split("/").pop();
         if (!itemId) return;
 
+        const [existingProduct] = await db
+          .select({ availableQuantity: productsTable.availableQuantity })
+          .from(productsTable)
+          .where(and(eq(productsTable.accountId, account.id), eq(productsTable.mlItemId, itemId)))
+          .limit(1);
+
         const item = await ml.get<MlItem>(account.id, `/items/${itemId}`);
         const isFull = item.shipping?.logistic_type === "fulfillment";
         const isFlex = Array.isArray(item.shipping?.tags) && item.shipping.tags!.includes("self_service_in");
@@ -394,6 +400,20 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               lastSyncedAt: new Date(),
             },
           });
+
+        const previousQuantity = existingProduct?.availableQuantity ?? null;
+        if (previousQuantity !== null && previousQuantity !== item.available_quantity) {
+          await db.insert(notificationsTable).values({
+            userId: account.userId,
+            accountId: account.id,
+            type: "stock_update",
+            title: "Estoque atualizado",
+            message: `"${item.title}" teve o estoque atualizado para ${item.available_quantity} unidade(s)`,
+            isRead: false,
+            resourceType: "product",
+            resourceId: item.id,
+          });
+        }
 
         if (item.available_quantity < 5) {
           await db.insert(notificationsTable).values({
