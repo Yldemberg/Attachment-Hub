@@ -114,7 +114,7 @@ function ProductCard({
     <div className="relative bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl overflow-hidden group hover:border-blue-600/40 hover:shadow-lg hover:shadow-black/40 transition-all duration-200 flex">
       <Link
         to={`/products/${p.id}`}
-        className="relative w-28 flex-shrink-0 overflow-hidden bg-[#122040] focus:outline-none"
+        className="relative w-40 flex-shrink-0 overflow-hidden bg-[#122040] focus:outline-none"
       >
         {p.thumbnail ? (
           <img
@@ -124,96 +124,106 @@ function ProductCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-8 h-8 text-blue-400/30" />
+            <Package className="w-10 h-10 text-blue-400/30" />
           </div>
         )}
         <div
-          className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1 ${accentBg} border-t ${accentBorder}`}
+          className={`absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1.5 ${accentBg} border-t ${accentBorder}`}
         >
-          <LogIcon className="w-3 h-3 text-white" />
-          <span className="text-[9px] font-bold text-white uppercase tracking-wide">
+          <LogIcon className="w-3.5 h-3.5 text-white" />
+          <span className="text-xs font-bold text-white uppercase tracking-wide">
             {logText}
           </span>
         </div>
         {qty === 0 && (
           <div className="absolute inset-x-0 top-[32%] flex justify-center">
-            <span className="bg-red-600/90 text-white text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">
+            <span className="bg-red-600/90 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">
               Esgot.
             </span>
           </div>
         )}
       </Link>
 
-      <div className="flex-1 flex flex-col px-3 py-2.5 gap-1.5 min-w-0">
+      <div className="flex-1 flex flex-col px-4 py-3 gap-2 min-w-0">
         <div className="min-w-0">
           <Link
             to={`/products/${p.id}`}
-            className="text-xs font-semibold text-white hover:text-blue-300 transition-colors leading-snug line-clamp-2 block"
+            className="text-sm font-bold text-white hover:text-blue-300 transition-colors leading-snug line-clamp-2 block"
             title={p.title ?? ""}
           >
             {p.title ?? p.id}
           </Link>
-          <p className="text-[10px] font-mono text-blue-400/70 truncate mt-0.5">
+          <p className="text-xs font-mono text-blue-400/70 truncate mt-0.5">
             {p.sku ?? "—"}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           {p.status === "active" && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Ativo
             </span>
           )}
           {p.status === "paused" && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
               Pausado
             </span>
           )}
           {p.status === "closed" && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-400/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400/60" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400/60">
+              <span className="w-2 h-2 rounded-full bg-blue-400/60" />
               Encerrado
             </span>
           )}
           {p.status === "under_review" && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
               Em revisão
             </span>
           )}
           {isPromo && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-400 bg-pink-400/10 border border-pink-400/20 px-1.5 py-0.5 rounded-full">
-              <Tag className="w-2.5 h-2.5" />
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-400 bg-pink-400/10 border border-pink-400/20 px-2 py-0.5 rounded-full">
+              <Tag className="w-3 h-3" />
               Promo
             </span>
           )}
         </div>
 
         <div className="flex items-end justify-between mt-auto gap-2">
-          <div className="flex items-baseline gap-1">
-            <span className={`text-2xl font-black leading-none ${stockColor}`}>
-              {qty}
-            </span>
-            <span className="text-[9px] text-blue-400/60 uppercase tracking-widest font-bold">
-              un
-            </span>
-            {qty > 0 && qty < 3 && (
-              <AlertTriangle className="w-3 h-3 text-red-400 ml-0.5" />
-            )}
-            {qty >= 3 && qty <= 7 && (
-              <AlertCircle className="w-3 h-3 text-amber-400 ml-0.5" />
-            )}
+          <div>
+            <div className="flex items-baseline gap-1.5 mb-1.5">
+              <span className={`text-3xl font-black leading-none ${stockColor}`}>
+                {qty}
+              </span>
+              <span className="text-xs text-blue-400/60 uppercase tracking-widest font-bold">
+                un
+              </span>
+              {qty > 0 && qty < 3 && (
+                <AlertTriangle className="w-4 h-4 text-red-400 ml-0.5" />
+              )}
+              {qty >= 3 && qty <= 7 && (
+                <AlertCircle className="w-4 h-4 text-amber-400 ml-0.5" />
+              )}
+            </div>
+            <div className="h-1.5 w-24 rounded-full bg-[#122040] overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  qty === 0 ? "bg-blue-400/30" : qty < 3 ? "bg-red-500" : qty <= 7 ? "bg-amber-500" : "bg-emerald-500"
+                }`}
+                style={{ width: `${Math.min(100, Math.round((qty / 50) * 100))}%` }}
+              />
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="text-right">
-              <p className="text-xs font-bold text-white">
+              <p className="text-base font-black text-white">
                 {formatCurrency(p.amount ?? p.price)}
               </p>
               {isPromo && (
-                <p className="text-[9px] text-blue-400/60 line-through leading-none">
+                <p className="text-xs text-blue-400/60 line-through leading-none">
                   {formatCurrency(p.regularAmount)}
                 </p>
               )}
@@ -224,24 +234,24 @@ function ProductCard({
                 href={p.permalink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-400/60 hover:text-blue-400 hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
+                className="w-8 h-8 flex items-center justify-center rounded-xl text-blue-400/60 hover:text-blue-400 hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
                 title="Ver no Mercado Livre"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-4 h-4" />
               </a>
             )}
 
             {p.isFull ? (
-              <span className="text-[9px] text-blue-400/50 italic px-1">
+              <span className="text-xs text-blue-400/50 italic px-1">
                 FULL
               </span>
             ) : (
               <button
                 onClick={onEdit}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-400/60 hover:text-white hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
+                className="w-8 h-8 flex items-center justify-center rounded-xl text-blue-400/60 hover:text-white hover:bg-[#122040] border border-[#1a3055]/60 hover:border-blue-600/40 transition-colors flex-shrink-0"
                 title="Editar estoque"
               >
-                <Pencil className="w-3.5 h-3.5" />
+                <Pencil className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -253,12 +263,12 @@ function ProductCard({
 
 function SkeletonCard() {
   return (
-    <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl overflow-hidden flex h-24 animate-pulse">
-      <div className="w-28 flex-shrink-0 bg-[#122040]" />
-      <div className="flex-1 px-3 py-2.5 flex flex-col gap-2">
-        <div className="h-3 bg-[#122040] rounded w-3/4" />
-        <div className="h-2.5 bg-[#122040] rounded w-1/4" />
-        <div className="h-2.5 bg-[#122040] rounded w-1/5 mt-auto" />
+    <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl overflow-hidden flex h-36 animate-pulse">
+      <div className="w-40 flex-shrink-0 bg-[#122040]" />
+      <div className="flex-1 px-4 py-3 flex flex-col gap-2.5">
+        <div className="h-4 bg-[#122040] rounded w-3/4" />
+        <div className="h-3 bg-[#122040] rounded w-1/3" />
+        <div className="h-3 bg-[#122040] rounded w-1/4 mt-auto" />
       </div>
     </div>
   );
