@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { ordersTable, questionsTable, productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, lt, sql, gte } from "drizzle-orm";
+import { eq, and, inArray, lt, lte, sql, gte } from "drizzle-orm";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -40,11 +40,17 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
     }
 
     const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setHours(0, 1, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
     const monthStart = new Date();
     monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
+    monthStart.setHours(0, 1, 0, 0);
+
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
 
     const [todaySalesRow, monthSalesRow, todayOrdersRow, monthOrdersRow, pendingOrdersRow, unansweredQRow, criticalStockRow] = await Promise.all([
       db
@@ -53,6 +59,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .where(and(
           inArray(ordersTable.accountId, accountIds),
           gte(ordersTable.dateCreated, todayStart),
+          lte(ordersTable.dateCreated, todayEnd),
           eq(ordersTable.status, "paid"),
         )),
       db
@@ -61,6 +68,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .where(and(
           inArray(ordersTable.accountId, accountIds),
           gte(ordersTable.dateCreated, monthStart),
+          lte(ordersTable.dateCreated, monthEnd),
           eq(ordersTable.status, "paid"),
         )),
       db
@@ -69,6 +77,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .where(and(
           inArray(ordersTable.accountId, accountIds),
           gte(ordersTable.dateCreated, todayStart),
+          lte(ordersTable.dateCreated, todayEnd),
           eq(ordersTable.status, "paid"),
         )),
       db
@@ -77,6 +86,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .where(and(
           inArray(ordersTable.accountId, accountIds),
           gte(ordersTable.dateCreated, monthStart),
+          lte(ordersTable.dateCreated, monthEnd),
           eq(ordersTable.status, "paid"),
         )),
       db
@@ -125,9 +135,20 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
     const accountIds = await getUserAccountIds(req.user!.id, account_id);
 
     const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    let startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    startDate.setHours(0, 1, 0, 0);
+    startDate.setMilliseconds(0);
+
+    if (period === "30d") {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 1, 0, 0);
+      if (startDate < monthStart) startDate = monthStart;
+    }
 
     if (accountIds.length === 0) {
       res.json({ period, data: [] });
@@ -144,16 +165,20 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
       .where(and(
         inArray(ordersTable.accountId, accountIds),
         gte(ordersTable.dateCreated, startDate),
+        lte(ordersTable.dateCreated, endDate),
         eq(ordersTable.status, "paid"),
+        sql`cast(${ordersTable.dateCreated} as time) >= '00:01:00'`,
       ))
       .groupBy(sql`cast(${ordersTable.dateCreated} as date)`)
       .orderBy(sql`cast(${ordersTable.dateCreated} as date) asc`);
 
     const dataMap = Object.fromEntries(rows.map((r) => [r.date, r]));
     const data = [];
-    for (let i = 0; i < days; i++) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i);
+    const iterStart = new Date(startDate);
+    iterStart.setHours(0, 0, 0, 0);
+    const iterEnd = new Date(endDate);
+    iterEnd.setHours(0, 0, 0, 0);
+    for (let d = new Date(iterStart); d <= iterEnd; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split("T")[0];
       data.push({
         date: dateStr,
