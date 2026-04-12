@@ -14,10 +14,10 @@ import {
   Text:    white  →  sky-200  →  sky-300  →  sky-400
   Accent:  emerald-400 / emerald-500
 */
-const ROOT   = "#0d1f3c";
-const PANEL  = "#132d50";
+const ROOT   = "#050c18";
+const PANEL  = "#0f2642";
 const INPUT  = "#1a3a60";
-const BDR    = "rgba(42,80,128,0.55)";
+const BDR    = "rgba(42,80,128,0.65)";
 
 const ALL_PRODUCTS = [
   { id:"1",  title:"Tênis Nike Air Max 270 Masculino Preto",        sku:"NK-AM270-BLK-42",  thumb:"https://picsum.photos/seed/shoe1/400/400",       logistic:"fulfillment",   qty:24, amount:479.90,   promo:null,    status:"active",  views:1240, sales:38 },
