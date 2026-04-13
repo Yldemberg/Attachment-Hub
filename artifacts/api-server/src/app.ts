@@ -26,7 +26,15 @@ app.use(
   }),
 );
 
-app.use(cors());
+const corsAllowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
+app.use(
+  corsAllowedOrigins
+    ? cors({
+        origin: corsAllowedOrigins.split(",").map((o) => o.trim()).filter(Boolean),
+        credentials: true,
+      })
+    : cors(),
+);
 
 app.use(
   express.json({
