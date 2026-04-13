@@ -1,0 +1,695 @@
+[
+  {
+    "id": "MLB5370455314",
+    "site_id": "MLB",
+    "title": "Kit Necessaire Impermeável Bvx Bag 3 Tamanhos Rosa Zíper Pvc",
+    "family_name": "Kit Necessaire Impermeável Bvx Bag 3 Tamanhos Rosa Zíper Pvc",
+    "family_id": 5839632775655746,
+    "seller_id": 454545147,
+    "category_id": "MLB28155",
+    "user_product_id": "MLBU3090218484",
+    "official_store_id": 319644,
+    "price": 48.97,
+    "base_price": 48.97,
+    "original_price": null,
+    "inventory_id": "FSPE26664",
+    "currency_id": "BRL",
+    "initial_quantity": 141,
+    "available_quantity": 14,
+    "sold_quantity": 127,
+    "sale_terms": [
+      {
+        "id": "WARRANTY_TYPE",
+        "name": "Tipo de garantia",
+        "value_id": "2230280",
+        "value_name": "Garantia do vendedor",
+        "value_struct": null,
+        "values": [
+          {
+            "id": "2230280",
+            "name": "Garantia do vendedor",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "WARRANTY_TIME",
+        "name": "Tempo de garantia",
+        "value_id": null,
+        "value_name": "3 meses",
+        "value_struct": {
+          "number": 3,
+          "unit": "meses"
+        },
+        "values": [
+          {
+            "id": null,
+            "name": "3 meses",
+            "struct": {
+              "number": 3,
+              "unit": "meses"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      }
+    ],
+    "buying_mode": "buy_it_now",
+    "listing_type_id": "gold_special",
+    "start_time": "2025-04-29T18:25:13.480Z",
+    "stop_time": "2045-05-09T12:53:33.000Z",
+    "end_time": "2045-05-09T12:53:33.000Z",
+    "expiration_time": "2026-08-13T19:16:42.423Z",
+    "condition": "new",
+    "permalink": "https://produto.mercadolivre.com.br/MLB-5370455314-kit-necessaire-impermeavel-bvx-bag-3-tamanhos-rosa-ziper-pvc-_JM",
+    "thumbnail_id": "718689-MLA100088905029_122025",
+    "thumbnail": "http://http2.mlstatic.com/D_718689-MLA100088905029_122025-I.jpg",
+    "pictures": [
+      {
+        "id": "718689-MLA100088905029_122025",
+        "url": "http://http2.mlstatic.com/D_718689-MLA100088905029_122025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_718689-MLA100088905029_122025-O.jpg",
+        "size": "500x412",
+        "max_size": "1200x991",
+        "quality": ""
+      },
+      {
+        "id": "617170-MLA92806641893_092025",
+        "url": "http://http2.mlstatic.com/D_617170-MLA92806641893_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_617170-MLA92806641893_092025-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "716566-MLA92806789383_092025",
+        "url": "http://http2.mlstatic.com/D_716566-MLA92806789383_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_716566-MLA92806789383_092025-O.jpg",
+        "size": "500x491",
+        "max_size": "1200x1179",
+        "quality": ""
+      },
+      {
+        "id": "902775-MLA92806602559_092025",
+        "url": "http://http2.mlstatic.com/D_902775-MLA92806602559_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_902775-MLA92806602559_092025-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "877948-MLA92806582573_092025",
+        "url": "http://http2.mlstatic.com/D_877948-MLA92806582573_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_877948-MLA92806582573_092025-O.jpg",
+        "size": "488x500",
+        "max_size": "1173x1200",
+        "quality": ""
+      },
+      {
+        "id": "975241-MLA92806582595_092025",
+        "url": "http://http2.mlstatic.com/D_975241-MLA92806582595_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_975241-MLA92806582595_092025-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "638392-MLA92806789417_092025",
+        "url": "http://http2.mlstatic.com/D_638392-MLA92806789417_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_638392-MLA92806789417_092025-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      },
+      {
+        "id": "913576-MLA92806857325_092025",
+        "url": "http://http2.mlstatic.com/D_913576-MLA92806857325_092025-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_913576-MLA92806857325_092025-O.jpg",
+        "size": "500x500",
+        "max_size": "1200x1200",
+        "quality": ""
+      }
+    ],
+    "video_id": null,
+    "descriptions": [],
+    "accepts_mercadopago": true,
+    "non_mercado_pago_payment_methods": [],
+    "shipping": {
+      "mode": "me2",
+      "methods": [],
+      "tags": [
+        "self_service_in"
+      ],
+      "dimensions": null,
+      "local_pick_up": false,
+      "free_shipping": false,
+      "logistic_type": "fulfillment",
+      "store_pick_up": false
+    },
+    "international_delivery_mode": "none",
+    "seller_address": {
+      "comment": "ULOCK",
+      "address_line": "Rua Clímaco Barbosa 700",
+      "zip_code": "01523000",
+      "city": {
+        "id": "BR-SP-44",
+        "name": "São Paulo"
+      },
+      "state": {
+        "id": "BR-SP",
+        "name": "São Paulo"
+      },
+      "country": {
+        "id": "BR",
+        "name": "Brasil"
+      },
+      "search_location": {
+        "neighborhood": {
+          "id": "TUxCQkNBTTYzMzc",
+          "name": "Cambuci"
+        },
+        "city": {
+          "id": "TUxCQ1NQLTkxMjE",
+          "name": "São Paulo Zona Sul"
+        },
+        "state": {
+          "id": "TUxCUFNBT085N2E4",
+          "name": "São Paulo"
+        }
+      },
+      "latitude": -23.5666719,
+      "longitude": -46.61462299999999,
+      "id": 1405311117
+    },
+    "seller_contact": null,
+    "location": {},
+    "geolocation": {
+      "latitude": -23.5666719,
+      "longitude": -46.61462299999999
+    },
+    "coverage_areas": [],
+    "attributes": [
+      {
+        "id": "SELLER_PACKAGE_HEIGHT",
+        "name": "Altura da embalagem do vendor",
+        "value_id": null,
+        "value_name": "33 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "33 cm",
+            "struct": {
+              "number": 33,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_LENGTH",
+        "name": "Comprimento da embalagem do vendor",
+        "value_id": null,
+        "value_name": "5 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "5 cm",
+            "struct": {
+              "number": 5,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_WEIGHT",
+        "name": "Peso da embalagem do vendor",
+        "value_id": null,
+        "value_name": "340 g",
+        "values": [
+          {
+            "id": null,
+            "name": "340 g",
+            "struct": {
+              "number": 340,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_PACKAGE_WIDTH",
+        "name": "Largura da embalagem do vendor",
+        "value_id": null,
+        "value_name": "25 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "25 cm",
+            "struct": {
+              "number": 25,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "AGE_GROUP",
+        "name": "Idade",
+        "value_id": "6725189",
+        "value_name": "Adultos",
+        "values": [
+          {
+            "id": "6725189",
+            "name": "Adultos",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "BRAND",
+        "name": "Marca",
+        "value_id": "36037249",
+        "value_name": "Bvx Bag",
+        "values": [
+          {
+            "id": "36037249",
+            "name": "Bvx Bag",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "CLOSURE_TYPE",
+        "name": "Tipo de fechamento",
+        "value_id": "520743",
+        "value_name": "Zíper",
+        "values": [
+          {
+            "id": "520743",
+            "name": "Zíper",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "COLOR",
+        "name": "Cor",
+        "value_id": "51994",
+        "value_name": "Rosa",
+        "values": [
+          {
+            "id": "51994",
+            "name": "Rosa",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "COMPARTMENTS_NUMBER",
+        "name": "Quantidade de compartimentos",
+        "value_id": "4568087",
+        "value_name": "3",
+        "values": [
+          {
+            "id": "4568087",
+            "name": "3",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "FABRIC_DESIGN",
+        "name": "Desenho do tecido",
+        "value_id": "34532085",
+        "value_name": "Impermeável Transparente",
+        "values": [
+          {
+            "id": "34532085",
+            "name": "Impermeável Transparente",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "FILTRABLE_GENDER",
+        "name": "Gênero filtrável",
+        "value_id": "18549361",
+        "value_name": "Feminino",
+        "values": [
+          {
+            "id": "18549361",
+            "name": "Feminino",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "GENDER",
+        "name": "Gênero",
+        "value_id": "339665",
+        "value_name": "Feminino",
+        "values": [
+          {
+            "id": "339665",
+            "name": "Feminino",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "GTIN",
+        "name": "Código universal de produto",
+        "value_id": null,
+        "value_name": "7906466930352",
+        "values": [
+          {
+            "id": null,
+            "name": "7906466930352",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "HEIGHT",
+        "name": "Altura",
+        "value_id": "2272597",
+        "value_name": "55.88 cm",
+        "values": [
+          {
+            "id": "2272597",
+            "name": "55.88 cm",
+            "struct": {
+              "number": 55.88,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "IS_EMERGING_BRAND",
+        "name": "É marca emergente",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_HIGHLIGHT_BRAND",
+        "name": "É marca destacada",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_IMPERMEABLE",
+        "name": "É impermeável",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_TOM_BRAND",
+        "name": "É marca TOM",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "ITEM_CONDITION",
+        "name": "Condição do item",
+        "value_id": "2230284",
+        "value_name": "Novo",
+        "values": [
+          {
+            "id": "2230284",
+            "name": "Novo",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "LENGTH",
+        "name": "Comprimento",
+        "value_id": "18148442",
+        "value_name": "78.74 cm",
+        "values": [
+          {
+            "id": "18148442",
+            "name": "78.74 cm",
+            "struct": {
+              "number": 78.74,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "MAIN_COLOR",
+        "name": "Cor principal",
+        "value_id": "2450312",
+        "value_name": "Rosa",
+        "values": [
+          {
+            "id": "2450312",
+            "name": "Rosa",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "MAIN_MATERIAL",
+        "name": "Material principal",
+        "value_id": "466794",
+        "value_name": "Poliéster",
+        "values": [
+          {
+            "id": "466794",
+            "name": "Poliéster",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "MODEL",
+        "name": "Modelo",
+        "value_id": "27632656",
+        "value_name": "kit 3 necessaires",
+        "values": [
+          {
+            "id": "27632656",
+            "name": "kit 3 necessaires",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "PACKAGE_HEIGHT",
+        "name": "Altura da embalagem",
+        "value_id": null,
+        "value_name": "5.2 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "5.2 cm",
+            "struct": {
+              "number": 5.2,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_LENGTH",
+        "name": "Comprimento da embalagem",
+        "value_id": null,
+        "value_name": "30.9 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "30.9 cm",
+            "struct": {
+              "number": 30.9,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WEIGHT",
+        "name": "Peso da embalagem",
+        "value_id": null,
+        "value_name": "290 g",
+        "values": [
+          {
+            "id": null,
+            "name": "290 g",
+            "struct": {
+              "number": 290,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WIDTH",
+        "name": "Largura da embalagem",
+        "value_id": null,
+        "value_name": "24 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "24 cm",
+            "struct": {
+              "number": 24,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PRODUCT_FEATURES",
+        "name": "Características do produto",
+        "value_id": "8847339",
+        "value_name": "Sem validade",
+        "values": [
+          {
+            "id": "8847339",
+            "name": "Sem validade",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "SELLER_SKU",
+        "name": "SKU",
+        "value_id": null,
+        "value_name": "K3NecRos",
+        "values": [
+          {
+            "id": null,
+            "name": "K3NecRos",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SHIPMENT_PACKING",
+        "name": "Embalagem do envío",
+        "value_id": "7435891",
+        "value_name": "Flyer",
+        "values": [
+          {
+            "id": "7435891",
+            "name": "Flyer",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "WIDTH",
+        "name": "Largura",
+        "value_id": "1130938",
+        "value_name": "27.94 cm",
+        "values": [
+          {
+            "id": "1130938",
+            "name": "27.94 cm",
+            "struct": {
+              "number": 27.94,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      }
+    ],
+    "warnings": [],
+    "listing_source": "",
+    "variations": [],
+    "status": "active",
+    "sub_status": [],
+    "tags": [
+      "standard_price_by_quantity",
+      "immediate_payment",
+      "cart_eligible"
+    ],
+    "warranty": "Garantia do vendedor: 3 meses",
+    "catalog_product_id": "MLB41996725",
+    "domain_id": "MLB-TOILETRY_BAGS",
+    "seller_custom_field": null,
+    "parent_item_id": null,
+    "differential_pricing": null,
+    "deal_ids": [],
+    "automatic_relist": false,
+    "date_created": "2025-04-29T18:25:13.721Z",
+    "last_updated": "2026-04-12T18:41:37.071Z",
+    "health": null,
+    "catalog_listing": true,
+    "item_relations": [
+      {
+        "id": "MLB4511060655",
+        "variation_id": null,
+        "stock_relation": 1
+      }
+    ],
+    "channels": [
+      "marketplace",
+      "mshops"
+    ]
+  }
+]
