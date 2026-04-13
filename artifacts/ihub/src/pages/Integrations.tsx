@@ -58,7 +58,7 @@ function ConnectButton() {
     <Button
       onClick={handleConnect}
       disabled={loading}
-      className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+      className="gap-2"
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
       Conectar conta ML
@@ -82,34 +82,34 @@ function WebhookUrlCard() {
   };
 
   return (
-    <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4 space-y-3">
+    <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
       <div>
-        <h3 className="text-white text-sm font-medium">Notificações em Tempo Real</h3>
-        <p className="text-blue-300 text-xs mt-0.5">
+        <h3 className="text-foreground text-sm font-medium">Notificações em Tempo Real</h3>
+        <p className="text-muted-foreground text-xs mt-0.5">
           Configure esta URL no seu app do Mercado Livre Developer para receber atualizações instantâneas de pedidos, perguntas e anúncios.
         </p>
       </div>
 
       <div className="flex items-center gap-2">
-        <code className="flex-1 bg-[#080f1e] border border-[#1a3055]/60 rounded-lg px-3 py-2 text-xs text-blue-400 font-mono truncate select-all">
+        <code className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs text-primary font-mono truncate select-all">
           {webhookUrl}
         </code>
         <Button
           variant="outline"
           size="sm"
           onClick={handleCopy}
-          className="border-[#1a3055]/70 text-blue-300 hover:text-white hover:bg-[#122040] h-8 px-3 gap-1.5 flex-shrink-0"
+          className="h-8 px-3 gap-1.5 flex-shrink-0"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
           {copied ? "Copiado!" : "Copiar URL"}
         </Button>
       </div>
 
-      <div className="space-y-1 text-blue-400/70 text-xs">
-        <p className="font-medium text-blue-300">Como configurar no ML Developer:</p>
-        <p>1. Acesse <span className="text-blue-400">developers.mercadolivre.com.br</span> → seu app → Notificações</p>
+      <div className="space-y-1 text-muted-foreground text-xs">
+        <p className="font-medium text-foreground">Como configurar no ML Developer:</p>
+        <p>1. Acesse <span className="text-primary">developers.mercadolivre.com.br</span> → seu app → Notificações</p>
         <p>2. Cole a URL acima no campo "URL de notificação"</p>
-        <p>3. Ative os tópicos: <span className="text-blue-200">orders_v2</span>, <span className="text-blue-200">questions</span>, <span className="text-blue-200">items</span></p>
+        <p>3. Ative os tópicos: <span className="text-foreground">orders_v2</span>, <span className="text-foreground">questions</span>, <span className="text-foreground">items</span></p>
         <p>4. Salve — o iHub começará a receber atualizações em tempo real</p>
       </div>
     </div>
@@ -236,12 +236,12 @@ export default function Integrations() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-[#080f1e]">
+    <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">Integrações</h1>
-            <p className="text-blue-300 text-sm mt-0.5">Gerencie suas contas do Mercado Livre</p>
+            <h1 className="text-xl font-bold text-foreground">Integrações</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Gerencie suas contas do Mercado Livre</p>
           </div>
           <ConnectButton />
         </div>
@@ -249,14 +249,14 @@ export default function Integrations() {
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2].map((i) => (
-              <div key={i} className="h-24 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl animate-pulse" />
+              <div key={i} className="h-24 bg-card border border-card-border rounded-xl animate-pulse" />
             ))}
           </div>
         ) : accounts.length === 0 ? (
-          <div className="bg-[#0d1b2e] border border-[#1a3055]/60 border-dashed rounded-xl py-16 text-center">
-            <Plug className="w-10 h-10 text-blue-400/30 mx-auto mb-3" />
-            <h3 className="text-blue-200 font-medium mb-1">Nenhuma conta conectada</h3>
-            <p className="text-blue-400/70 text-sm mb-6 max-w-xs mx-auto">
+          <div className="bg-card border border-card-border border-dashed rounded-xl py-16 text-center">
+            <Plug className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+            <h3 className="text-foreground font-medium mb-1">Nenhuma conta conectada</h3>
+            <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
               Conecte sua conta do Mercado Livre para começar a gerenciar seus anúncios e pedidos.
             </p>
             <ConnectButton />
@@ -268,34 +268,34 @@ export default function Integrations() {
               return (
                 <div
                   key={account.id}
-                  className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4 flex items-center gap-4"
+                  className="bg-card border border-card-border rounded-xl p-4 flex items-center gap-4"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-amber-900/40 border border-amber-800/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-amber-400 font-bold text-sm">ML</span>
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                    <span className="text-amber-700 font-bold text-sm">ML</span>
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-white font-medium text-sm">
+                      <h3 className="text-foreground font-medium text-sm">
                         {account.mlNickname ?? account.mlUserId ?? account.id}
                       </h3>
                       {account.isActive ? (
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                       ) : (
-                        <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                        <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                       )}
                       {isSyncing && (
-                        <span className="text-[10px] text-blue-400 bg-blue-900/30 border border-blue-800/40 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                        <span className="text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
                           <Loader2 className="w-2.5 h-2.5 animate-spin" />
                           Sincronizando...
                         </span>
                       )}
                     </div>
                     {account.mlEmail && (
-                      <p className="text-blue-300/70 text-xs mt-0.5">{account.mlEmail}</p>
+                      <p className="text-muted-foreground text-xs mt-0.5">{account.mlEmail}</p>
                     )}
                     {account.lastSyncAt && (
-                      <p className="text-blue-400/50 text-xs mt-0.5">
+                      <p className="text-muted-foreground/60 text-xs mt-0.5">
                         Última sincronização: {formatDateTime(account.lastSyncAt)}
                       </p>
                     )}
@@ -307,7 +307,7 @@ export default function Integrations() {
                       size="sm"
                       onClick={() => handleSync(account)}
                       disabled={isSyncing}
-                      className="border-[#1a3055]/70 text-blue-300 hover:text-white hover:bg-[#122040] h-8 text-xs gap-1.5 min-w-[110px]"
+                      className="h-8 text-xs gap-1.5 min-w-[110px]"
                     >
                       {isSyncing ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -322,28 +322,28 @@ export default function Integrations() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="border-red-900/50 text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8 p-0"
+                          className="border-red-200 text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-[#0d1b2e] border-[#1a3055]/70">
+                      <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle className="text-white">Remover conta</AlertDialogTitle>
-                          <AlertDialogDescription className="text-blue-300">
+                          <AlertDialogTitle>Remover conta</AlertDialogTitle>
+                          <AlertDialogDescription>
                             Tem certeza que deseja remover a conta{" "}
-                            <span className="text-white font-medium">{account.mlNickname}</span>?
+                            <span className="text-foreground font-medium">{account.mlNickname}</span>?
                             Todos os dados sincronizados serão mantidos, mas a conta será desconectada.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel className="border-[#1a3055]/70 text-blue-300 hover:text-white hover:bg-[#122040]">
+                          <AlertDialogCancel>
                             Cancelar
                           </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => deleteAccount({ id: account.id })}
                             disabled={deleting}
-                            className="bg-red-600 hover:bg-red-500 text-white"
+                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                           >
                             Remover
                           </AlertDialogAction>
@@ -357,9 +357,9 @@ export default function Integrations() {
           </div>
         )}
 
-        <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
-          <h3 className="text-white text-sm font-medium mb-2">Como funciona</h3>
-          <div className="space-y-2 text-blue-300/80 text-xs">
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <h3 className="text-foreground text-sm font-medium mb-2">Como funciona</h3>
+          <div className="space-y-2 text-muted-foreground text-xs">
             <p>1. Clique em "Conectar conta ML" — você será redirecionado para o Mercado Livre</p>
             <p>2. Autorize o iHub a acessar sua conta</p>
             <p>3. Você será redirecionado de volta e a sincronização iniciará automaticamente</p>

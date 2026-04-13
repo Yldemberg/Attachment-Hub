@@ -68,8 +68,8 @@ function TrialBanner({ trialEndsAt }: { trialEndsAt: string }) {
     <div className={cn(
       "flex items-center justify-between px-4 py-2 text-xs font-medium flex-shrink-0",
       expired
-        ? "bg-red-950/80 border-b border-red-900/50 text-red-300"
-        : "bg-amber-950/80 border-b border-amber-900/50 text-amber-300"
+        ? "bg-red-50 border-b border-red-200 text-red-700"
+        : "bg-amber-50 border-b border-amber-200 text-amber-700"
     )}>
       <div className="flex items-center gap-2">
         <Clock className="w-3.5 h-3.5 flex-shrink-0" />
@@ -119,9 +119,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen bg-[#080f1e] text-white overflow-hidden">
-      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-[#1a3055]/60 bg-[#0d1b2e]">
-        <div className="h-14 flex items-center px-4 border-b border-[#1a3055]/60 flex-shrink-0">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+        <div className="h-14 flex items-center px-4 border-b border-sidebar-border flex-shrink-0">
           <img src={logo} alt="iHub" className="h-9 w-auto object-contain" />
         </div>
 
@@ -136,31 +136,31 @@ export function AppLayout({ children }: AppLayoutProps) {
                 className={cn(
                   "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors relative",
                   active
-                    ? "bg-blue-600/20 text-blue-400 font-medium"
-                    : "text-blue-300 hover:text-white hover:bg-[#122040]",
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent",
                 )}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
                 <span className="flex-1">{label}</span>
                 {count > 0 && (
-                  <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                     {count > 99 ? "99+" : count}
                   </span>
                 )}
                 {active && (
-                  <ChevronRight className="w-3 h-3 text-blue-500" />
+                  <ChevronRight className="w-3 h-3 text-primary" />
                 )}
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-2 border-t border-[#1a3055]/60 flex-shrink-0">
+        <div className="p-2 border-t border-sidebar-border flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-blue-300 hover:text-white hover:bg-[#122040] transition-colors">
+              <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors">
                 <Avatar className="w-6 h-6">
-                  <AvatarFallback className="text-[10px] bg-[#122040] text-blue-200">
+                  <AvatarFallback className="text-[10px] bg-sidebar-accent text-sidebar-foreground">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -169,17 +169,17 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="top" className="w-48 bg-[#0d1b2e] border-[#1a3055]/70">
-              <DropdownMenuItem asChild className="text-blue-200 hover:text-white focus:text-white focus:bg-[#122040]">
+            <DropdownMenuContent align="end" side="top" className="w-48 bg-card border-border">
+              <DropdownMenuItem asChild className="text-foreground hover:text-foreground focus:text-foreground focus:bg-accent">
                 <Link to="/profile">
                   <User className="w-4 h-4 mr-2" />
                   Perfil
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-[#1a3055]/60" />
+              <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem
                 onClick={signOut}
-                className="text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-[#122040] cursor-pointer"
+                className="text-destructive hover:text-destructive focus:text-destructive focus:bg-accent cursor-pointer"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sair
@@ -190,7 +190,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="md:hidden h-14 flex items-center px-4 border-b border-[#1a3055]/60 bg-[#0d1b2e] flex-shrink-0">
+        <header className="md:hidden h-14 flex items-center px-4 border-b border-sidebar-border bg-sidebar flex-shrink-0">
           <img src={logo} alt="iHub" className="h-8 w-auto object-contain" />
         </header>
 
@@ -202,7 +202,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0d1b2e] border-t border-[#1a3055]/60 z-50">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar border-t border-sidebar-border z-50">
           <div className="flex items-stretch overflow-x-auto">
             {allNavItems.map(({ path, label, icon: Icon, badge }) => {
               const active = location === path || location.startsWith(path + "/");
@@ -213,13 +213,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                   to={path}
                   className={cn(
                     "flex-1 min-w-[52px] flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors",
-                    active ? "text-blue-400" : "text-blue-400/50 hover:text-blue-300"
+                    active ? "text-primary" : "text-sidebar-foreground/60 hover:text-sidebar-foreground"
                   )}
                 >
                   <div className="relative">
                     <Icon className="w-5 h-5" />
                     {count > 0 && (
-                      <span className="absolute -top-1.5 -right-2 bg-blue-600 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                      <span className="absolute -top-1.5 -right-2 bg-primary text-primary-foreground text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
                         {count > 99 ? "99+" : count}
                       </span>
                     )}

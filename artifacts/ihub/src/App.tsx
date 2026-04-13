@@ -29,11 +29,11 @@ const queryClient = new QueryClient({
 
 function NotFound() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center">
-        <p className="text-6xl font-bold text-slate-700 mb-4">404</p>
-        <h1 className="text-xl font-semibold text-slate-300 mb-2">Pagina nao encontrada</h1>
-        <p className="text-slate-500 text-sm">A pagina que voce procura nao existe.</p>
+        <p className="text-6xl font-bold text-foreground/30 mb-4">404</p>
+        <h1 className="text-xl font-semibold text-foreground mb-2">Pagina nao encontrada</h1>
+        <p className="text-muted-foreground text-sm">A pagina que voce procura nao existe.</p>
       </div>
     </div>
   );

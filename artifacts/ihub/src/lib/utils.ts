@@ -35,15 +35,15 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 }
 
 export function stockColor(qty: number | null | undefined): string {
-  if (qty == null) return "text-slate-400";
-  if (qty < 5) return "text-red-400";
-  if (qty <= 20) return "text-amber-400";
-  return "text-emerald-400";
+  if (qty == null) return "text-muted-foreground";
+  if (qty < 5) return "text-red-600";
+  if (qty <= 20) return "text-amber-600";
+  return "text-emerald-600";
 }
 
 export function stockBgColor(qty: number | null | undefined): string {
-  if (qty == null) return "bg-slate-800 text-slate-400";
-  if (qty < 5) return "bg-red-900/40 text-red-400 border border-red-800/50";
-  if (qty <= 20) return "bg-amber-900/40 text-amber-400 border border-amber-800/50";
-  return "bg-emerald-900/40 text-emerald-400 border border-emerald-800/50";
+  if (qty == null) return "bg-slate-100 text-slate-500";
+  if (qty < 5) return "bg-red-50 text-red-600 border border-red-200";
+  if (qty <= 20) return "bg-amber-50 text-amber-600 border border-amber-200";
+  return "bg-emerald-50 text-emerald-600 border border-emerald-200";
 }

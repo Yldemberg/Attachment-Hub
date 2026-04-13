@@ -97,7 +97,7 @@ function QuickReply({ q }: { q: Question }) {
 
   if (done) {
     return (
-      <div className="py-2 px-1 text-xs text-emerald-400 font-medium">
+      <div className="py-2 px-1 text-xs text-emerald-600 font-medium">
         Resposta enviada!
       </div>
     );
@@ -109,14 +109,14 @@ function QuickReply({ q }: { q: Question }) {
         value={answer}
         onChange={(e) => setAnswer(e.target.value)}
         placeholder="Digite sua resposta..."
-        className="flex-1 bg-[#122040] border-[#1a3055]/70 text-blue-100 text-xs placeholder:text-blue-400/60 min-h-[60px] resize-none"
+        className="flex-1 bg-muted border-border text-foreground text-xs placeholder:text-muted-foreground min-h-[60px] resize-none"
         rows={2}
       />
       <Button
         size="sm"
         disabled={!answer.trim() || isPending}
         onClick={() => sendAnswer({ id: q.id, data: { text: answer.trim() } })}
-        className="bg-blue-600 hover:bg-blue-500 text-white self-end gap-1"
+        className="self-end gap-1"
       >
         <Send className="w-3 h-3" />
         Enviar
@@ -162,21 +162,24 @@ export default function Dashboard() {
       value: String(s?.ordersToday ?? 0),
       sub: s?.salesToday ? `${formatCurrency(s.salesToday)} em vendas` : "nenhuma venda registrada",
       icon: ShoppingCart,
-      color: "text-blue-400",
+      color: "text-primary",
+      valueColor: "text-amber-600",
     },
     {
       label: "Pedidos no mês",
       value: String(s?.ordersMonth ?? 0),
       sub: s?.salesMonth ? `${formatCurrency(s.salesMonth)} em vendas` : "nenhuma venda registrada",
       icon: TrendingUp,
-      color: "text-blue-400",
+      color: "text-primary",
+      valueColor: "text-amber-600",
     },
     {
       label: "Pedidos pendentes",
       value: String(s?.pendingOrders ?? 0),
       sub: "aguardando ação",
       icon: Clock,
-      color: "text-amber-400",
+      color: "text-amber-600",
+      valueColor: "text-amber-600",
       link: "/orders",
     },
     {
@@ -184,7 +187,8 @@ export default function Dashboard() {
       value: String(s?.unansweredQuestions ?? 0),
       sub: "perguntas abertas",
       icon: MessageSquare,
-      color: "text-red-400",
+      color: "text-red-500",
+      valueColor: "text-red-600",
       link: "/questions",
     },
     {
@@ -192,7 +196,8 @@ export default function Dashboard() {
       value: String(s?.criticalStockCount ?? 0),
       sub: "estoque crítico (< 5 un.)",
       icon: AlertTriangle,
-      color: "text-amber-400",
+      color: "text-amber-600",
+      valueColor: "text-amber-600",
       link: "/products",
     },
     {
@@ -200,29 +205,30 @@ export default function Dashboard() {
       value: String(s?.activeAccounts ?? 0),
       sub: "Mercado Livre",
       icon: Plug,
-      color: "text-emerald-400",
+      color: "text-emerald-600",
+      valueColor: "text-emerald-600",
       link: "/integrations",
     },
   ];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#080f1e]">
+    <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">Dashboard</h1>
-            <p className="text-blue-300 text-sm mt-0.5">Visão geral de todas as suas contas</p>
+            <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Visão geral de todas as suas contas</p>
           </div>
           <div className="flex items-center gap-2">
             {accounts.length > 0 && (
               <Select value={accountId ?? "all"} onValueChange={(v) => setAccountId(v === "all" ? undefined : v)}>
-                <SelectTrigger className="w-44 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-sm h-8">
+                <SelectTrigger className="w-44 text-sm h-8">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
-                  <SelectItem value="all" className="text-blue-200">Todas as contas</SelectItem>
+                <SelectContent>
+                  <SelectItem value="all">Todas as contas</SelectItem>
                   {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id} className="text-blue-200">
+                    <SelectItem key={a.id} value={a.id}>
                       {a.mlNickname ?? a.id}
                     </SelectItem>
                   ))}
@@ -238,16 +244,16 @@ export default function Dashboard() {
             const inner = (
               <div
                 key={kpi.label}
-                className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4 hover:border-blue-600/40 transition-colors"
+                className="bg-card border border-card-border rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all"
               >
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-blue-300 text-xs font-medium">{kpi.label}</p>
+                  <p className="text-muted-foreground text-xs font-medium">{kpi.label}</p>
                   <Icon className={`w-4 h-4 ${kpi.color} flex-shrink-0`} />
                 </div>
-                <p className={`text-2xl font-bold ${kpi.color} mb-0.5`}>
+                <p className={`text-2xl font-bold ${kpi.valueColor} mb-0.5`}>
                   {loadingSummary ? "—" : kpi.value}
                 </p>
-                <p className="text-blue-400/70 text-xs">{kpi.sub}</p>
+                <p className="text-muted-foreground text-xs">{kpi.sub}</p>
               </div>
             );
 
@@ -262,17 +268,17 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
+          <div className="lg:col-span-2 bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white">Evolução de vendas</h2>
+              <h2 className="text-sm font-semibold text-foreground">Evolução de vendas</h2>
               <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-                <SelectTrigger className="w-24 bg-[#122040] border-[#1a3055]/70 text-blue-200 text-xs h-7">
+                <SelectTrigger className="w-24 text-xs h-7">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0d1b2e] border-[#1a3055]/70">
-                  <SelectItem value="7d" className="text-blue-200 text-xs">7 dias</SelectItem>
-                  <SelectItem value="30d" className="text-blue-200 text-xs">30 dias</SelectItem>
-                  <SelectItem value="90d" className="text-blue-200 text-xs">90 dias</SelectItem>
+                <SelectContent>
+                  <SelectItem value="7d" className="text-xs">7 dias</SelectItem>
+                  <SelectItem value="30d" className="text-xs">30 dias</SelectItem>
+                  <SelectItem value="90d" className="text-xs">90 dias</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -280,38 +286,38 @@ export default function Dashboard() {
               <AreaChart data={chartPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1a3055" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(v) => {
                     const d = new Date(v);
                     return `${d.getDate()}/${d.getMonth() + 1}`;
                   }}
-                  tick={{ fill: "#93c5fd", fontSize: 11 }}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   tickFormatter={(v) => `R$${v}`}
-                  tick={{ fill: "#93c5fd", fontSize: 11 }}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   width={60}
                 />
                 <Tooltip
-                  contentStyle={{ background: "#0d1b2e", border: "1px solid #1a3055", borderRadius: 8 }}
-                  labelStyle={{ color: "#93c5fd", fontSize: 11 }}
-                  itemStyle={{ color: "#60a5fa" }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.08)" }}
+                  labelStyle={{ color: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  itemStyle={{ color: "hsl(var(--chart-1))" }}
                   formatter={(v: number) => [formatCurrency(v), "Receita"]}
                 />
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#3b82f6"
+                  stroke="hsl(var(--chart-1))"
                   strokeWidth={2}
                   fill="url(#salesGrad)"
                   dot={false}
@@ -320,34 +326,34 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
+          <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-white">Estoque crítico</h2>
-              <Link to="/products" className="text-blue-400 text-xs hover:text-blue-300">
+              <h2 className="text-sm font-semibold text-foreground">Estoque crítico</h2>
+              <Link to="/products" className="text-primary text-xs hover:text-primary/80">
                 Ver todos
               </Link>
             </div>
             {lowStockProducts.length === 0 ? (
-              <p className="text-blue-400/70 text-sm text-center py-8">Nenhum produto em baixo estoque</p>
+              <p className="text-muted-foreground text-sm text-center py-8">Nenhum produto em baixo estoque</p>
             ) : (
               <div className="space-y-2">
                 {lowStockProducts.map((p) => (
                   <Link key={p.id} to={`/products/${p.id}`}>
-                    <div className="flex items-center gap-2 py-1.5 hover:bg-[#122040] rounded-lg px-1 transition-colors">
+                    <div className="flex items-center gap-2 py-1.5 hover:bg-accent rounded-lg px-1 transition-colors">
                       {p.thumbnail ? (
                         <img
                           src={p.thumbnail}
                           alt=""
-                          className="w-8 h-8 rounded object-cover flex-shrink-0 bg-[#122040]"
+                          className="w-8 h-8 rounded object-cover flex-shrink-0 bg-muted"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded bg-[#122040] flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded bg-muted flex items-center justify-center flex-shrink-0">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-blue-100 text-xs truncate">{p.title}</p>
-                        <p className="text-blue-400/70 text-[10px]">{p.sku}</p>
+                        <p className="text-foreground text-xs truncate">{p.title}</p>
+                        <p className="text-muted-foreground text-[10px]">{p.sku}</p>
                       </div>
                       <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${stockBgColor(p.availableQuantity)}`}>
                         {p.availableQuantity ?? 0}
@@ -360,32 +366,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl p-4">
+        <div className="bg-card border border-card-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-red-400" />
-              <h2 className="text-sm font-semibold text-white">Perguntas sem resposta</h2>
+              <MessageSquare className="w-4 h-4 text-red-500" />
+              <h2 className="text-sm font-semibold text-foreground">Perguntas sem resposta</h2>
             </div>
-            <Link to="/questions" className="text-blue-400 text-xs hover:text-blue-300">
+            <Link to="/questions" className="text-primary text-xs hover:text-primary/80">
               Ver todas
             </Link>
           </div>
 
           {topQuestions.length === 0 ? (
-            <p className="text-blue-400/70 text-sm text-center py-6">Nenhuma pergunta pendente</p>
+            <p className="text-muted-foreground text-sm text-center py-6">Nenhuma pergunta pendente</p>
           ) : (
-            <div className="divide-y divide-[#1a3055]/40">
+            <div className="divide-y divide-border">
               {topQuestions.map((q) => (
                 <div key={q.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start gap-2 mb-1">
-                    <MessageSquare className="w-3.5 h-3.5 text-blue-400/60 mt-0.5 flex-shrink-0" />
+                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       {q.mlItemId && (
-                        <p className="text-blue-400/70 text-[10px] mb-0.5 truncate font-mono">#{q.mlItemId}</p>
+                        <p className="text-muted-foreground text-[10px] mb-0.5 truncate font-mono">#{q.mlItemId}</p>
                       )}
-                      <p className="text-blue-100 text-xs leading-relaxed">{q.text}</p>
+                      <p className="text-foreground text-xs leading-relaxed">{q.text}</p>
                       {q.fromUserNickname && (
-                        <p className="text-blue-400/70 text-[10px] mt-0.5">de {q.fromUserNickname}</p>
+                        <p className="text-muted-foreground text-[10px] mt-0.5">de {q.fromUserNickname}</p>
                       )}
                     </div>
                   </div>

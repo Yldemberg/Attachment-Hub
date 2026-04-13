@@ -34,12 +34,12 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  new_order: <ShoppingCart className="w-4 h-4 text-emerald-400" />,
-  order_update: <ShoppingCart className="w-4 h-4 text-blue-400" />,
-  new_question: <MessageSquare className="w-4 h-4 text-red-400" />,
-  low_stock: <Package className="w-4 h-4 text-amber-400" />,
-  sync_complete: <RefreshCw className="w-4 h-4 text-blue-400" />,
-  item_update: <Package className="w-4 h-4 text-blue-300" />,
+  new_order: <ShoppingCart className="w-4 h-4 text-emerald-600" />,
+  order_update: <ShoppingCart className="w-4 h-4 text-primary" />,
+  new_question: <MessageSquare className="w-4 h-4 text-red-500" />,
+  low_stock: <Package className="w-4 h-4 text-amber-600" />,
+  sync_complete: <RefreshCw className="w-4 h-4 text-primary" />,
+  item_update: <Package className="w-4 h-4 text-primary" />,
 };
 
 export default function Notifications() {
@@ -78,19 +78,19 @@ export default function Notifications() {
   });
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#080f1e]">
-      <div className="sticky top-0 z-10 bg-[#080f1e] border-b border-[#1a3055]/60 flex-shrink-0 px-4 py-3 space-y-2">
+    <div className="h-full flex flex-col overflow-hidden bg-background">
+      <div className="sticky top-0 z-10 bg-background border-b border-border flex-shrink-0 px-4 py-3 space-y-2">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-base font-bold text-white">Notificações</h1>
-            <p className="text-blue-400/70 text-xs">{pagination?.total ?? 0} notificações</p>
+            <h1 className="text-base font-bold text-foreground">Notificações</h1>
+            <p className="text-muted-foreground text-xs">{pagination?.total ?? 0} notificações</p>
           </div>
           <Button
             variant="outline"
             size="sm"
             onClick={() => markAll()}
             disabled={markingAll}
-            className="border-[#1a3055]/70 text-blue-300 hover:text-white hover:bg-[#122040] h-7 text-xs gap-1.5"
+            className="h-7 text-xs gap-1.5"
           >
             <CheckCheck className="w-3.5 h-3.5" />
             Marcar todas como lidas
@@ -105,8 +105,8 @@ export default function Notifications() {
               className={cn(
                 "px-3 py-1.5 text-xs rounded-lg transition-colors",
                 filter === f
-                  ? "bg-blue-600/20 text-blue-400 font-medium"
-                  : "text-blue-300 hover:text-white hover:bg-[#122040]",
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent",
               )}
             >
               {f === "all" ? "Todas" : "Não lidas"}
@@ -119,19 +119,19 @@ export default function Notifications() {
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-16 bg-[#0d1b2e] border border-[#1a3055]/60 rounded-xl animate-pulse" />
+              <div key={i} className="h-16 bg-card border border-card-border rounded-xl animate-pulse" />
             ))}
           </div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24">
-            <BellOff className="w-10 h-10 text-blue-400/30 mb-3" />
-            <p className="text-blue-400/60 text-sm">Nenhuma notificação</p>
+            <BellOff className="w-10 h-10 text-muted-foreground/30 mb-3" />
+            <p className="text-muted-foreground text-sm">Nenhuma notificação</p>
           </div>
         ) : (
           <div className="space-y-2">
             {notifications.map((n) => {
               const typeLabel = TYPE_LABELS[n.type ?? ""] ?? n.type ?? "Notificação";
-              const icon = TYPE_ICONS[n.type ?? ""] ?? <Bell className="w-4 h-4 text-blue-300" />;
+              const icon = TYPE_ICONS[n.type ?? ""] ?? <Bell className="w-4 h-4 text-primary" />;
 
               return (
                 <div
@@ -139,45 +139,45 @@ export default function Notifications() {
                   className={cn(
                     "flex items-start gap-3 px-4 py-3 border rounded-xl transition-colors",
                     n.isRead
-                      ? "bg-[#0d1b2e] border-[#1a3055]/60"
-                      : "bg-blue-950/30 border-blue-700/40",
+                      ? "bg-card border-card-border"
+                      : "bg-primary/5 border-primary/30",
                   )}
                 >
                   <div className={cn(
                     "w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5",
-                    n.isRead ? "bg-[#122040] border-[#1a3055]/60" : "bg-blue-900/40 border-blue-700/40",
+                    n.isRead ? "bg-muted border-border" : "bg-primary/10 border-primary/30",
                   )}>
                     {icon}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="text-[10px] font-semibold text-blue-400/80 uppercase tracking-wide">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                         {typeLabel}
                       </span>
                       {n.accountNickname && (
                         <>
-                          <span className="text-blue-500/40 text-[10px]">·</span>
-                          <span className="text-[10px] text-blue-400 font-medium">{n.accountNickname}</span>
+                          <span className="text-muted-foreground/40 text-[10px]">·</span>
+                          <span className="text-[10px] text-primary font-medium">{n.accountNickname}</span>
                         </>
                       )}
                       {!n.isRead && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                       )}
                     </div>
-                    <p className={cn("text-sm font-medium", n.isRead ? "text-blue-200" : "text-white")}>
+                    <p className={cn("text-sm font-medium", n.isRead ? "text-foreground/80" : "text-foreground")}>
                       {n.title ?? "Notificação"}
                     </p>
                     {n.message && (
-                      <p className="text-blue-300/70 text-xs mt-0.5 leading-relaxed">{n.message}</p>
+                      <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">{n.message}</p>
                     )}
-                    <p className="text-blue-400/50 text-xs mt-1">{formatDateTime(n.createdAt)}</p>
+                    <p className="text-muted-foreground/60 text-xs mt-1">{formatDateTime(n.createdAt)}</p>
                   </div>
 
                   {!n.isRead && (
                     <button
                       onClick={() => markRead({ id: n.id })}
-                      className="flex-shrink-0 text-xs text-blue-400/60 hover:text-blue-400 transition-colors mt-0.5 whitespace-nowrap"
+                      className="flex-shrink-0 text-xs text-muted-foreground hover:text-primary transition-colors mt-0.5 whitespace-nowrap"
                     >
                       Marcar como lida
                     </button>
@@ -190,19 +190,19 @@ export default function Notifications() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4 py-2">
-            <p className="text-blue-400/60 text-xs">Página {page} de {totalPages}</p>
+            <p className="text-muted-foreground text-xs">Página {page} de {totalPages}</p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-30 flex items-center justify-center transition-colors"
+                className="w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-30 flex items-center justify-center transition-colors"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="w-7 h-7 rounded-lg border border-[#1a3055]/60 text-blue-300 hover:bg-[#122040] disabled:opacity-30 flex items-center justify-center transition-colors"
+                className="w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-30 flex items-center justify-center transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
