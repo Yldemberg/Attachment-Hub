@@ -3,43 +3,46 @@ import { supabase } from "./supabase";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
-/**
- * Dynamic token getter that always reads the current Supabase session.
- * - Returns null when the user is signed out (getSession returns null).
- * - Auto-refreshes the access token when it is expired or expiring soon.
- * - Set once at startup; never needs to be replaced.
- */
 async function dynamicTokenGetter(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
 
-  const expiresAt = session.expires_at ?? 0;
-  const isExpiredOrExpiringSoon = expiresAt * 1000 < Date.now() + 60_000;
+    if (error) {
+      console.error("[iHub] getSession error:", error.message);
+      return null;
+    }
 
-  if (isExpiredOrExpiringSoon) {
-    const { data: refreshed } = await supabase.auth.refreshSession();
-    return refreshed.session?.access_token ?? null;
+    if (!session) {
+      console.warn("[iHub] dynamicTokenGetter: no session in storage");
+      return null;
+    }
+
+    const expiresAt = session.expires_at ?? 0;
+    const isExpiredOrExpiringSoon = expiresAt * 1000 < Date.now() + 60_000;
+
+    if (isExpiredOrExpiringSoon) {
+      console.info("[iHub] dynamicTokenGetter: token expiring, refreshing...");
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.error("[iHub] refreshSession error:", refreshError.message);
+        return null;
+      }
+      return refreshed.session?.access_token ?? null;
+    }
+
+    return session.access_token;
+  } catch (err) {
+    console.error("[iHub] dynamicTokenGetter threw:", err);
+    return null;
   }
-
-  return session.access_token;
 }
 
-/**
- * Call once at app startup (inside AuthProvider).
- * Registers the dynamic getter so every API request always sends the
- * current, valid Supabase access token.
- */
 export function configureApiClient() {
   setBaseUrl(API_BASE_URL);
   setAuthTokenGetter(dynamicTokenGetter);
+  console.info("[iHub] configureApiClient: dynamic token getter registered, BASE_URL =", API_BASE_URL || "(relative)");
 }
 
-/**
- * Kept for API compatibility with auth-context.tsx.
- * The dynamic getter reads from supabase.auth.getSession() on every
- * request, so sign-in and sign-out are handled automatically without
- * needing to push tokens here.
- */
 export function updateApiToken(_token: string | null) {
   // intentional no-op — dynamic getter handles all token lifecycle
 }

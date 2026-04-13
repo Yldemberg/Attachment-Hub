@@ -64,6 +64,7 @@ export async function requireAuth(
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    logger.warn({ url: req.url, hasHeader: !!authHeader }, "401: missing or malformed Authorization header");
     res.status(401).json({
       error: { code: "UNAUTHORIZED", message: "Missing or invalid Authorization header" },
     });
@@ -77,7 +78,7 @@ export async function requireAuth(
     req.user = user;
     next();
   } catch (err) {
-    logger.warn({ err }, "JWT verification failed");
+    logger.warn({ err, url: req.url }, "401: JWT verification failed");
     res.status(401).json({
       error: { code: "UNAUTHORIZED", message: "Invalid or expired token" },
     });
