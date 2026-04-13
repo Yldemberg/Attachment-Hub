@@ -1,13 +1,8 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+/** Replit / production usually set PORT; local `pnpm run dev` defaults to 8080. */
+const rawPort = process.env.PORT?.trim() || "8080";
 
 const port = Number(rawPort);
 

@@ -251,6 +251,8 @@ export type MlItem = {
   thumbnail: string;
   permalink: string;
   category_id: string;
+  /** Present on GET /items — true for user products linked to Mercado Livre catalog. */
+  catalog_listing?: boolean;
   variations?: MlVariation[];
 };
 
@@ -518,6 +520,21 @@ export async function enrichMlItemWithTags(accountId: string, item: MlItem): Pro
     return await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
   } catch (err) {
     logger.warn({ err, itemId: item.id }, "ML fetch full item for tags failed");
+    return item;
+  }
+}
+
+/**
+ * Multiget GET /items?ids= often omits `catalog_listing` (always falsy via !!undefined in DB).
+ * GET /items/{id} includes it. No-op when the batch payload already has a boolean.
+ */
+export async function enrichMlItemCatalogListing(accountId: string, item: MlItem): Promise<MlItem> {
+  if (typeof item.catalog_listing === "boolean") return item;
+  try {
+    const full = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
+    return { ...item, catalog_listing: full.catalog_listing };
+  } catch (err) {
+    logger.warn({ err, itemId: item.id }, "ML fetch full item for catalog_listing failed");
     return item;
   }
 }

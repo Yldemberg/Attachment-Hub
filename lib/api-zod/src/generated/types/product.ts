@@ -28,6 +28,8 @@ export interface Product {
   logisticType?: string | null;
   isFull: boolean;
   isFlex: boolean;
+  /** True quando GET /items retorna catalog_listing (anúncio de catálogo ML). */
+  catalogListing: boolean;
   thumbnail?: string | null;
   permalink?: string | null;
   mlCategoryId?: string | null;

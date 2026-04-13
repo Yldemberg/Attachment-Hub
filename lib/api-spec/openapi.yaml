@@ -909,6 +909,10 @@ components:
           type: boolean
         isFlex:
           type: boolean
+        catalogListing:
+          type: boolean
+          description: >
+            True quando o anúncio vem de catálogo compartilhado do ML (GET /items → catalog_listing).
         thumbnail:
           type: string
           nullable: true
@@ -931,7 +935,7 @@ components:
         account:
           $ref: "#/components/schemas/AccountSummary"
           nullable: true
-      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, isFlex, createdAt, updatedAt]
+      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, isFlex, catalogListing, createdAt, updatedAt]
 
     AccountSummary:
       type: object

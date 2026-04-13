@@ -6,6 +6,7 @@ import {
   MlQuestion,
   enrichMlItemForSellerSku,
   enrichMlItemWithTags,
+  enrichMlItemCatalogListing,
   fetchMlItemVariations,
   fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
@@ -79,10 +80,12 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         }
       }
 
-      // Batch endpoint may omit shipping.tags; enrich from individual endpoint if missing.
+      // Batch endpoint may omit shipping.tags and catalog_listing; enrich from GET /items/{id}.
       const taggedItem = await enrichMlItemWithTags(accountId, workItem);
-      const isFlex = Array.isArray(taggedItem.shipping?.tags) && taggedItem.shipping.tags!.includes("self_service_in");
-      const logisticType = getMlEffectiveLogisticType(taggedItem);
+      const mlItemForDb = await enrichMlItemCatalogListing(accountId, taggedItem);
+      const isFlex =
+        Array.isArray(mlItemForDb.shipping?.tags) && mlItemForDb.shipping.tags!.includes("self_service_in");
+      const logisticType = getMlEffectiveLogisticType(mlItemForDb);
 
       const sku = getMlItemRepresentativeSku(workItem);
 
@@ -119,6 +122,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         logisticType,
         isFull,
         isFlex,
+        catalogListing: !!mlItemForDb.catalog_listing,
         thumbnail: item.thumbnail,
         permalink: item.permalink,
         mlCategoryId: item.category_id,
@@ -145,6 +149,7 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
             logisticType: values.logisticType,
             isFull: values.isFull,
             isFlex: values.isFlex,
+            catalogListing: values.catalogListing,
             thumbnail: values.thumbnail,
             permalink: values.permalink,
             mlCategoryId: values.mlCategoryId,

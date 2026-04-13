@@ -20,6 +20,7 @@ import {
   Truck,
   Zap,
   Tag,
+  Library,
   AlertTriangle,
   AlertCircle,
   Pencil,
@@ -52,6 +53,7 @@ interface Product {
   status?: string | null;
   isFull?: boolean | null;
   isFlex?: boolean | null;
+  catalogListing?: boolean | null;
   logisticType?: string | null;
   thumbnail?: string | null;
   mlItemId?: string | null;
@@ -192,6 +194,12 @@ function ProductCard({
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
               <Truck className="w-3 h-3" />
               Cross
+            </span>
+          )}
+          {p.catalogListing && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-300 bg-violet-600/20 border border-violet-500/35 px-2 py-0.5 rounded-full">
+              <Library className="w-3 h-3" />
+              Catálogo
             </span>
           )}
         </div>
