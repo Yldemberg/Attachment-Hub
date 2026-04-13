@@ -8,22 +8,22 @@ const ML_AUTH_URL = "https://auth.mercadolivre.com.br";
 const ML_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
 
-export function getMlAuthUrl(state: string): string {
+export function getMlAuthUrl(state: string, redirectUri?: string): string {
   const clientId = process.env.ML_CLIENT_ID;
-  const redirectUri = process.env.ML_REDIRECT_URI;
-  if (!clientId || !redirectUri) {
+  const resolvedRedirectUri = redirectUri ?? process.env.ML_REDIRECT_URI;
+  if (!clientId || !resolvedRedirectUri) {
     throw new Error("ML_CLIENT_ID and ML_REDIRECT_URI must be set");
   }
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: redirectUri,
+    redirect_uri: resolvedRedirectUri,
     state,
   });
   return `${ML_AUTH_URL}/authorization?${params.toString()}`;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<{
+export async function exchangeCodeForTokens(code: string, redirectUri?: string): Promise<{
   access_token: string;
   refresh_token: string;
   expires_in: number;
@@ -33,8 +33,8 @@ export async function exchangeCodeForTokens(code: string): Promise<{
 }> {
   const clientId = process.env.ML_CLIENT_ID;
   const clientSecret = process.env.ML_CLIENT_SECRET;
-  const redirectUri = process.env.ML_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) {
+  const resolvedRedirectUri = redirectUri ?? process.env.ML_REDIRECT_URI;
+  if (!clientId || !clientSecret || !resolvedRedirectUri) {
     throw new Error("ML credentials not configured");
   }
   const body = new URLSearchParams({
@@ -42,7 +42,7 @@ export async function exchangeCodeForTokens(code: string): Promise<{
     client_id: clientId,
     client_secret: clientSecret,
     code,
-    redirect_uri: redirectUri,
+    redirect_uri: resolvedRedirectUri,
   });
   const res = await fetch(`${ML_BASE_URL}/oauth/token`, {
     method: "POST",

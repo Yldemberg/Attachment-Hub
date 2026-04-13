@@ -11,6 +11,13 @@ import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
+function buildRedirectUri(req: import("express").Request): string {
+  const forwardedHost = req.headers["x-forwarded-host"] as string | undefined;
+  const host = (forwardedHost ? forwardedHost.split(",")[0].trim() : req.headers["host"]) ?? "";
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined ?? (req.secure ? "https" : "http")).split(",")[0].trim();
+  return `${proto}://${host}/api/callback`;
+}
+
 router.get("/accounts", ...auth, async (req, res) => {
   try {
     const db = getDb();
@@ -39,7 +46,8 @@ router.get("/accounts", ...auth, async (req, res) => {
 router.get("/accounts/connect/url", ...auth, async (req, res) => {
   try {
     const state = await createOAuthState(req.user!.id);
-    const url = getMlAuthUrl(state);
+    const redirectUri = buildRedirectUri(req);
+    const url = getMlAuthUrl(state, redirectUri);
     res.json({ url, state });
   } catch (err) {
     req.log.error({ err }, "Failed to get connect URL");
@@ -65,7 +73,8 @@ async function handleOAuthCallback(
   }
 
   try {
-    const tokens = await exchangeCodeForTokens(code);
+    const redirectUri = buildRedirectUri(req);
+    const tokens = await exchangeCodeForTokens(code, redirectUri);
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
     const db = getDb();
 
