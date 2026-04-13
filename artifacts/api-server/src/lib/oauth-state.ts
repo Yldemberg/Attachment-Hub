@@ -1,30 +1,35 @@
 import crypto from "crypto";
+import { getDb } from "./db";
+import { oauthStatesTable } from "@workspace/db/schema";
+import { eq, lt } from "drizzle-orm";
 
-interface StateEntry {
-  userId: string;
-  expiresAt: number;
-}
-
-const store = new Map<string, StateEntry>();
 const TTL_MS = 10 * 60 * 1000;
 
-export function createOAuthState(userId: string): string {
+export async function createOAuthState(userId: string): Promise<string> {
   const state = crypto.randomUUID();
-  store.set(state, { userId, expiresAt: Date.now() + TTL_MS });
+  const expiresAt = new Date(Date.now() + TTL_MS);
+  const db = getDb();
+  await db.insert(oauthStatesTable).values({ state, userId, expiresAt });
   return state;
 }
 
-export function consumeOAuthState(state: string): string | null {
-  const entry = store.get(state);
+export async function consumeOAuthState(state: string): Promise<string | null> {
+  const db = getDb();
+  const [entry] = await db
+    .delete(oauthStatesTable)
+    .where(eq(oauthStatesTable.state, state))
+    .returning();
+
   if (!entry) return null;
-  store.delete(state);
-  if (Date.now() > entry.expiresAt) return null;
+  if (new Date() > entry.expiresAt) return null;
   return entry.userId;
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of store) {
-    if (now > entry.expiresAt) store.delete(key);
+setInterval(async () => {
+  try {
+    const db = getDb();
+    await db.delete(oauthStatesTable).where(lt(oauthStatesTable.expiresAt, new Date()));
+  } catch (err) {
+    console.error({ err }, "Failed to clean up expired OAuth states");
   }
 }, 60_000).unref();

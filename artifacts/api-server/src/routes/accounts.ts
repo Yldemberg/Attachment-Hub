@@ -38,7 +38,7 @@ router.get("/accounts", ...auth, async (req, res) => {
 
 router.get("/accounts/connect/url", ...auth, async (req, res) => {
   try {
-    const state = createOAuthState(req.user!.id);
+    const state = await createOAuthState(req.user!.id);
     const url = getMlAuthUrl(state);
     res.json({ url, state });
   } catch (err) {
@@ -58,7 +58,7 @@ async function handleOAuthCallback(
     return;
   }
 
-  const userId = consumeOAuthState(state);
+  const userId = await consumeOAuthState(state);
   if (!userId) {
     res.redirect("/integrations?error=invalid_state");
     return;
