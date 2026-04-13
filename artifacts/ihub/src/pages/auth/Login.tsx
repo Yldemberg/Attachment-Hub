@@ -1,30 +1,53 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { storeToken } from "@/lib/auth-storage";
+import { useAuth } from "@/lib/auth-context";
 import logo from "@/assets/ihub-logo.png";
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export default function Login() {
   const [, navigate] = useLocation();
+  const { session } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (session) {
+    navigate("/dashboard");
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error?.message ?? "Erro ao entrar");
+        return;
+      }
+
+      storeToken(data.token);
       navigate("/dashboard");
+      window.location.reload();
+    } catch {
+      setError("Não foi possível conectar ao servidor");
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -6,9 +6,9 @@ pnpm workspace monorepo for iHub, a PWA that centralizes Mercado Livre marketpla
 
 ## Architecture
 
-- **Frontend** (Task 3): `artifacts/ihub` — React + Vite PWA with Supabase Auth
+- **Frontend** (Task 3): `artifacts/ihub` — React + Vite PWA with custom JWT auth
 - **Backend**: `artifacts/api-server` — Express 5 + TypeScript REST API
-- **Database**: `lib/db` — Drizzle ORM schema for Supabase (PostgreSQL)
+- **Database**: `lib/db` — Drizzle ORM schema for Replit PostgreSQL
 - **API contract**: `lib/api-spec/openapi.yaml` — OpenAPI 3.1 spec (source of truth)
 - **Generated client**: `lib/api-client-react` — React Query hooks via Orval codegen
 - **Generated Zod schemas**: `lib/api-zod` — validation schemas via Orval codegen
@@ -19,8 +19,8 @@ pnpm workspace monorepo for iHub, a PWA that centralizes Mercado Livre marketpla
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **API framework**: Express 5
-- **Auth**: Supabase Auth (JWT validated via `jose` in `artifacts/api-server/src/lib/auth.ts`)
-- **Database**: Supabase (PostgreSQL) + Drizzle ORM
+- **Auth**: Custom email/password auth — bcrypt hashes in `profiles.password_hash`, JWT signed with `SUPABASE_JWT_SECRET` via `jose`. Endpoints: `POST /api/auth/login`, `POST /api/auth/register`. Token stored in `localStorage` as `ihub_token`.
+- **Database**: Replit PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -31,7 +31,7 @@ pnpm workspace monorepo for iHub, a PWA that centralizes Mercado Livre marketpla
 
 Tables: `profiles`, `accounts`, `products`, `orders`, `questions`, `notifications`
 
-- **profiles** — 1:1 with Supabase auth.users; plan, trial_ends_at, Stripe IDs
+- **profiles** — user accounts; `password_hash` (bcrypt), plan, trial_ends_at, Stripe IDs
 - **accounts** — ML account integrations; OAuth tokens, sync status
 - **products** — ML listings; stock (available_quantity is most critical field), SKU
 - **orders** — ML orders; buyer info, items_json, shipping status

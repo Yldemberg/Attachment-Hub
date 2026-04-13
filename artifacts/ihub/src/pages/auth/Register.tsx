@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { storeToken } from "@/lib/auth-storage";
 import logo from "@/assets/ihub-logo.png";
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export default function Register() {
   const [, navigate] = useLocation();
@@ -12,45 +14,35 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signUp({ email, password });
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (error) {
-      setError(error.message);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error?.message ?? "Erro ao criar conta");
+        return;
+      }
+
+      storeToken(data.token);
+      navigate("/dashboard");
+      window.location.reload();
+    } catch {
+      setError("Não foi possível conectar ao servidor");
+    } finally {
       setLoading(false);
-    } else {
-      setSuccess(true);
     }
   };
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-8">
-        <div className="max-w-sm w-full text-center">
-          <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-bold text-foreground mb-2">Conta criada</h1>
-          <p className="text-muted-foreground text-sm mb-6">
-            Confira seu email para verificar sua conta antes de entrar.
-          </p>
-          <Link to="/auth/login">
-            <Button variant="outline">
-              Ir para o login
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">

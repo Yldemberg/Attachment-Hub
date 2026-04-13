@@ -7,6 +7,7 @@ export const profilesTable = pgTable("profiles", {
   fullName: text("full_name"),
   email: text("email"),
   avatarUrl: text("avatar_url"),
+  passwordHash: text("password_hash"),
   plan: text("plan").default("trial").notNull(),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   stripeCustomerId: text("stripe_customer_id"),

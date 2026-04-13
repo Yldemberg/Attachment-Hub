@@ -1,120 +1,60 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
-import { configureApiClient, updateApiToken } from "./api-client";
-import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import {
-  getListNotificationsQueryKey,
-  getListQuestionsQueryKey,
-  getListOrdersQueryKey,
-  getListProductsQueryKey,
-  getGetLowStockProductsQueryKey,
-  getGetDashboardSummaryQueryKey,
-  getGetSalesChartQueryKey,
-  getListAccountsQueryKey,
-} from "@workspace/api-client-react";
+import { configureApiClient } from "./api-client";
+import { getStoredToken, clearToken } from "./auth-storage";
+
+export interface IHubUser {
+  id: string;
+  email: string;
+  exp?: number;
+}
 
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  session: IHubUser | null;
+  user: IHubUser | null;
   loading: boolean;
-  signOut: () => Promise<void>;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   loading: true,
-  signOut: async () => {},
+  signOut: () => {},
 });
 
+function parseToken(token: string): IHubUser | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]!));
+    if (!payload.sub || !payload.email) return null;
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    return { id: payload.sub as string, email: payload.email as string, exp: payload.exp };
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<IHubUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   useEffect(() => {
     configureApiClient();
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      updateApiToken(session?.access_token ?? null);
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      updateApiToken(session?.access_token ?? null);
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    const token = getStoredToken();
+    if (token) {
+      const parsed = parseToken(token);
+      setUser(parsed ?? null);
+    }
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel("realtime-notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const type = (payload.new as { type?: string }).type;
-
-          queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
-
-          if (type === "new_question") {
-            queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey() });
-          } else if (type === "new_order") {
-            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetSalesChartQueryKey() });
-          } else if (type === "order_update") {
-            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-          } else if (type === "low_stock") {
-            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetLowStockProductsQueryKey() });
-          } else if (type === "sync_complete") {
-            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetLowStockProductsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getListQuestionsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetSalesChartQueryKey() });
-          }
-
-          toast({
-            title: (payload.new as { title?: string }).title || "Nova notificação",
-            description: (payload.new as { message?: string }).message || "",
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, queryClient, toast]);
-
-  const signOut = async () => {
-    updateApiToken(null);
-    await supabase.auth.signOut();
+  const signOut = () => {
+    clearToken();
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signOut }}>
+    <AuthContext.Provider value={{ session: user, user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
