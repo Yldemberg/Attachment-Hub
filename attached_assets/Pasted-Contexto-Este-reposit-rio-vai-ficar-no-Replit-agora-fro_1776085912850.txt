@@ -1,0 +1,30 @@
+Contexto: Este repositório vai ficar no Replit agora (frontend + API + BD), mas no futuro quero migrar o banco de dados para o Supabase (Postgres gerido) e o backend para deploy serverless (ex.: Vercel ou equivalente). Quero que o código e a configuração fiquem alinhados com essa migração, sem acoplamento ao Replit.
+
+Tarefas (faz na ordem que fizer sentido, mas reporta o que alteraste):
+
+1) Inventário de configuração
+   - Lista todas as variáveis de ambiente usadas no frontend (Vite: VITE_*), no api-server e em lib/db (ex.: DATABASE_URL, PORT, secrets de integrações).
+   - Garante que não há URLs de API, origens CORS, connection strings ou chaves hardcoded no código; tudo deve vir de env ou de import.meta.env no cliente.
+
+2) Ficheiro de referência para env
+   - Cria ou atualiza `.env.example` na raiz (e nos pacotes se fizer sentido) com todas as variáveis necessárias, valor placeholder e uma linha de comentário por variável a explicar onde se usa (dev Replit vs produção futura).
+
+3) Cliente HTTP / API
+   - O frontend deve usar apenas `VITE_API_URL` (ou variável única documentada) como base da API; confirma que build de produção não depende de URLs relativas implícitas ao Replit.
+   - Se existir CORS no backend, documenta quais origens são aceites e usa env (ex.: lista de origens permitidas em produção) em vez de strings fixas de domínio Replit quando possível.
+
+4) Base de dados
+   - Confirma que `DATABASE_URL` (ou equivalente) é a única fonte de ligação ao Postgres; migrações/schema (Drizzle ou outro) devem ser executáveis localmente e no CI sem depender de paths só do Replit.
+   - Se houver lógica específica do “Replit DB”, isola-a num módulo fino para trocar depois por Supabase sem espalhar pelo código.
+
+5) Supabase (preparação futura)
+   - Onde já existir cliente Supabase no frontend, garante que URL e anon key vêm só de `VITE_SUPABASE_*`.
+   - No backend, se validar JWT do Supabase, mantém `SUPABASE_URL` / segredos só em env; não duplicar lógica com URLs fixas.
+
+6) Documentação mínima para deploy futuro
+   - Adiciona um ficheiro curto (ex.: DEPLOY.md ou secção no README) com: variáveis obrigatórias, comando de build do frontend e do api-server, e nota de que o backend serverless pode exigir adaptação de um servidor HTTP long-running para rotas/handler.
+
+7) Checklist final
+   - Lista ficheiros alterados e qualquer decisão que exija ação manual minha (ex.: criar projeto Supabase, definir secrets no painel Vercel).
+
+Restrições: não removes funcionalidade; mudanças pequenas e focadas; mantém o estilo do projeto (TypeScript, estrutura de pastas atual).
