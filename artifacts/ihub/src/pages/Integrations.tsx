@@ -55,10 +55,14 @@ function ConnectButton() {
         if (err.status === 401) {
           description = "Sessão expirada. Você será redirecionado para o login.";
           forceRelogin = true;
+        } else if (err.status === 402 || err.status === 403) {
+          description = "Seu plano não permite conectar contas no momento.";
         } else if (err.status === 500) {
           description = "Erro interno no servidor. Verifique as credenciais de OAuth do Mercado Livre nas configurações.";
         } else if (err.status === 503) {
           description = "Serviço temporariamente indisponível. Tente novamente em instantes.";
+        } else if (err.status >= 500) {
+          description = "Erro interno do servidor. Verifique as configurações do servidor.";
         }
       }
 
