@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _defaultCredentials: RequestCredentials | undefined = undefined;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -42,6 +43,16 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Set a default `credentials` value for every fetch request.
+ * Use `"include"` in web apps that rely on httpOnly cookie-based auth
+ * so cookies are sent automatically on same-origin and cross-origin requests.
+ * Pass `undefined` to clear (browser default: `"same-origin"`).
+ */
+export function setDefaultCredentials(credentials: RequestCredentials | undefined): void {
+  _defaultCredentials = credentials;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -360,7 +371,12 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, {
+    credentials: _defaultCredentials,
+    ...init,
+    method,
+    headers,
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

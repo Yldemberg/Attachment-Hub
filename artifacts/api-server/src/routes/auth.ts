@@ -16,6 +16,14 @@ function parseCredentials(body: unknown): { email: string; password: string } | 
   return { email, password };
 }
 
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: "none" as const,
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+
 router.post("/auth/register", async (req, res) => {
   const creds = parseCredentials(req.body);
   if (!creds) {
@@ -47,7 +55,8 @@ router.post("/auth/register", async (req, res) => {
     }
 
     const token = await signUserToken(profile.id, profile.email ?? email);
-    res.json({ token, userId: profile.id, email: profile.email ?? email });
+    res.cookie("ihub_token", token, COOKIE_OPTS);
+    res.json({ userId: profile.id, email: profile.email ?? email });
   } catch (err) {
     req.log.error({ err }, "Register failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno" } });
@@ -79,11 +88,17 @@ router.post("/auth/login", async (req, res) => {
     }
 
     const token = await signUserToken(profile.id, profile.email ?? email);
-    res.json({ token, userId: profile.id, email: profile.email ?? email });
+    res.cookie("ihub_token", token, COOKIE_OPTS);
+    res.json({ userId: profile.id, email: profile.email ?? email });
   } catch (err) {
     req.log.error({ err }, "Login failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno" } });
   }
+});
+
+router.post("/auth/logout", (req, res) => {
+  res.clearCookie("ihub_token", { path: "/", sameSite: "none", secure: true });
+  res.json({ ok: true });
 });
 
 router.get("/auth/me", requireAuth, async (req, res) => {

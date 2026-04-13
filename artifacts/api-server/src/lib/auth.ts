@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 import { logger } from "./logger";
 
 export interface AuthUser {
@@ -16,44 +16,30 @@ declare global {
   }
 }
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-
-let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-function getJwks() {
-  if (!jwks && SUPABASE_URL) {
-    jwks = createRemoteJWKSet(
-      new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`),
-    );
-  }
-  return jwks;
-}
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? "changeme-set-supabase-jwt-secret";
 
 async function verifyJwt(token: string): Promise<AuthUser> {
-  if (SUPABASE_JWT_SECRET) {
-    const secret = new TextEncoder().encode(SUPABASE_JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret, {
-      algorithms: ["HS256"],
-    });
-    return {
-      id: payload.sub as string,
-      email: payload.email as string | undefined,
-      role: payload.role as string | undefined,
-    };
+  const secret = new TextEncoder().encode(JWT_SECRET);
+  const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
+  return {
+    id: payload.sub as string,
+    email: payload.email as string | undefined,
+    role: payload.role as string | undefined,
+  };
+}
+
+function extractToken(req: Request): string | null {
+  // 1. httpOnly cookie (preferred in production — not touchable by JS or proxies)
+  const cookie = (req as Request & { cookies?: Record<string, string> }).cookies?.ihub_token;
+  if (cookie) return cookie;
+
+  // 2. Authorization: Bearer <token> (fallback for API clients / dev)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
   }
 
-  const remoteJwks = getJwks();
-  if (remoteJwks) {
-    const { payload } = await jwtVerify(token, remoteJwks);
-    return {
-      id: payload.sub as string,
-      email: payload.email as string | undefined,
-      role: payload.role as string | undefined,
-    };
-  }
-
-  throw new Error("No JWT verification method configured: set SUPABASE_JWT_SECRET or SUPABASE_URL");
+  return null;
 }
 
 export async function requireAuth(
@@ -61,17 +47,15 @@ export async function requireAuth(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const authHeader = req.headers.authorization;
+  const token = extractToken(req);
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    logger.warn({ url: req.url, hasHeader: !!authHeader }, "401: missing or malformed Authorization header");
+  if (!token) {
+    logger.warn({ url: req.url }, "401: no auth token in cookie or Authorization header");
     res.status(401).json({
-      error: { code: "UNAUTHORIZED", message: "Missing or invalid Authorization header" },
+      error: { code: "UNAUTHORIZED", message: "Missing or invalid session" },
     });
     return;
   }
-
-  const token = authHeader.slice(7);
 
   try {
     const user = await verifyJwt(token);
@@ -90,16 +74,13 @@ export async function optionalAuth(
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
+  const token = extractToken(req);
+  if (token) {
     try {
       req.user = await verifyJwt(token);
     } catch {
       // Ignore — user stays unauthenticated
     }
   }
-
   next();
 }

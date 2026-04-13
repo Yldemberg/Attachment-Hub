@@ -3,7 +3,6 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { storeToken } from "@/lib/auth-storage";
 import logo from "@/assets/ihub-logo.png";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -24,6 +23,7 @@ export default function Register() {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -34,7 +34,6 @@ export default function Register() {
         return;
       }
 
-      storeToken(data.token);
       navigate("/dashboard");
       window.location.reload();
     } catch {
