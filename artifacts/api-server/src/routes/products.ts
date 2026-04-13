@@ -4,7 +4,7 @@ import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, or, inArray, lt, ilike, sql } from "drizzle-orm";
-import { fetchMlItemPrices, ml, resolveProductPricesFromMlPricesApi } from "../lib/mercadolivre";
+import { fetchMlItemPrices, ml, resolveProductPricesFromMlPricesApi, MlItem } from "../lib/mercadolivre";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -35,6 +35,44 @@ async function enrichRowsWithMlItemPrices(
           log.warn({ err, mlItemId: p.mlItemId }, "GET /items/.../prices failed for product list");
         }
         return { row: p, mlAmount, mlRegularAmount };
+      }),
+    );
+    out.push(...part);
+  }
+  return out;
+}
+
+/** Live GET /items/{id} for catalog_listing enrichment (chunked, one-by-one, lazy DB update). */
+async function enrichRowsWithCatalogListing(
+  enriched: Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null }>,
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void },
+): Promise<Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null; liveCatalogListing: boolean }>> {
+  const chunkSize = 5;
+  const db = getDb();
+  const out: Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null; liveCatalogListing: boolean }> = [];
+
+  for (let i = 0; i < enriched.length; i += chunkSize) {
+    const chunk = enriched.slice(i, i + chunkSize);
+    const part = await Promise.all(
+      chunk.map(async ({ row: p, mlAmount, mlRegularAmount }) => {
+        let liveCatalogListing = p.catalogListing;
+        try {
+          const item = await ml.get<MlItem>(p.accountId, `/items/${encodeURIComponent(p.mlItemId)}`);
+          const apiValue = item.catalog_listing === true;
+          liveCatalogListing = apiValue;
+          if (apiValue !== p.catalogListing) {
+            db.update(productsTable)
+              .set({ catalogListing: apiValue, updatedAt: new Date() })
+              .where(eq(productsTable.id, p.id))
+              .then(() => {})
+              .catch((err: unknown) => {
+                log.warn({ err, mlItemId: p.mlItemId }, "lazy catalog_listing DB update failed");
+              });
+          }
+        } catch (err) {
+          log.warn({ err, mlItemId: p.mlItemId }, "GET /items/{id} failed for catalog_listing enrichment");
+        }
+        return { row: p, mlAmount, mlRegularAmount, liveCatalogListing };
       }),
     );
     out.push(...part);
@@ -95,15 +133,17 @@ router.get("/products", ...auth, async (req, res) => {
       .where(inArray(accountsTable.id, accountIds));
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
-    const enriched = await enrichRowsWithMlItemPrices(rows, req.log);
+    const priceEnriched = await enrichRowsWithMlItemPrices(rows, req.log);
+    const enriched = await enrichRowsWithCatalogListing(priceEnriched, req.log);
 
     res.json({
-      data: enriched.map(({ row: p, mlAmount, mlRegularAmount }) => ({
+      data: enriched.map(({ row: p, mlAmount, mlRegularAmount, liveCatalogListing }) => ({
         ...p,
         price: p.price !== null ? Number(p.price) : null,
         originalPrice: p.originalPrice !== null ? Number(p.originalPrice) : null,
         amount: mlAmount,
         regularAmount: mlRegularAmount,
+        catalogListing: liveCatalogListing,
         account: accountMap[p.accountId] ?? null,
       })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
