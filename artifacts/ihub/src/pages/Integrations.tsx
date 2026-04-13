@@ -4,6 +4,7 @@ import {
   useSyncAccount,
   getListAccountsQueryKey,
   getConnectUrl,
+  ApiError,
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { useSearch, useLocation } from "wouter";
 
 interface Account {
@@ -36,6 +38,7 @@ interface Account {
 function ConnectButton() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { signOut } = useAuth();
 
   const handleConnect = async () => {
     setLoading(true);
@@ -44,12 +47,34 @@ function ConnectButton() {
       const url = (data as { url?: string } | null)?.url;
       if (!url) throw new Error("URL não retornada");
       window.location.href = url;
-    } catch {
+    } catch (err) {
+      let description = "Não foi possível iniciar a conexão com o Mercado Livre. Tente novamente.";
+      let forceRelogin = false;
+
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          description = "Sessão expirada. Você será redirecionado para o login.";
+          forceRelogin = true;
+        } else if (err.status === 500) {
+          description = "Erro interno no servidor. Verifique as credenciais de OAuth do Mercado Livre nas configurações.";
+        } else if (err.status === 503) {
+          description = "Serviço temporariamente indisponível. Tente novamente em instantes.";
+        }
+      }
+
       toast({
         variant: "destructive",
         title: "Erro ao conectar",
-        description: "Não foi possível iniciar a conexão com o Mercado Livre. Configure as variáveis ML_CLIENT_ID e ML_REDIRECT_URI no servidor.",
+        description,
       });
+
+      if (forceRelogin) {
+        setTimeout(async () => {
+          await signOut();
+        }, 2000);
+        return;
+      }
+
       setLoading(false);
     }
   };
