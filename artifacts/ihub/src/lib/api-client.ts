@@ -4,37 +4,42 @@ import { supabase } from "./supabase";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 /**
- * Configure the API client once at app startup.
- * The auth token getter is dynamic: it always reads the current Supabase
- * session and auto-refreshes if the access token is expired or about to
- * expire (within 60 s). This prevents 401s caused by stale cached tokens.
+ * Dynamic token getter that always reads the current Supabase session.
+ * - Returns null when the user is signed out (getSession returns null).
+ * - Auto-refreshes the access token when it is expired or expiring soon.
+ * - Set once at startup; never needs to be replaced.
  */
-export function configureApiClient() {
-  setBaseUrl(API_BASE_URL);
-  setAuthTokenGetter(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
+async function dynamicTokenGetter(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
 
-    const expiresAt = session.expires_at ?? 0;
-    const isExpiredOrExpiringSoon = expiresAt * 1000 < Date.now() + 60_000;
+  const expiresAt = session.expires_at ?? 0;
+  const isExpiredOrExpiringSoon = expiresAt * 1000 < Date.now() + 60_000;
 
-    if (isExpiredOrExpiringSoon) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      return refreshed.session?.access_token ?? null;
-    }
+  if (isExpiredOrExpiringSoon) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? null;
+  }
 
-    return session.access_token;
-  });
+  return session.access_token;
 }
 
 /**
- * Called on sign-out to immediately clear the auth getter so no further
- * authenticated requests are issued before the component tree unmounts.
+ * Call once at app startup (inside AuthProvider).
+ * Registers the dynamic getter so every API request always sends the
+ * current, valid Supabase access token.
  */
-export function updateApiToken(token: string | null) {
-  if (token === null) {
-    setAuthTokenGetter(null);
-  }
-  // When token is non-null we rely on the dynamic getter set in
-  // configureApiClient() — no need to update anything.
+export function configureApiClient() {
+  setBaseUrl(API_BASE_URL);
+  setAuthTokenGetter(dynamicTokenGetter);
+}
+
+/**
+ * Kept for API compatibility with auth-context.tsx.
+ * The dynamic getter reads from supabase.auth.getSession() on every
+ * request, so sign-in and sign-out are handled automatically without
+ * needing to push tokens here.
+ */
+export function updateApiToken(_token: string | null) {
+  // intentional no-op — dynamic getter handles all token lifecycle
 }
