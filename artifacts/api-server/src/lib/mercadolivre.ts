@@ -526,15 +526,36 @@ export async function enrichMlItemWithTags(accountId: string, item: MlItem): Pro
 
 /**
  * Multiget GET /items?ids= often omits `catalog_listing` (always falsy via !!undefined in DB).
- * GET /items/{id} includes it. No-op when the batch payload already has a boolean.
+ * GET /items/{id} includes it. No-op when the batch payload already has `true`.
  */
 export async function enrichMlItemCatalogListing(accountId: string, item: MlItem): Promise<MlItem> {
-  if (typeof item.catalog_listing === "boolean") return item;
+  if (item.catalog_listing === true) return item;
   try {
     const full = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
     return { ...item, catalog_listing: full.catalog_listing };
   } catch (err) {
     logger.warn({ err, itemId: item.id }, "ML fetch full item for catalog_listing failed");
+    return item;
+  }
+}
+
+/**
+ * Consolidates enrichMlItemWithTags + enrichMlItemCatalogListing into a single
+ * GET /items/{id} call when either field is missing, avoiding duplicate fetches.
+ */
+export async function enrichMlItem(accountId: string, item: MlItem): Promise<MlItem> {
+  const needsTags = !Array.isArray(item.shipping?.tags);
+  const needsCatalog = item.catalog_listing !== true;
+  if (!needsTags && !needsCatalog) return item;
+  try {
+    const full = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
+    return {
+      ...item,
+      ...(needsTags ? { shipping: full.shipping } : {}),
+      ...(needsCatalog ? { catalog_listing: full.catalog_listing } : {}),
+    };
+  } catch (err) {
+    logger.warn({ err, itemId: item.id }, "ML fetch full item for enrichment failed");
     return item;
   }
 }

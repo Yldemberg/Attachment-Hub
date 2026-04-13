@@ -5,8 +5,7 @@ import {
   MlOrder,
   MlQuestion,
   enrichMlItemForSellerSku,
-  enrichMlItemWithTags,
-  enrichMlItemCatalogListing,
+  enrichMlItem,
   fetchMlItemVariations,
   fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
@@ -81,8 +80,8 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
       }
 
       // Batch endpoint may omit shipping.tags and catalog_listing; enrich from GET /items/{id}.
-      const taggedItem = await enrichMlItemWithTags(accountId, workItem);
-      const mlItemForDb = await enrichMlItemCatalogListing(accountId, taggedItem);
+      // Single fetch covers both fields to avoid duplicate API calls.
+      const mlItemForDb = await enrichMlItem(accountId, workItem);
       const isFlex =
         Array.isArray(mlItemForDb.shipping?.tags) && mlItemForDb.shipping.tags!.includes("self_service_in");
       const logisticType = getMlEffectiveLogisticType(mlItemForDb);
