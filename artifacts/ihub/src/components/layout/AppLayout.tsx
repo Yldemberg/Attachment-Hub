@@ -25,6 +25,7 @@ import {
 import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { DemoBanner } from "./DemoBanner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -193,6 +194,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         <header className="md:hidden h-14 flex items-center px-4 border-b border-sidebar-border bg-sidebar flex-shrink-0">
           <img src={logo} alt="iHub" className="h-8 w-auto object-contain" />
         </header>
+
+        <DemoBanner />
 
         {me?.plan === "trial" && me.trialEndsAt && (
           <TrialBanner trialEndsAt={me.trialEndsAt} />
