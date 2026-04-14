@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type CookieOptions } from "express";
 import bcrypt from "bcryptjs";
 import { requireAuth } from "../lib/auth";
 import { getDb } from "../lib/db";
@@ -16,13 +16,25 @@ function parseCredentials(body: unknown): { email: string; password: string } | 
   return { email, password };
 }
 
-const COOKIE_OPTS = {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none" as const,
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
+/**
+ * Cookie de sessão para o ihub no mesmo site que o front (ex.: proxy Vite `/api` → API).
+ * - `SameSite=None` + `Secure` quebrava em HTTP local (cookie nunca era gravado).
+ * - `Lax` + `secure` só em produção cobre dev e HTTPS em produção.
+ * Override: `COOKIE_SECURE=true|false`.
+ */
+function sessionCookieOptions(): CookieOptions {
+  const explicit = process.env.COOKIE_SECURE;
+  const secure =
+    explicit === "true" ? true : explicit === "false" ? false : process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+}
 
 router.post("/auth/register", async (req, res) => {
   const creds = parseCredentials(req.body);
@@ -55,7 +67,7 @@ router.post("/auth/register", async (req, res) => {
     }
 
     const token = await signUserToken(profile.id, profile.email ?? email);
-    res.cookie("ihub_token", token, COOKIE_OPTS);
+    res.cookie("ihub_token", token, sessionCookieOptions());
     res.json({ userId: profile.id, email: profile.email ?? email });
   } catch (err) {
     req.log.error({ err }, "Register failed");
@@ -88,7 +100,7 @@ router.post("/auth/login", async (req, res) => {
     }
 
     const token = await signUserToken(profile.id, profile.email ?? email);
-    res.cookie("ihub_token", token, COOKIE_OPTS);
+    res.cookie("ihub_token", token, sessionCookieOptions());
     res.json({ userId: profile.id, email: profile.email ?? email });
   } catch (err) {
     req.log.error({ err }, "Login failed");
@@ -97,7 +109,13 @@ router.post("/auth/login", async (req, res) => {
 });
 
 router.post("/auth/logout", (req, res) => {
-  res.clearCookie("ihub_token", { path: "/", sameSite: "none", secure: true });
+  const c = sessionCookieOptions();
+  res.clearCookie("ihub_token", {
+    path: c.path,
+    sameSite: c.sameSite,
+    secure: c.secure,
+    httpOnly: c.httpOnly,
+  });
   res.json({ ok: true });
 });
 

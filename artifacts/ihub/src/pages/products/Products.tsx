@@ -80,6 +80,10 @@ function stockTextColor(qty: number | null | undefined): string {
   return "text-emerald-600";
 }
 
+/** Layout compacto (~metade da altura original h-[4.5rem]). */
+const PRODUCT_CARD_H = "h-[2.25rem]";
+const PRODUCT_THUMB_W = "w-20";
+
 function ProductCard({
   p,
   onEdit,
@@ -100,10 +104,12 @@ function ProductCard({
   const stockColor = stockTextColor(p.availableQuantity);
 
   return (
-    <div className="relative bg-card border border-card-border rounded-xl overflow-hidden group hover:border-primary/40 hover:shadow-md transition-all duration-200 flex">
+    <div
+      className={`relative bg-card border border-card-border rounded-md overflow-hidden group hover:border-primary/40 hover:shadow-md transition-all duration-200 flex ${PRODUCT_CARD_H}`}
+    >
       <Link
         to={`/products/${p.id}`}
-        className="relative w-40 flex-shrink-0 overflow-hidden bg-muted focus:outline-none"
+        className={`relative ${PRODUCT_THUMB_W} flex-shrink-0 h-full overflow-hidden bg-muted focus:outline-none`}
       >
         {p.thumbnail ? (
           <img
@@ -113,156 +119,161 @@ function ProductCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-10 h-10 text-muted-foreground/30" />
+            <Package className="w-3 h-3 text-muted-foreground/30" />
           </div>
         )}
         {qty === 0 && (
-          <div className="absolute inset-x-0 top-[38%] flex justify-center">
-            <span className="bg-red-600/90 text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded rotate-[-8deg]">
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center">
+            <span className="bg-red-600/90 text-white text-[6px] font-black uppercase tracking-wide px-0.5 py-px rounded rotate-[-8deg]">
               Esgot.
             </span>
           </div>
         )}
       </Link>
 
-      <div className="flex-1 flex flex-col px-4 py-3 gap-2 min-w-0">
-        <div className="min-w-0">
-          <Link
-            to={`/products/${p.id}`}
-            className="text-sm font-bold text-foreground hover:text-primary transition-colors leading-snug line-clamp-2 block"
-            title={p.title ?? ""}
-          >
-            {p.title ?? p.id}
-          </Link>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <p className="text-xs font-mono text-muted-foreground truncate">
-              <span className="font-sans font-semibold not-italic">SKU:</span>{" "}
-              {p.sku ?? "—"}
-            </p>
-            {accountNickname && (
-              <span className="text-[10px] text-muted-foreground/70 truncate max-w-[120px]" title={accountNickname}>
-                {accountNickname}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {p.status === "active" && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Ativo
-            </span>
-          )}
-          {p.status === "paused" && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              Pausado
-            </span>
-          )}
-          {p.status === "closed" && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground/60" />
-              Encerrado
-            </span>
-          )}
-          {p.status === "under_review" && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
-              <span className="w-2 h-2 rounded-full bg-primary" />
-              Em revisão
-            </span>
-          )}
-          {isPromo && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-200 px-2 py-0.5 rounded-full">
-              <Tag className="w-3 h-3" />
-              Promo
-            </span>
-          )}
-          {isFull && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
-              <Warehouse className="w-3 h-3" />
-              Full
-            </span>
-          )}
-          {isFlex && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
-              <Zap className="w-3 h-3" />
-              Flex
-            </span>
-          )}
-          {isCross && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-              <Truck className="w-3 h-3" />
-              Cross
-            </span>
-          )}
-          {p.catalogListing && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">
-              <Library className="w-3 h-3" />
-              Catálogo
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-end justify-between mt-auto gap-2">
-          <div>
-            <div className="flex items-baseline gap-1.5 mb-1.5">
-              <span className={`text-3xl font-black leading-none ${stockColor}`}>
-                {qty}
-              </span>
-              <span className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
-                un
-              </span>
-              {qty > 0 && qty < 3 && (
-                <AlertTriangle className="w-4 h-4 text-red-500 ml-0.5" />
-              )}
-              {qty >= 3 && qty <= 7 && (
-                <AlertCircle className="w-4 h-4 text-amber-500 ml-0.5" />
-              )}
-            </div>
-            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  qty === 0 ? "bg-muted-foreground/20" : qty < 3 ? "bg-red-500" : qty <= 7 ? "bg-amber-500" : "bg-emerald-500"
-                }`}
-                style={{ width: `${Math.min(100, Math.round((qty / 50) * 100))}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="text-right">
-              <p className="text-base font-black text-amber-600">
-                {formatCurrency(p.amount ?? p.price)}
-              </p>
-              {isPromo && (
-                <p className="text-xs text-muted-foreground line-through leading-none">
-                  {formatCurrency(p.regularAmount)}
+      {/* Escala 50%: mantém tipografia original legível; metade visual da altura original (4.5rem). */}
+      <div className="flex-1 min-w-0 min-h-0 relative overflow-hidden">
+        <div className="absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-[0.5]">
+          <div className="flex h-[4.5rem] w-1/2 flex-col px-3 py-1 gap-0.5 min-w-0 min-h-0">
+            <div className="min-w-0 min-h-0 shrink">
+              <Link
+                to={`/products/${p.id}`}
+                className="text-xs font-bold text-foreground hover:text-primary transition-colors leading-tight line-clamp-1 block"
+                title={p.title ?? ""}
+              >
+                {p.title ?? p.id}
+              </Link>
+              <div className="flex items-center gap-1.5 mt-px flex-wrap">
+                <p className="text-[10px] font-mono text-muted-foreground truncate">
+                  <span className="font-sans font-semibold not-italic">SKU:</span>{" "}
+                  {p.sku ?? "—"}
                 </p>
+                {accountNickname && (
+                  <span className="text-[9px] text-muted-foreground/70 truncate max-w-[100px]" title={accountNickname}>
+                    {accountNickname}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 flex-nowrap overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {p.status === "active" && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Ativo
+                </span>
+              )}
+              {p.status === "paused" && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Pausado
+                </span>
+              )}
+              {p.status === "closed" && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
+                  Encerrado
+                </span>
+              )}
+              {p.status === "under_review" && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  Em revisão
+                </span>
+              )}
+              {isPromo && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-pink-600 bg-pink-50 border border-pink-200 px-1.5 py-px rounded-full shrink-0">
+                  <Tag className="w-2.5 h-2.5" />
+                  Promo
+                </span>
+              )}
+              {isFull && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-px rounded-full shrink-0">
+                  <Warehouse className="w-2.5 h-2.5" />
+                  Full
+                </span>
+              )}
+              {isFlex && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-px rounded-full shrink-0">
+                  <Zap className="w-2.5 h-2.5" />
+                  Flex
+                </span>
+              )}
+              {isCross && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-px rounded-full shrink-0">
+                  <Truck className="w-2.5 h-2.5" />
+                  Cross
+                </span>
+              )}
+              {p.catalogListing && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-px rounded-full shrink-0">
+                  <Library className="w-2.5 h-2.5" />
+                  Catálogo
+                </span>
               )}
             </div>
 
-            {p.permalink && (
-              <a
-                href={p.permalink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
-                title="Ver no Mercado Livre"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
+            <div className="flex items-end justify-between mt-auto gap-1.5 shrink-0">
+              <div>
+                <div className="flex items-baseline gap-1 mb-0.5">
+                  <span className={`text-xl font-black leading-none ${stockColor}`}>
+                    {qty}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                    un
+                  </span>
+                  {qty > 0 && qty < 3 && (
+                    <AlertTriangle className="w-3 h-3 text-red-500 ml-0.5" />
+                  )}
+                  {qty >= 3 && qty <= 7 && (
+                    <AlertCircle className="w-3 h-3 text-amber-500 ml-0.5" />
+                  )}
+                </div>
+                <div className="h-1 w-20 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      qty === 0 ? "bg-muted-foreground/20" : qty < 3 ? "bg-red-500" : qty <= 7 ? "bg-amber-500" : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round((qty / 50) * 100))}%` }}
+                  />
+                </div>
+              </div>
 
-            {!isFull && (
-              <button
-                onClick={onEdit}
-                className="w-8 h-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
-                title="Editar estoque"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
-            )}
+              <div className="flex items-center gap-1.5">
+                <div className="text-right">
+                  <p className="text-sm font-black text-amber-600 leading-none">
+                    {formatCurrency(p.amount ?? p.price)}
+                  </p>
+                  {isPromo && (
+                    <p className="text-[10px] text-muted-foreground line-through leading-none mt-px">
+                      {formatCurrency(p.regularAmount)}
+                    </p>
+                  )}
+                </div>
+
+                {p.permalink && (
+                  <a
+                    href={p.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
+                    title="Ver no Mercado Livre"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+
+                {!isFull && (
+                  <button
+                    onClick={onEdit}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
+                    title="Editar estoque"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -272,12 +283,18 @@ function ProductCard({
 
 function SkeletonCard() {
   return (
-    <div className="bg-card border border-card-border rounded-xl overflow-hidden flex h-36 animate-pulse">
-      <div className="w-40 flex-shrink-0 bg-muted" />
-      <div className="flex-1 px-4 py-3 flex flex-col gap-2.5">
-        <div className="h-4 bg-muted rounded w-3/4" />
-        <div className="h-3 bg-muted rounded w-1/3" />
-        <div className="h-3 bg-muted rounded w-1/4 mt-auto" />
+    <div
+      className={`bg-card border border-card-border rounded-md overflow-hidden flex ${PRODUCT_CARD_H} animate-pulse`}
+    >
+      <div className={`${PRODUCT_THUMB_W} flex-shrink-0 bg-muted`} />
+      <div className="flex-1 min-h-0 min-w-0 relative overflow-hidden">
+        <div className="absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-[0.5]">
+          <div className="flex h-[4.5rem] w-1/2 flex-col px-3 py-1 gap-1 justify-between min-h-0">
+            <div className="h-3 bg-muted rounded w-3/4" />
+            <div className="h-2.5 bg-muted rounded w-1/3" />
+            <div className="h-2.5 bg-muted rounded w-1/4" />
+          </div>
+        </div>
       </div>
     </div>
   );

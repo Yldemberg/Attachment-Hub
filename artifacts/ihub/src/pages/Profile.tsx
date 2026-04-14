@@ -81,7 +81,7 @@ export default function Profile() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-muted-foreground text-xs">Membro desde</p>
-              <p className="text-foreground text-sm mt-0.5">{formatDate(p?.createdAt ?? user?.created_at)}</p>
+              <p className="text-foreground text-sm mt-0.5">{formatDate(p?.createdAt)}</p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">ID do usuário</p>

@@ -26,6 +26,10 @@ if (!basePath) {
   );
 }
 
+const dirname = import.meta.dirname;
+const reactRoot = path.resolve(dirname, "node_modules/react");
+const reactDomRoot = path.resolve(dirname, "node_modules/react-dom");
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -37,7 +41,7 @@ export default defineConfig({
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
+              root: path.resolve(dirname, ".."),
             }),
           ),
           await import("@replit/vite-plugin-dev-banner").then((m) =>
@@ -48,14 +52,29 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-      "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      "@": path.resolve(dirname, "src"),
+      "@assets": path.resolve(dirname, "..", "..", "attached_assets"),
+      // Force a single React instance (avoids "Cannot read properties of null (reading 'useEffect')" from duplicate React in dev/HMR).
+      react: reactRoot,
+      "react-dom": reactDomRoot,
+      "react/jsx-runtime": path.join(reactRoot, "jsx-runtime.js"),
+      "react/jsx-dev-runtime": path.join(reactRoot, "jsx-dev-runtime.js"),
     },
     dedupe: ["react", "react-dom"],
   },
-  root: path.resolve(import.meta.dirname),
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "@tanstack/react-query",
+      "wouter",
+    ],
+  },
+  root: path.resolve(dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(dirname, "dist/public"),
     emptyOutDir: true,
   },
   server: {
@@ -65,6 +84,10 @@ export default defineConfig({
     fs: {
       strict: true,
       deny: ["**/.*"],
+      allow: [
+        path.resolve(dirname),
+        path.resolve(dirname, "..", "..", "lib"),
+      ],
     },
     proxy: {
       "/api": {

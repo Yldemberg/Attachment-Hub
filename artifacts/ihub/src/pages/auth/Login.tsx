@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
 import logo from "@/assets/ihub-logo.png";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+/** Mesma origem que `GET /api/auth/me` em `auth-context.tsx` (cookie de sessão). */
+const LOGIN_URL = "/api/auth/login";
+const ME_URL = "/api/auth/me";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -27,17 +29,44 @@ export default function Login() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const res = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { error?: { message?: string } } = {};
+      if (raw) {
+        try {
+          data = JSON.parse(raw) as { error?: { message?: string } };
+        } catch {
+          setError("Resposta inválida do servidor");
+          return;
+        }
+      }
 
       if (!res.ok) {
         setError(data.error?.message ?? "Erro ao entrar");
+        return;
+      }
+
+      const me = await fetch(ME_URL, { credentials: "include" });
+      const meRaw = await me.text();
+      let profile: { id?: string } | null = null;
+      if (meRaw) {
+        try {
+          profile = JSON.parse(meRaw) as { id?: string };
+        } catch {
+          profile = null;
+        }
+      }
+
+      if (!me.ok || !profile?.id) {
+        setError(
+          "O servidor aceitou o login, mas a sessão não ficou ativa neste site (por exemplo cookie bloqueado ou endereço da API diferente da página). Verifique HTTPS e configuração do ambiente.",
+        );
         return;
       }
 
