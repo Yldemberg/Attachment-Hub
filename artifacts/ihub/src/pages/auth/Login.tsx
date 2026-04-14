@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
+import { setStoredToken } from "@/lib/api-client";
 import logo from "@/assets/ihub-logo.png";
 
 /** Mesma origem que `GET /api/auth/me` em `auth-context.tsx` (cookie de sessão). */
@@ -37,10 +38,10 @@ export default function Login() {
       });
 
       const raw = await res.text();
-      let data: { error?: { message?: string } } = {};
+      let data: { error?: { message?: string }; token?: string } = {};
       if (raw) {
         try {
-          data = JSON.parse(raw) as { error?: { message?: string } };
+          data = JSON.parse(raw) as { error?: { message?: string }; token?: string };
         } catch {
           setError("Resposta inválida do servidor");
           return;
@@ -52,7 +53,15 @@ export default function Login() {
         return;
       }
 
-      const me = await fetch(ME_URL, { credentials: "include" });
+      if (data.token) {
+        setStoredToken(data.token);
+        navigate("/dashboard");
+        window.location.reload();
+        return;
+      }
+
+      const meHeaders: Record<string, string> = {};
+      const me = await fetch(ME_URL, { credentials: "include", headers: meHeaders });
       const meRaw = await me.text();
       let profile: { id?: string } | null = null;
       if (meRaw) {

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { configureApiClient } from "./api-client";
+import { configureApiClient, getStoredToken, clearStoredToken } from "./api-client";
 
 export interface IHubUser {
   id: string;
@@ -27,7 +27,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     configureApiClient();
 
-    fetch("/api/auth/me", { credentials: "include" })
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    fetch("/api/auth/me", { credentials: "include", headers })
       .then((res) => (res.ok ? res.json() : null))
       .then((profile) => {
         if (profile?.id) {
@@ -39,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = () => {
+    clearStoredToken();
     fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     setUser(null);
   };

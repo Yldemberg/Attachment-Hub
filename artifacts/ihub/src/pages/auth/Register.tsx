@@ -3,9 +3,8 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { setStoredToken } from "@/lib/api-client";
 import logo from "@/assets/ihub-logo.png";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export default function Register() {
   const [, navigate] = useLocation();
@@ -20,18 +19,22 @@ export default function Register() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json() as { error?: { message?: string }; token?: string };
 
       if (!res.ok) {
         setError(data.error?.message ?? "Erro ao criar conta");
         return;
+      }
+
+      if (data.token) {
+        setStoredToken(data.token);
       }
 
       navigate("/dashboard");

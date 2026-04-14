@@ -68,7 +68,7 @@ router.post("/auth/register", async (req, res) => {
 
     const token = await signUserToken(profile.id, profile.email ?? email);
     res.cookie("ihub_token", token, sessionCookieOptions());
-    res.json({ userId: profile.id, email: profile.email ?? email });
+    res.json({ userId: profile.id, email: profile.email ?? email, token });
   } catch (err) {
     req.log.error({ err }, "Register failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno" } });
@@ -101,7 +101,7 @@ router.post("/auth/login", async (req, res) => {
 
     const token = await signUserToken(profile.id, profile.email ?? email);
     res.cookie("ihub_token", token, sessionCookieOptions());
-    res.json({ userId: profile.id, email: profile.email ?? email });
+    res.json({ userId: profile.id, email: profile.email ?? email, token });
   } catch (err) {
     req.log.error({ err }, "Login failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno" } });
