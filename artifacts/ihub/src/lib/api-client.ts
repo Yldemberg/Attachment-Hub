@@ -17,7 +17,7 @@ export function clearStoredToken(): void {
 }
 
 export function configureApiClient() {
-  if (import.meta.env.VITE_DEMO_MODE === "true") {
+  if (!import.meta.env.PROD && import.meta.env.VITE_DEMO_MODE === "true") {
     installMockFetch();
   }
   setBaseUrl(API_BASE_URL);
