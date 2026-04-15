@@ -80,10 +80,6 @@ function stockTextColor(qty: number | null | undefined): string {
   return "text-emerald-600";
 }
 
-/** Layout compacto (~metade da altura original h-[4.5rem]). */
-const PRODUCT_CARD_H = "h-[2.25rem]";
-const PRODUCT_THUMB_W = "w-20";
-
 function ProductCard({
   p,
   onEdit,
@@ -103,179 +99,144 @@ function ProductCard({
   const qty = p.availableQuantity ?? 0;
   const stockColor = stockTextColor(p.availableQuantity);
 
+  const statusBadgeCls =
+    p.status === "active"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : p.status === "paused"
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : p.status === "closed"
+          ? "bg-slate-100 text-slate-500 border-slate-200"
+          : p.status === "under_review"
+            ? "bg-sky-50 text-sky-700 border-sky-200"
+            : "bg-slate-100 text-slate-600 border-slate-200";
+
+  const statusLabel =
+    p.status === "active"
+      ? "Ativo"
+      : p.status === "paused"
+        ? "Pausado"
+        : p.status === "closed"
+          ? "Encerrado"
+          : p.status === "under_review"
+            ? "Em revisão"
+            : (p.status ?? "—");
+
+  const thumbCls =
+    "size-[4.5rem] rounded-lg flex-shrink-0 bg-muted object-cover";
+
   return (
-    <div
-      className={`relative bg-card border border-card-border rounded-md overflow-hidden group hover:border-primary/40 hover:shadow-md transition-all duration-200 flex ${PRODUCT_CARD_H}`}
-    >
+    <div className="flex items-center gap-2 bg-card border border-card-border rounded-xl px-3 py-2 hover:border-primary/40 hover:shadow-sm transition-all">
       <Link
         to={`/products/${p.id}`}
-        className={`relative ${PRODUCT_THUMB_W} flex-shrink-0 h-full overflow-hidden bg-muted focus:outline-none`}
+        className="flex flex-1 min-w-0 items-center gap-2 cursor-pointer"
       >
         {p.thumbnail ? (
           <img
             src={p.thumbnail}
-            alt={p.title ?? ""}
-            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${qty === 0 ? "grayscale opacity-40" : ""}`}
+            alt=""
+            className={`${thumbCls} ${qty === 0 ? "grayscale opacity-50" : ""}`}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-3 h-3 text-muted-foreground/30" />
+          <div className={`${thumbCls} flex items-center justify-center`}>
+            <Package className="w-6 h-6 text-muted-foreground/40" />
           </div>
         )}
-        {qty === 0 && (
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center">
-            <span className="bg-red-600/90 text-white text-[6px] font-black uppercase tracking-wide px-0.5 py-px rounded rotate-[-8deg]">
-              Esgot.
+
+        <div className="flex-1 min-w-0">
+          <p className="text-foreground text-sm truncate font-medium" title={p.title ?? ""}>
+            {p.title ?? p.id}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 min-w-0 overflow-hidden">
+            <span className="text-[10px] text-muted-foreground font-mono truncate shrink min-w-0">
+              <span className="font-sans font-semibold not-italic">SKU:</span> {p.sku ?? "—"}
+            </span>
+            {accountNickname && (
+              <span className="text-[10px] text-muted-foreground truncate shrink-0 max-w-[140px]" title={accountNickname}>
+                {accountNickname}
+              </span>
+            )}
+          </div>
+          <div className="sm:hidden flex items-center justify-between gap-2 mt-1">
+            <span className={`text-sm font-bold tabular-nums ${stockColor}`}>
+              {qty} <span className="text-[10px] text-muted-foreground font-medium">un.</span>
+            </span>
+            <span className="text-amber-600 text-sm font-semibold truncate">
+              {formatCurrency(p.amount ?? p.price)}
             </span>
           </div>
-        )}
-      </Link>
 
-      {/* Escala 50%: mantém tipografia original legível; metade visual da altura original (4.5rem). */}
-      <div className="flex-1 min-w-0 min-h-0 relative overflow-hidden">
-        <div className="absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-[0.5]">
-          <div className="flex h-[4.5rem] w-1/2 flex-col px-3 py-1 gap-0.5 min-w-0 min-h-0">
-            <div className="min-w-0 min-h-0 shrink">
-              <Link
-                to={`/products/${p.id}`}
-                className="text-xs font-bold text-foreground hover:text-primary transition-colors leading-tight line-clamp-1 block"
-                title={p.title ?? ""}
-              >
-                {p.title ?? p.id}
-              </Link>
-              <div className="flex items-center gap-1.5 mt-px flex-wrap">
-                <p className="text-[10px] font-mono text-muted-foreground truncate">
-                  <span className="font-sans font-semibold not-italic">SKU:</span>{" "}
-                  {p.sku ?? "—"}
-                </p>
-                {accountNickname && (
-                  <span className="text-[9px] text-muted-foreground/70 truncate max-w-[100px]" title={accountNickname}>
-                    {accountNickname}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1 flex-nowrap overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {p.status === "active" && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Ativo
-                </span>
-              )}
-              {p.status === "paused" && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  Pausado
-                </span>
-              )}
-              {p.status === "closed" && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
-                  Encerrado
-                </span>
-              )}
-              {p.status === "under_review" && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  Em revisão
-                </span>
-              )}
-              {isPromo && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-pink-600 bg-pink-50 border border-pink-200 px-1.5 py-px rounded-full shrink-0">
-                  <Tag className="w-2.5 h-2.5" />
-                  Promo
-                </span>
-              )}
-              {isFull && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-px rounded-full shrink-0">
-                  <Warehouse className="w-2.5 h-2.5" />
-                  Full
-                </span>
-              )}
-              {isFlex && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-px rounded-full shrink-0">
-                  <Zap className="w-2.5 h-2.5" />
-                  Flex
-                </span>
-              )}
-              {isCross && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-px rounded-full shrink-0">
-                  <Truck className="w-2.5 h-2.5" />
-                  Cross
-                </span>
-              )}
-              {p.catalogListing && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-px rounded-full shrink-0">
-                  <Library className="w-2.5 h-2.5" />
-                  Catálogo
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-end justify-between mt-auto gap-1.5 shrink-0">
-              <div>
-                <div className="flex items-baseline gap-1 mb-0.5">
-                  <span className={`text-xl font-black leading-none ${stockColor}`}>
-                    {qty}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                    un
-                  </span>
-                  {qty > 0 && qty < 3 && (
-                    <AlertTriangle className="w-3 h-3 text-red-500 ml-0.5" />
-                  )}
-                  {qty >= 3 && qty <= 7 && (
-                    <AlertCircle className="w-3 h-3 text-amber-500 ml-0.5" />
-                  )}
-                </div>
-                <div className="h-1 w-20 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      qty === 0 ? "bg-muted-foreground/20" : qty < 3 ? "bg-red-500" : qty <= 7 ? "bg-amber-500" : "bg-emerald-500"
-                    }`}
-                    style={{ width: `${Math.min(100, Math.round((qty / 50) * 100))}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <div className="text-right">
-                  <p className="text-sm font-black text-amber-600 leading-none">
-                    {formatCurrency(p.amount ?? p.price)}
-                  </p>
-                  {isPromo && (
-                    <p className="text-[10px] text-muted-foreground line-through leading-none mt-px">
-                      {formatCurrency(p.regularAmount)}
-                    </p>
-                  )}
-                </div>
-
-                {p.permalink && (
-                  <a
-                    href={p.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
-                    title="Ver no Mercado Livre"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-
-                {!isFull && (
-                  <button
-                    onClick={onEdit}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors flex-shrink-0"
-                    title="Editar estoque"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-1 mt-1 min-w-0 flex-nowrap overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {isPromo && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-pink-600 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-lg shrink-0">
+                <Tag className="w-2.5 h-2.5" />
+                Promo
+              </span>
+            )}
+            {isFull && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-sky-50 text-sky-700 border-sky-200 shrink-0">
+                <Warehouse className="w-2.5 h-2.5" />
+                Full
+              </span>
+            )}
+            {isFlex && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-orange-50 text-orange-700 border-orange-200 shrink-0">
+                <Zap className="w-2.5 h-2.5" />
+                Flex
+              </span>
+            )}
+            {isCross && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                <Truck className="w-2.5 h-2.5" />
+                Cross
+              </span>
+            )}
+            {p.catalogListing && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200 shrink-0">
+                <Library className="w-2.5 h-2.5" />
+                Catálogo
+              </span>
+            )}
           </div>
         </div>
+
+        <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0 min-w-[120px]">
+          <div className="flex items-center gap-1 justify-end">
+            <span className={`text-lg font-bold leading-none tabular-nums ${stockColor}`}>{qty}</span>
+            <span className="text-[10px] text-muted-foreground font-medium">un.</span>
+            {qty > 0 && qty < 3 && <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />}
+            {qty >= 3 && qty <= 7 && <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />}
+          </div>
+          <p className="text-amber-600 text-sm font-semibold">{formatCurrency(p.amount ?? p.price)}</p>
+          {isPromo && (
+            <p className="text-muted-foreground text-[10px] line-through">{formatCurrency(p.regularAmount)}</p>
+          )}
+        </div>
+      </Link>
+
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1">
+          {p.permalink && (
+            <button
+              type="button"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors"
+              title="Ver no Mercado Livre"
+              onClick={() => window.open(p.permalink!, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!isFull && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors"
+              title="Editar estoque"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
       </div>
     </div>
   );
@@ -283,18 +244,19 @@ function ProductCard({
 
 function SkeletonCard() {
   return (
-    <div
-      className={`bg-card border border-card-border rounded-md overflow-hidden flex ${PRODUCT_CARD_H} animate-pulse`}
-    >
-      <div className={`${PRODUCT_THUMB_W} flex-shrink-0 bg-muted`} />
-      <div className="flex-1 min-h-0 min-w-0 relative overflow-hidden">
-        <div className="absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-[0.5]">
-          <div className="flex h-[4.5rem] w-1/2 flex-col px-3 py-1 gap-1 justify-between min-h-0">
-            <div className="h-3 bg-muted rounded w-3/4" />
-            <div className="h-2.5 bg-muted rounded w-1/3" />
-            <div className="h-2.5 bg-muted rounded w-1/4" />
-          </div>
-        </div>
+    <div className="min-h-[4.5rem] bg-card border border-card-border rounded-xl animate-pulse flex items-center gap-2 px-3 py-2">
+      <div className="size-[4.5rem] rounded-lg bg-muted flex-shrink-0" />
+      <div className="flex-1 space-y-2 py-0.5 min-w-0">
+        <div className="h-3.5 bg-muted rounded w-2/3" />
+        <div className="h-2.5 bg-muted rounded w-1/3" />
+      </div>
+      <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0 w-[120px]">
+        <div className="h-4 w-12 bg-muted rounded ml-auto" />
+        <div className="h-3.5 w-16 bg-muted rounded ml-auto" />
+      </div>
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+        <div className="h-8 w-[4.25rem] bg-muted rounded-lg" />
+        <div className="h-6 w-14 bg-muted rounded-lg" />
       </div>
     </div>
   );
@@ -472,16 +434,39 @@ export default function Products() {
 
   const totalPages = pagination?.totalPages ?? 1;
   const total = pagination?.total ?? 0;
-  const startItem = (page - 1) * limit + 1;
-  const endItem = Math.min(page * limit, total);
 
   const selectCls =
-    "bg-input border border-border text-xs rounded-lg px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
+    "bg-input border border-border text-xs rounded-lg px-2.5 h-7 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-2.5">
-        <div className="flex gap-2 items-center flex-wrap">
+      <div className="sticky top-0 z-10 bg-background border-b border-border flex-shrink-0 px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-base font-bold text-foreground">Produtos</h1>
+            <p className="text-muted-foreground text-xs">
+              {total} anúncio{total === 1 ? "" : "s"} encontrado{total === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            {ROWS_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => {
+                  setLimit(n);
+                  setPage(1);
+                }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
+                  limit === n ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <input
@@ -527,62 +512,26 @@ export default function Products() {
               ))}
             </select>
           )}
-
-          <div className="flex items-center gap-2 ml-auto">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground whitespace-nowrap font-medium hidden sm:block">
-                Itens/pág.:
-              </span>
-              <div className="flex items-center bg-input border border-border rounded-lg overflow-hidden">
-                {ROWS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => {
-                      setLimit(opt);
-                      setPage(1);
-                    }}
-                    className={`px-2.5 py-1.5 text-[10px] font-semibold transition-colors border-r border-border last:border-r-0 ${
-                      limit === opt
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {total > 0 && (
-              <span className="text-[10px] text-muted-foreground whitespace-nowrap hidden sm:block">
-                <span className="text-foreground font-semibold">{total}</span>{" "}
-                anúncios
-              </span>
-            )}
-          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-3">
         {isLoading ? (
-          <div className="grid grid-cols-1 gap-2.5">
+          <div className="space-y-2">
             {Array.from({ length: 8 }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </div>
         ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center py-24">
             <Package className="w-10 h-10 text-muted-foreground/30 mb-3" />
-            <p className="text-foreground text-sm font-medium">
-              Nenhum produto encontrado
-            </p>
-            <p className="text-muted-foreground text-xs mt-1">
+            <p className="text-muted-foreground text-sm">Nenhum produto encontrado</p>
+            <p className="text-muted-foreground/80 text-xs mt-1 text-center max-w-xs">
               Tente ajustar os filtros ou a busca
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-2.5">
+          <div className="space-y-2">
             {products.map((p) => (
               <ProductCard
                 key={p.id}
@@ -595,25 +544,18 @@ export default function Products() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
-            <p className="text-[10px] text-muted-foreground">
-              Mostrando{" "}
-              <span className="text-foreground font-medium">
-                {startItem}–{endItem}
-              </span>{" "}
-              de{" "}
-              <span className="text-foreground font-medium">{total}</span>{" "}
-              anúncios
+          <div className="flex items-center justify-between mt-4 py-2">
+            <p className="text-muted-foreground text-xs">
+              Página {page} de {totalPages} · {total} registros
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="flex items-center justify-center w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-30 flex items-center justify-center transition-colors"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-
               <div className="flex items-center gap-1">
                 {(() => {
                   const btnCls = (n: number) =>
@@ -638,18 +580,16 @@ export default function Products() {
                   return pages;
                 })()}
               </div>
-
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="flex items-center justify-center w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-7 h-7 rounded-lg border border-border text-muted-foreground hover:bg-accent disabled:opacity-30 flex items-center justify-center transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
-        </div>
       </div>
 
       <Dialog

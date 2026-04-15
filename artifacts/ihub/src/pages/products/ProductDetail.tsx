@@ -49,6 +49,13 @@ const STATUS_LABELS: Record<string, string> = {
   under_review: "Em revisão",
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  paused: "bg-amber-50 text-amber-700 border-amber-200",
+  closed: "bg-slate-100 text-slate-500 border-slate-200",
+  under_review: "bg-sky-50 text-sky-700 border-sky-200",
+};
+
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -74,13 +81,9 @@ export default function ProductDetail() {
 
   if (isLoading) {
     return (
-      <div className="h-full overflow-y-auto bg-background p-6">
-        <div className="h-6 w-32 bg-muted rounded animate-pulse mb-6" />
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-card border border-card-border rounded-xl animate-pulse" />
-          ))}
-        </div>
+      <div className="h-full overflow-y-auto bg-background p-6 space-y-3">
+        <div className="h-5 w-24 bg-muted rounded animate-pulse" />
+        <div className="h-32 bg-card border border-card-border rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -107,7 +110,7 @@ export default function ProductDetail() {
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="p-6 space-y-4 max-w-3xl">
+      <div className="p-6 space-y-4 max-w-2xl">
         <button
           onClick={() => navigate("/products")}
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm transition-colors"
@@ -116,77 +119,86 @@ export default function ProductDetail() {
           Produtos
         </button>
 
-        <div className="bg-card border border-card-border rounded-xl p-5 flex items-start gap-4">
-          {p.thumbnail ? (
-            <img src={p.thumbnail} alt="" className="w-20 h-20 rounded-xl object-cover bg-muted flex-shrink-0" />
-          ) : (
-            <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
-              <Package className="w-8 h-8 text-muted-foreground/30" />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h1 className="text-lg font-semibold text-foreground leading-tight">{p.title}</h1>
-              {p.permalink && (
-                <a
-                  href={p.permalink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
+        <div className="bg-card border border-card-border rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            {p.thumbnail ? (
+              <img src={p.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover bg-muted flex-shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                <Package className="w-5 h-5 text-muted-foreground/40" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h1 className="text-lg font-bold text-foreground leading-tight">{p.title}</h1>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {p.permalink && (
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-primary transition-colors p-0.5 rounded"
+                      title="Ver no Mercado Livre"
+                      onClick={() => window.open(p.permalink!, "_blank", "noopener,noreferrer")}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  )}
+                  <span
+                    className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${STATUS_COLORS[p.status ?? ""] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}
+                  >
+                    {STATUS_LABELS[p.status ?? ""] ?? p.status ?? "—"}
+                  </span>
+                </div>
+              </div>
+              <p className="text-muted-foreground text-xs mt-1 font-mono">{p.mlItemId}</p>
+              {p.isFull && (
+                <span className="inline-block mt-2 text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-lg px-2 py-0.5">
+                  FULL — estoque gerenciado pelo ML
+                </span>
               )}
             </div>
-            <p className="text-muted-foreground text-xs mt-1 font-mono">{p.mlItemId}</p>
-            {p.isFull && (
-              <span className="inline-block mt-2 text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-lg px-2 py-0.5">
-                FULL — estoque gerenciado pelo ML
-              </span>
-            )}
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-card border border-card-border rounded-xl p-3">
-            <p className="text-muted-foreground text-xs mb-1">SKU</p>
-            <p className="text-foreground text-sm font-mono">{p.sku ?? "—"}</p>
-          </div>
-          <div className="bg-card border border-card-border rounded-xl p-3">
-            <p className="text-muted-foreground text-xs mb-1">Preço</p>
-            {hasPromo ? (
-              <div className="space-y-0.5">
-                <p className="text-muted-foreground text-xs line-through">
-                  De: {formatCurrency(p.originalPrice)}
-                </p>
-                <p className="text-amber-600 text-sm font-semibold">
-                  Por: {formatCurrency(p.price)}
-                </p>
-              </div>
-            ) : (
-              <p className="text-amber-600 text-sm font-medium">{formatCurrency(p.price)}</p>
-            )}
-          </div>
-          <div className="bg-card border border-card-border rounded-xl p-3">
-            <p className="text-muted-foreground text-xs mb-1">Status</p>
-            <p className="text-foreground text-sm font-medium">{STATUS_LABELS[p.status ?? ""] ?? p.status ?? "—"}</p>
-          </div>
-          <div className="bg-card border border-card-border rounded-xl p-3">
-            <p className="text-muted-foreground text-xs mb-1">Atualizado</p>
-            <p className="text-foreground text-sm font-medium">{formatDateTime(p.updatedAt)}</p>
+          <div className="grid grid-cols-2 gap-4 mt-5">
+            <div>
+              <p className="text-muted-foreground text-xs">SKU</p>
+              <p className="text-foreground text-sm font-mono mt-0.5">{p.sku ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Preço</p>
+              {hasPromo ? (
+                <div className="mt-0.5 space-y-0.5">
+                  <p className="text-muted-foreground text-xs line-through">
+                    {formatCurrency(p.originalPrice)}
+                  </p>
+                  <p className="text-amber-600 text-xl font-bold">{formatCurrency(p.price)}</p>
+                </div>
+              ) : (
+                <p className="text-amber-600 text-xl font-bold mt-0.5">{formatCurrency(p.price)}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Status</p>
+              <p className="text-foreground text-sm font-medium mt-0.5">
+                {STATUS_LABELS[p.status ?? ""] ?? p.status ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Atualizado</p>
+              <p className="text-foreground text-sm mt-0.5">{formatDateTime(p.updatedAt)}</p>
+            </div>
           </div>
         </div>
 
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Estoque disponível</h2>
-            <span className={`text-lg font-bold px-3 py-1 rounded-lg ${stockBgColor(p.availableQuantity)}`}>
+            <span className={`text-xl font-bold px-3 py-1 rounded-lg ${stockBgColor(p.availableQuantity)}`}>
               {p.availableQuantity ?? 0}
             </span>
           </div>
 
           {!p.isFull && p.sku && (
-            <div className="border-t border-border pt-4">
+            <div className="border-t border-border pt-4 mt-4">
               <p className="text-muted-foreground text-xs mb-3">
                 Atualizar estoque de todos os anúncios com SKU{" "}
                 <span className="font-mono text-foreground">{p.sku}</span>:
@@ -219,7 +231,7 @@ export default function ProductDetail() {
 
         {variations.length > 0 && (
           <div className="bg-card border border-card-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+            <div className="px-5 py-4 border-b border-border flex items-center gap-2">
               <Tag className="w-4 h-4 text-primary" />
               <h2 className="text-sm font-semibold text-foreground">
                 Variações{" "}
@@ -227,20 +239,20 @@ export default function ProductDetail() {
               </h2>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">Atributos</th>
-                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">SKU</th>
-                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">Preço</th>
-                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">Estoque</th>
-                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">Vendidos</th>
+                    <th className="text-left px-5 py-2.5 text-muted-foreground font-medium">Atributos</th>
+                    <th className="text-left px-5 py-2.5 text-muted-foreground font-medium">SKU</th>
+                    <th className="text-right px-5 py-2.5 text-muted-foreground font-medium">Preço</th>
+                    <th className="text-right px-5 py-2.5 text-muted-foreground font-medium">Estoque</th>
+                    <th className="text-right px-5 py-2.5 text-muted-foreground font-medium">Vendidos</th>
                   </tr>
                 </thead>
                 <tbody>
                   {variations.map((v) => (
                     <tr key={v.id} className="border-b border-border/50 hover:bg-accent/50">
-                      <td className="px-4 py-2.5">
+                      <td className="px-5 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {v.attributes.map((a) => (
                             <span
@@ -252,18 +264,18 @@ export default function ProductDetail() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-5 py-2.5">
                         <span className="font-mono text-primary">{v.sku ?? "—"}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-amber-600 font-medium">
+                      <td className="px-5 py-2.5 text-right text-amber-600 font-medium">
                         {formatCurrency(v.price)}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-5 py-2.5 text-right">
                         <span className={`font-bold px-1.5 py-0.5 rounded ${stockBgColor(v.available_quantity)}`}>
                           {v.available_quantity}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-muted-foreground">
+                      <td className="px-5 py-2.5 text-right text-muted-foreground">
                         {v.sold_quantity}
                       </td>
                     </tr>
