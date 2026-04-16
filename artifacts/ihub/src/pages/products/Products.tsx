@@ -273,15 +273,10 @@ function ProductCard({
         </div>
         {canToggleListingStatus ? (
           <div
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-1"
+            className="flex shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30 p-1"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <span
-              className={`text-[10px] font-medium select-none ${p.status === "paused" ? "text-foreground" : "text-muted-foreground"}`}
-            >
-              Pausa
-            </span>
             <Switch
               checked={p.status === "active"}
               disabled={statusMutationPending}
@@ -291,11 +286,6 @@ function ProductCard({
                 onListingStatusChange(checked ? "active" : "paused");
               }}
             />
-            <span
-              className={`text-[10px] font-medium select-none ${p.status === "active" ? "text-foreground" : "text-muted-foreground"}`}
-            >
-              Ativa
-            </span>
           </div>
         ) : (
           <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
@@ -319,7 +309,7 @@ function SkeletonCard() {
       </div>
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
         <div className="h-8 w-[4.25rem] bg-muted rounded-lg" />
-        <div className="h-7 w-[7.5rem] bg-muted rounded-lg" />
+        <div className="h-7 w-11 bg-muted rounded-lg" />
       </div>
     </div>
   );
