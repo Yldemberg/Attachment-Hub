@@ -310,20 +310,30 @@ export type SyncAccount202 = {
 
 export type ListProductsParams = {
   account_id?: string;
-  status?: ListProductsStatus;
+  /**
+   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.
+   */
+  listing_filter?: ListProductsListingFilter;
+  /**
+   * Busca por MLB (ID do anúncio), SKU, título ou texto em variações. Várias palavras: todas devem aparecer (ordem irrelevante).
+   */
   search?: string;
   page?: number;
   limit?: number;
 };
 
-export type ListProductsStatus =
-  (typeof ListProductsStatus)[keyof typeof ListProductsStatus];
+export type ListProductsListingFilter =
+  (typeof ListProductsListingFilter)[keyof typeof ListProductsListingFilter];
 
-export const ListProductsStatus = {
+export const ListProductsListingFilter = {
   active: "active",
   paused: "paused",
   closed: "closed",
   under_review: "under_review",
+  flex: "flex",
+  full: "full",
+  promo: "promo",
+  catalog: "catalog",
 } as const;
 
 export type GetLowStockProductsParams = {

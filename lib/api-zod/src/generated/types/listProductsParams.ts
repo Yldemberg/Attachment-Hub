@@ -5,11 +5,17 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
-import type { ListProductsStatus } from "./listProductsStatus";
+import type { ListProductsListingFilter } from "./listProductsListingFilter";
 
 export type ListProductsParams = {
   account_id?: string;
-  status?: ListProductsStatus;
+  /**
+   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.
+   */
+  listing_filter?: ListProductsListingFilter;
+  /**
+   * Busca por MLB (ID do anúncio), SKU, título ou texto em variações. Várias palavras: todas devem aparecer (ordem irrelevante).
+   */
   search?: string;
   page?: number;
   limit?: number;

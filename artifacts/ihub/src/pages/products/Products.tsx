@@ -8,7 +8,7 @@ import {
   getListProductsQueryKey,
   getListNotificationsQueryKey,
   useListNotifications,
-  ListProductsStatus,
+  ListProductsListingFilter,
   NotificationType,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -29,6 +29,7 @@ import {
   ChevronRight,
   ExternalLink,
   Clapperboard,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -319,7 +320,7 @@ export default function Products() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<string>("all");
+  const [listingFilter, setListingFilter] = useState<string>("all");
   const [accountId, setAccountId] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState<RowsOption>(10);
@@ -332,10 +333,11 @@ export default function Products() {
   const params = {
     page,
     limit,
-    ...(search ? { search } : {}),
-    ...(status !== "all"
+    ...(search.trim() ? { search: search.trim() } : {}),
+    ...(listingFilter !== "all"
       ? {
-          status: status as (typeof ListProductsStatus)[keyof typeof ListProductsStatus],
+          listing_filter:
+            listingFilter as (typeof ListProductsListingFilter)[keyof typeof ListProductsListingFilter],
         }
       : {}),
     ...(accountId !== "all" ? { account_id: accountId } : {}),
@@ -551,31 +553,55 @@ export default function Products() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              placeholder="Buscar título ou SKU..."
+              placeholder="MLB, SKU ou título — várias palavras em qualquer ordem"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full bg-input border border-border text-xs rounded-lg pl-8 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className={`w-full bg-input border border-border text-xs rounded-lg pl-8 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary ${search ? "pr-9" : "pr-3"}`}
+              aria-label="Buscar por MLB, SKU ou descrição"
             />
+            {search ? (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                onClick={() => {
+                  setSearch("");
+                  setPage(1);
+                }}
+                aria-label="Limpar busca"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
 
           <select
-            value={status}
+            value={listingFilter}
             onChange={(e) => {
-              setStatus(e.target.value);
+              setListingFilter(e.target.value);
               setPage(1);
             }}
-            className={selectCls}
+            className={`${selectCls} min-w-[11rem]`}
+            aria-label="Filtro por status ou tipo de anúncio"
           >
-            <option value="all">Todos os status</option>
-            <option value="active">Ativo</option>
-            <option value="paused">Pausado</option>
-            <option value="closed">Encerrado</option>
+            <option value="all">Todos os anúncios</option>
+            <optgroup label="Status">
+              <option value="active">Ativo</option>
+              <option value="paused">Pausado</option>
+              <option value="closed">Encerrado</option>
+              <option value="under_review">Em revisão</option>
+            </optgroup>
+            <optgroup label="Tipo">
+              <option value="flex">Flex</option>
+              <option value="full">Full</option>
+              <option value="promo">Promo</option>
+              <option value="catalog">Catálogo</option>
+            </optgroup>
           </select>
 
           {accounts.length > 0 && (

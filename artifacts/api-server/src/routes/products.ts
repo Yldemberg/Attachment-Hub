@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, or, inArray, lt, ilike, sql } from "drizzle-orm";
+import { eq, and, or, inArray, lt, sql, gt, isNotNull } from "drizzle-orm";
 import { fetchMlItemPrices, ml, resolveProductPricesFromMlPricesApi, MlItem } from "../lib/mercadolivre";
 
 const router = Router();
@@ -110,10 +110,18 @@ async function getUserAccountIds(userId: string, filterAccountId?: string): Prom
   return accounts.map((a) => a.id);
 }
 
+/** Escape `%`, `_` and `\` for use in ILIKE … ESCAPE '\\' (PostgreSQL). */
+function escapeIlikePattern(token: string): string {
+  return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 router.get("/products", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const { account_id, status, search, page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { account_id, listing_filter, status, search, page = "1", limit = "20" } = req.query as Record<
+      string,
+      string
+    >;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -125,16 +133,50 @@ router.get("/products", ...auth, async (req, res) => {
     }
 
     const conditions = [inArray(productsTable.accountId, accountIds)];
-    if (status) conditions.push(eq(productsTable.status, status));
-    if (search) {
-      const pattern = `%${search}%`;
+
+    const filterKey = listing_filter || status;
+    if (filterKey === "active" || filterKey === "paused" || filterKey === "closed" || filterKey === "under_review") {
+      conditions.push(eq(productsTable.status, filterKey));
+    } else if (filterKey === "flex") {
+      conditions.push(or(eq(productsTable.logisticType, "self_service"), eq(productsTable.isFlex, true))!);
+    } else if (filterKey === "full") {
+      conditions.push(or(eq(productsTable.logisticType, "fulfillment"), eq(productsTable.isFull, true))!);
+    } else if (filterKey === "catalog") {
+      conditions.push(eq(productsTable.catalogListing, true));
+    } else if (filterKey === "promo") {
       conditions.push(
         or(
-          ilike(productsTable.title, pattern),
-          ilike(productsTable.sku, pattern),
-          sql`coalesce(${productsTable.variationsJson}::text, '') ilike ${pattern}`,
+          and(
+            isNotNull(productsTable.regularAmount),
+            isNotNull(productsTable.amount),
+            gt(productsTable.regularAmount, productsTable.amount),
+          )!,
+          and(
+            isNotNull(productsTable.originalPrice),
+            isNotNull(productsTable.price),
+            gt(productsTable.originalPrice, productsTable.price),
+          )!,
         )!,
       );
+    }
+
+    if (search && search.trim()) {
+      const tokens = search
+        .trim()
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+      for (const token of tokens) {
+        const pat = `%${escapeIlikePattern(token)}%`;
+        conditions.push(
+          sql`(
+            coalesce(${productsTable.title}, '') ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.sku}, '') ILIKE ${pat} ESCAPE '\\'
+            OR ${productsTable.mlItemId} ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.variationsJson}::text, '') ILIKE ${pat} ESCAPE '\\'
+          )`,
+        );
+      }
     }
 
     const where = and(...conditions);

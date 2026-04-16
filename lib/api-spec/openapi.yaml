@@ -213,13 +213,19 @@ paths:
           in: query
           schema:
             type: string
-        - name: status
+        - name: listing_filter
           in: query
+          description: >-
+            Filtro único por status do anúncio (active, paused, closed, under_review)
+            ou por característica (flex, full, promo, catalog). Omitir para listar todos.
           schema:
             type: string
-            enum: [active, paused, closed, under_review]
+            enum: [active, paused, closed, under_review, flex, full, promo, catalog]
         - name: search
           in: query
+          description: >-
+            Busca por MLB (ID do anúncio), SKU, título ou texto em variações.
+            Várias palavras: todas devem aparecer (ordem irrelevante).
           schema:
             type: string
         - name: page

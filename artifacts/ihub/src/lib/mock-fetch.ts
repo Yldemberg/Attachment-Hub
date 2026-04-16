@@ -107,15 +107,49 @@ export function installMockFetch(): void {
     if (path === "/products") {
       let filtered = [..._mockProducts];
       const search = params.get("search");
-      if (search) {
-        const q = search.toLowerCase();
-        filtered = filtered.filter(
-          (p) => p.title.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q)
-        );
+      if (search && search.trim()) {
+        const tokens = search
+          .trim()
+          .split(/\s+/)
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length > 0);
+        filtered = filtered.filter((p) => {
+          const hay = [
+            p.title ?? "",
+            p.sku ?? "",
+            p.mlItemId ?? "",
+            JSON.stringify((p as Record<string, unknown>).variationsJson ?? ""),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return tokens.every((t) => hay.includes(t));
+        });
       }
-      const status = params.get("status");
-      if (status) {
-        filtered = filtered.filter((p) => p.status === status);
+      const listingFilter = params.get("listing_filter") ?? params.get("status");
+      if (listingFilter === "active" || listingFilter === "paused" || listingFilter === "closed" || listingFilter === "under_review") {
+        filtered = filtered.filter((p) => p.status === listingFilter);
+      } else if (listingFilter === "flex") {
+        filtered = filtered.filter(
+          (p) => p.logisticType === "self_service" || p.isFlex === true,
+        );
+      } else if (listingFilter === "full") {
+        filtered = filtered.filter(
+          (p) => p.logisticType === "fulfillment" || p.isFull === true,
+        );
+      } else if (listingFilter === "catalog") {
+        filtered = filtered.filter((p) => p.catalogListing === true);
+      } else if (listingFilter === "promo") {
+        filtered = filtered.filter((p) => {
+          const ra = p.regularAmount;
+          const am = p.amount;
+          const op = (p as { originalPrice?: number | null }).originalPrice;
+          const pr = p.price;
+          const byMlPrices =
+            ra != null && am != null && Number(ra) > Number(am);
+          const byDb =
+            op != null && pr != null && Number(op) > Number(pr);
+          return byMlPrices || byDb;
+        });
       }
       return jsonResponse(paginate(filtered, page, limit));
     }

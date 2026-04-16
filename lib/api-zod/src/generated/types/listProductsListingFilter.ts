@@ -6,12 +6,16 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export type ListProductsStatus =
-  (typeof ListProductsStatus)[keyof typeof ListProductsStatus];
+export type ListProductsListingFilter =
+  (typeof ListProductsListingFilter)[keyof typeof ListProductsListingFilter];
 
-export const ListProductsStatus = {
+export const ListProductsListingFilter = {
   active: "active",
   paused: "paused",
   closed: "closed",
   under_review: "under_review",
+  flex: "flex",
+  full: "full",
+  promo: "promo",
+  catalog: "catalog",
 } as const;

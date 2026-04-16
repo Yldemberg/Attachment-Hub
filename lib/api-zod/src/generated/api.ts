@@ -109,8 +109,27 @@ export const listProductsQueryLimitDefault = 20;
 
 export const ListProductsQueryParams = zod.object({
   account_id: zod.coerce.string().optional(),
-  status: zod.enum(["active", "paused", "closed", "under_review"]).optional(),
-  search: zod.coerce.string().optional(),
+  listing_filter: zod
+    .enum([
+      "active",
+      "paused",
+      "closed",
+      "under_review",
+      "flex",
+      "full",
+      "promo",
+      "catalog",
+    ])
+    .optional()
+    .describe(
+      "Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.",
+    ),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Busca por MLB (ID do anúncio), SKU, título ou texto em variações. Várias palavras: todas devem aparecer (ordem irrelevante).",
+    ),
   page: zod.coerce.number().default(listProductsQueryPageDefault),
   limit: zod.coerce.number().default(listProductsQueryLimitDefault),
 });
