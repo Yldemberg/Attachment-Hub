@@ -27,6 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Clapperboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +60,8 @@ interface Product {
   mlItemId?: string | null;
   permalink?: string | null;
   accountId?: string;
+  /** Clip de vídeo no anúncio (GET /items → video_id), só preenchido na listagem. */
+  videoId?: string | null;
 }
 
 type StockScope = "single" | "account" | "all";
@@ -165,35 +168,59 @@ function ProductCard({
             </span>
           </div>
 
-          <div className="flex items-center gap-1 mt-1 min-w-0 flex-nowrap overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex items-center gap-0.5 mt-1 min-w-0 flex-nowrap overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {isPromo && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-pink-600 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-lg shrink-0">
-                <Tag className="w-2.5 h-2.5" />
-                Promo
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md text-pink-600 bg-pink-50 border border-pink-200 shrink-0"
+                title="Promoção"
+                aria-label="Promoção"
+              >
+                <Tag className="w-3 h-3" aria-hidden />
               </span>
             )}
             {isFull && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-sky-50 text-sky-700 border-sky-200 shrink-0">
-                <Warehouse className="w-2.5 h-2.5" />
-                Full
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 shrink-0"
+                title="Full (Fulfillment)"
+                aria-label="Full, envio Fulfillment"
+              >
+                <Warehouse className="w-3 h-3" aria-hidden />
               </span>
             )}
             {isFlex && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-orange-50 text-orange-700 border-orange-200 shrink-0">
-                <Zap className="w-2.5 h-2.5" />
-                Flex
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 shrink-0"
+                title="Flex"
+                aria-label="Flex"
+              >
+                <Zap className="w-3 h-3" aria-hidden />
               </span>
             )}
             {isCross && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 shrink-0">
-                <Truck className="w-2.5 h-2.5" />
-                Cross
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 shrink-0"
+                title="Cross docking"
+                aria-label="Cross docking"
+              >
+                <Truck className="w-3 h-3" aria-hidden />
               </span>
             )}
             {p.catalogListing && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200 shrink-0">
-                <Library className="w-2.5 h-2.5" />
-                Catálogo
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
+                title="Catálogo"
+                aria-label="Anúncio de catálogo"
+              >
+                <Library className="w-3 h-3" aria-hidden />
+              </span>
+            )}
+            {p.videoId && (
+              <span
+                className="inline-flex items-center justify-center size-5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
+                title="Anúncio com clip de vídeo"
+                aria-label="Anúncio com clip de vídeo"
+              >
+                <Clapperboard className="w-3 h-3" aria-hidden />
               </span>
             )}
           </div>

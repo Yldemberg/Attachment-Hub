@@ -42,24 +42,43 @@ async function enrichRowsWithMlItemPrices(
   return out;
 }
 
-/** Live GET /items/{id} for catalog_listing enrichment (chunked, one-by-one, lazy DB update). */
+/** Live GET /items/{id} for catalog_listing + video_id enrichment (chunked, one-by-one, lazy DB update). */
 async function enrichRowsWithCatalogListing(
   enriched: Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null }>,
   log: { warn: (obj: Record<string, unknown>, msg: string) => void },
-): Promise<Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null; liveCatalogListing: boolean }>> {
+): Promise<
+  Array<{
+    row: ProductRow;
+    mlAmount: number | null;
+    mlRegularAmount: number | null;
+    liveCatalogListing: boolean;
+    videoId: string | null;
+  }>
+> {
   const chunkSize = 5;
   const db = getDb();
-  const out: Array<{ row: ProductRow; mlAmount: number | null; mlRegularAmount: number | null; liveCatalogListing: boolean }> = [];
+  const out: Array<{
+    row: ProductRow;
+    mlAmount: number | null;
+    mlRegularAmount: number | null;
+    liveCatalogListing: boolean;
+    videoId: string | null;
+  }> = [];
 
   for (let i = 0; i < enriched.length; i += chunkSize) {
     const chunk = enriched.slice(i, i + chunkSize);
     const part = await Promise.all(
       chunk.map(async ({ row: p, mlAmount, mlRegularAmount }) => {
         let liveCatalogListing = p.catalogListing;
+        let videoId: string | null = null;
         try {
           const item = await ml.get<MlItem>(p.accountId, `/items/${encodeURIComponent(p.mlItemId)}`);
           const apiValue = item.catalog_listing === true;
           liveCatalogListing = apiValue;
+          const vid = item.video_id;
+          if (vid != null && String(vid).length > 0) {
+            videoId = String(vid);
+          }
           if (apiValue !== p.catalogListing) {
             db.update(productsTable)
               .set({ catalogListing: apiValue, updatedAt: new Date() })
@@ -72,7 +91,7 @@ async function enrichRowsWithCatalogListing(
         } catch (err) {
           log.warn({ err, mlItemId: p.mlItemId }, "GET /items/{id} failed for catalog_listing enrichment");
         }
-        return { row: p, mlAmount, mlRegularAmount, liveCatalogListing };
+        return { row: p, mlAmount, mlRegularAmount, liveCatalogListing, videoId };
       }),
     );
     out.push(...part);
@@ -137,13 +156,14 @@ router.get("/products", ...auth, async (req, res) => {
     const enriched = await enrichRowsWithCatalogListing(priceEnriched, req.log);
 
     res.json({
-      data: enriched.map(({ row: p, mlAmount, mlRegularAmount, liveCatalogListing }) => ({
+      data: enriched.map(({ row: p, mlAmount, mlRegularAmount, liveCatalogListing, videoId }) => ({
         ...p,
         price: p.price !== null ? Number(p.price) : null,
         originalPrice: p.originalPrice !== null ? Number(p.originalPrice) : null,
         amount: mlAmount,
         regularAmount: mlRegularAmount,
         catalogListing: liveCatalogListing,
+        videoId,
         account: accountMap[p.accountId] ?? null,
       })),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },

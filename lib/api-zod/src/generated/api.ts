@@ -144,7 +144,17 @@ export const ListProductsResponse = zod.object({
       logisticType: zod.string().nullish(),
       isFull: zod.boolean(),
       isFlex: zod.boolean(),
-      catalogListing: zod.boolean(),
+      catalogListing: zod
+        .boolean()
+        .describe(
+          "True quando o anúncio vem de catálogo compartilhado do ML (GET \/items → catalog_listing).\n",
+        ),
+      videoId: zod
+        .string()
+        .nullish()
+        .describe(
+          "Presente em GET \/products: ID do vídeo\/clip do anúncio quando GET \/items retorna video_id; null quando não há clip ou a consulta ao ML falha.\n",
+        ),
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       mlCategoryId: zod.string().nullish(),
@@ -209,7 +219,17 @@ export const GetLowStockProductsResponse = zod.object({
       logisticType: zod.string().nullish(),
       isFull: zod.boolean(),
       isFlex: zod.boolean(),
-      catalogListing: zod.boolean(),
+      catalogListing: zod
+        .boolean()
+        .describe(
+          "True quando o anúncio vem de catálogo compartilhado do ML (GET \/items → catalog_listing).\n",
+        ),
+      videoId: zod
+        .string()
+        .nullish()
+        .describe(
+          "Presente em GET \/products: ID do vídeo\/clip do anúncio quando GET \/items retorna video_id; null quando não há clip ou a consulta ao ML falha.\n",
+        ),
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       mlCategoryId: zod.string().nullish(),
@@ -261,7 +281,17 @@ export const GetProductResponse = zod.object({
   logisticType: zod.string().nullish(),
   isFull: zod.boolean(),
   isFlex: zod.boolean(),
-  catalogListing: zod.boolean(),
+  catalogListing: zod
+    .boolean()
+    .describe(
+      "True quando o anúncio vem de catálogo compartilhado do ML (GET \/items → catalog_listing).\n",
+    ),
+  videoId: zod
+    .string()
+    .nullish()
+    .describe(
+      "Presente em GET \/products: ID do vídeo\/clip do anúncio quando GET \/items retorna video_id; null quando não há clip ou a consulta ao ML falha.\n",
+    ),
   thumbnail: zod.string().nullish(),
   permalink: zod.string().nullish(),
   mlCategoryId: zod.string().nullish(),

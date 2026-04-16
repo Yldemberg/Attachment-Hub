@@ -85,8 +85,12 @@ export interface Product {
   logisticType?: string | null;
   isFull: boolean;
   isFlex: boolean;
-  /** True quando GET /items retorna catalog_listing (anúncio de catálogo ML). */
+  /** True quando o anúncio vem de catálogo compartilhado do ML (GET /items → catalog_listing).
+   */
   catalogListing: boolean;
+  /** Presente em GET /products: ID do vídeo/clip do anúncio quando GET /items retorna video_id; null quando não há clip ou a consulta ao ML falha.
+   */
+  videoId?: string | null;
   thumbnail?: string | null;
   permalink?: string | null;
   mlCategoryId?: string | null;

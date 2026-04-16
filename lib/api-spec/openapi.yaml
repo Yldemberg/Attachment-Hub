@@ -913,6 +913,12 @@ components:
           type: boolean
           description: >
             True quando o anúncio vem de catálogo compartilhado do ML (GET /items → catalog_listing).
+        videoId:
+          type: string
+          nullable: true
+          description: >
+            Presente em GET /products: ID do vídeo/clip do anúncio quando GET /items retorna video_id;
+            null quando não há clip ou a consulta ao ML falha.
         thumbnail:
           type: string
           nullable: true

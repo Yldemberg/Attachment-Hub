@@ -253,6 +253,8 @@ export type MlItem = {
   category_id: string;
   /** Present on GET /items — true for user products linked to Mercado Livre catalog. */
   catalog_listing?: boolean;
+  /** Product video clip on the listing; null/absent when there is no clip. */
+  video_id?: string | null;
   variations?: MlVariation[];
 };
 
