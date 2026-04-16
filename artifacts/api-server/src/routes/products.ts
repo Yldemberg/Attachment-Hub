@@ -247,6 +247,63 @@ router.get("/products/:id", ...auth, async (req, res) => {
   }
 });
 
+router.patch("/products/:id/status", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { status } = req.body as { status?: string };
+
+    if (status !== "active" && status !== "paused") {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe status active ou paused" },
+      });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    if (product.status !== "active" && product.status !== "paused") {
+      res.status(400).json({
+        error: {
+          code: "INVALID_STATUS",
+          message: "Só é possível ativar ou pausar anúncios ativos ou pausados",
+        },
+      });
+      return;
+    }
+
+    await ml.put(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`, { status });
+
+    await db
+      .update(productsTable)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(productsTable.id, product.id));
+
+    res.json({ success: true, productId: product.id, status });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update product listing status");
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    if (msg.startsWith("ML API")) {
+      res.status(502).json({ error: { code: "ML_API_ERROR", message: msg } });
+      return;
+    }
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
 router.patch("/products/:id/stock", ...auth, async (req, res) => {
   try {
     const db = getDb();

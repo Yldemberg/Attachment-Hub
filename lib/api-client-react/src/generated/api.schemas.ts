@@ -110,6 +110,18 @@ export interface UpdateStockRequest {
   quantity: number;
 }
 
+export type UpdateProductListingStatusRequestStatus =
+  (typeof UpdateProductListingStatusRequestStatus)[keyof typeof UpdateProductListingStatusRequestStatus];
+
+export const UpdateProductListingStatusRequestStatus = {
+  active: "active",
+  paused: "paused",
+} as const;
+
+export interface UpdateProductListingStatusRequest {
+  status: UpdateProductListingStatusRequestStatus;
+}
+
 export type UpdateStockResponseResultsItem = {
   productId: string;
   mlItemId: string;
@@ -321,6 +333,20 @@ export type GetLowStockProductsParams = {
 
 export type GetLowStockProducts200 = {
   data: Product[];
+};
+
+export type UpdateProductListingStatus200Status =
+  (typeof UpdateProductListingStatus200Status)[keyof typeof UpdateProductListingStatus200Status];
+
+export const UpdateProductListingStatus200Status = {
+  active: "active",
+  paused: "paused",
+} as const;
+
+export type UpdateProductListingStatus200 = {
+  success: boolean;
+  productId: string;
+  status: UpdateProductListingStatus200Status;
 };
 
 export type UpdateProductStock200 = {

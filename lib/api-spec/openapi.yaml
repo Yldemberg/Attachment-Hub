@@ -296,6 +296,49 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /products/{id}/status:
+    patch:
+      operationId: updateProductListingStatus
+      tags: [products]
+      summary: Pause or activate a listing (Mercado Livre)
+      description: Sets listing status to active or paused via ML API. Only listings currently active or paused can be toggled.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductListingStatusRequest"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  productId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [active, paused]
+                required: [success, productId, status]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /products/{id}/stock:
     patch:
       operationId: updateProductStock
@@ -974,6 +1017,14 @@ components:
           type: integer
           minimum: 0
       required: [quantity]
+
+    UpdateProductListingStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, paused]
+      required: [status]
 
     UpdateStockResponse:
       type: object

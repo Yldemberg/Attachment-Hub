@@ -120,6 +120,29 @@ export function installMockFetch(): void {
       return jsonResponse(paginate(filtered, page, limit));
     }
 
+    if (path.match(/^\/products\/([^/]+)\/status$/) && method === "PATCH") {
+      const id = path.split("/")[2];
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      const st = body.status === "active" || body.status === "paused" ? body.status : null;
+      if (!st) {
+        return jsonResponse({ error: { message: "status inválido" } }, 400);
+      }
+      const prod = _mockProducts.find((p) => p.id === id);
+      if (!prod) {
+        return jsonResponse({ error: { message: "not found" } }, 404);
+      }
+      if (prod.status !== "active" && prod.status !== "paused") {
+        return jsonResponse({ error: { message: "status não permitido" } }, 400);
+      }
+      _mockProducts = _mockProducts.map((p) => (p.id === id ? { ...p, status: st } : p));
+      return jsonResponse({ success: true, productId: id, status: st });
+    }
+
     if (path.match(/^\/products\/sku\/([^/]+)\/stock$/) && method === "PUT") {
       const sku = path.split("/")[3];
       let body: Record<string, unknown> = {};

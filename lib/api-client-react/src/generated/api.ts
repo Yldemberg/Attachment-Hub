@@ -49,6 +49,8 @@ import type {
   SalesChartResponse,
   SyncAccount202,
   UnauthorizedResponse,
+  UpdateProductListingStatus200,
+  UpdateProductListingStatusRequest,
   UpdateProductStock200,
   UpdateStockBySkuParams,
   UpdateStockRequest,
@@ -1007,6 +1009,104 @@ export function useGetProduct<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Sets listing status to active or paused via ML API. Only listings currently active or paused can be toggled.
+ * @summary Pause or activate a listing (Mercado Livre)
+ */
+export const getUpdateProductListingStatusUrl = (id: string) => {
+  return `/api/products/${id}/status`;
+};
+
+export const updateProductListingStatus = async (
+  id: string,
+  updateProductListingStatusRequest: UpdateProductListingStatusRequest,
+  options?: RequestInit,
+): Promise<UpdateProductListingStatus200> => {
+  return customFetch<UpdateProductListingStatus200>(
+    getUpdateProductListingStatusUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateProductListingStatusRequest),
+    },
+  );
+};
+
+export const getUpdateProductListingStatusMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductListingStatus>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductListingStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProductListingStatus>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductListingStatusRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateProductListingStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProductListingStatus>>,
+    { id: string; data: BodyType<UpdateProductListingStatusRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProductListingStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProductListingStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProductListingStatus>>
+>;
+export type UpdateProductListingStatusMutationBody =
+  BodyType<UpdateProductListingStatusRequest>;
+export type UpdateProductListingStatusMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Pause or activate a listing (Mercado Livre)
+ */
+export const useUpdateProductListingStatus = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductListingStatus>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductListingStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProductListingStatus>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductListingStatusRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateProductListingStatusMutationOptions(options));
+};
 
 /**
  * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.

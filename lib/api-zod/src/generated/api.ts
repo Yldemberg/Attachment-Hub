@@ -308,6 +308,24 @@ export const GetProductResponse = zod.object({
 });
 
 /**
+ * Sets listing status to active or paused via ML API. Only listings currently active or paused can be toggled.
+ * @summary Pause or activate a listing (Mercado Livre)
+ */
+export const UpdateProductListingStatusParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateProductListingStatusBody = zod.object({
+  status: zod.enum(["active", "paused"]),
+});
+
+export const UpdateProductListingStatusResponse = zod.object({
+  success: zod.boolean(),
+  productId: zod.string(),
+  status: zod.enum(["active", "paused"]),
+});
+
+/**
  * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
  * @summary Update stock for a single product
  */

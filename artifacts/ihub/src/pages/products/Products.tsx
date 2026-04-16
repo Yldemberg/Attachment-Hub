@@ -4,6 +4,7 @@ import {
   useListAccounts,
   useUpdateProductStock,
   useUpdateStockBySku,
+  useUpdateProductListingStatus,
   getListProductsQueryKey,
   getListNotificationsQueryKey,
   useListNotifications,
@@ -41,6 +42,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 
 interface Product {
   id: string;
@@ -86,10 +88,14 @@ function stockTextColor(qty: number | null | undefined): string {
 function ProductCard({
   p,
   onEdit,
+  onListingStatusChange,
+  statusMutationPending,
   accountNickname,
 }: {
   p: Product;
   onEdit: () => void;
+  onListingStatusChange: (next: "active" | "paused") => void;
+  statusMutationPending: boolean;
   accountNickname?: string | null;
 }) {
   const isPromo =
@@ -123,6 +129,8 @@ function ProductCard({
           : p.status === "under_review"
             ? "Em revisão"
             : (p.status ?? "—");
+
+  const canToggleListingStatus = p.status === "active" || p.status === "paused";
 
   const thumbCls =
     "size-[4.5rem] rounded-lg flex-shrink-0 bg-muted object-cover";
@@ -263,7 +271,35 @@ function ProductCard({
             </button>
           )}
         </div>
-        <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
+        {canToggleListingStatus ? (
+          <div
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-1"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span
+              className={`text-[10px] font-medium select-none ${p.status === "paused" ? "text-foreground" : "text-muted-foreground"}`}
+            >
+              Pausa
+            </span>
+            <Switch
+              checked={p.status === "active"}
+              disabled={statusMutationPending}
+              title={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
+              aria-label={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
+              onCheckedChange={(checked) => {
+                onListingStatusChange(checked ? "active" : "paused");
+              }}
+            />
+            <span
+              className={`text-[10px] font-medium select-none ${p.status === "active" ? "text-foreground" : "text-muted-foreground"}`}
+            >
+              Ativa
+            </span>
+          </div>
+        ) : (
+          <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
+        )}
       </div>
     </div>
   );
@@ -283,7 +319,7 @@ function SkeletonCard() {
       </div>
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
         <div className="h-8 w-[4.25rem] bg-muted rounded-lg" />
-        <div className="h-6 w-14 bg-muted rounded-lg" />
+        <div className="h-7 w-[7.5rem] bg-muted rounded-lg" />
       </div>
     </div>
   );
@@ -418,6 +454,36 @@ export default function Products() {
         },
       },
     });
+
+  const {
+    mutate: updateListingStatus,
+    isPending: updatingListingStatus,
+    variables: listingStatusVariables,
+  } = useUpdateProductListingStatus({
+    mutation: {
+      onSuccess: (_, vars) => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        const next = vars.data.status;
+        toast({
+          title: next === "active" ? "Anúncio ativado" : "Anúncio pausado",
+          description:
+            next === "active"
+              ? "O anúncio voltou ao ar no Mercado Livre."
+              : "O anúncio foi pausado no Mercado Livre.",
+        });
+      },
+      onError: (err) => {
+        const msg =
+          (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
+          "Não foi possível alterar o status do anúncio.";
+        toast({
+          variant: "destructive",
+          title: "Erro ao alterar status",
+          description: msg,
+        });
+      },
+    },
+  });
 
   const isUpdating = updatingSingle || updatingBySku;
 
@@ -564,6 +630,13 @@ export default function Products() {
                 key={p.id}
                 p={p}
                 onEdit={() => openStockDialog(p)}
+                onListingStatusChange={(next) => {
+                  if (p.status === next) return;
+                  updateListingStatus({ id: p.id, data: { status: next } });
+                }}
+                statusMutationPending={
+                  updatingListingStatus && listingStatusVariables?.id === p.id
+                }
                 accountNickname={p.accountId ? accountNicknameMap[p.accountId] : null}
               />
             ))}
