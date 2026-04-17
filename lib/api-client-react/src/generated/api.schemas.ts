@@ -195,6 +195,10 @@ export interface Question {
   dateCreated?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Miniatura do anúncio (produto vinculado no iHub) */
+  listingThumbnailUrl?: string | null;
+  /** URL pública do anúncio no Mercado Livre */
+  listingPermalink?: string | null;
   account?: AccountSummary | null;
 }
 
@@ -233,6 +237,10 @@ export interface Notification {
   isRead: boolean;
   resourceType?: string | null;
   resourceId?: string | null;
+  /** Miniatura do anúncio (nova pergunta) */
+  listingThumbnailUrl?: string | null;
+  /** Link do anúncio no Mercado Livre */
+  listingPermalink?: string | null;
   createdAt: string;
 }
 

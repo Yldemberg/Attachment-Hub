@@ -25,6 +25,7 @@ import {
 import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useQuestionNotificationAlerts } from "@/hooks/use-question-notification-alerts";
 import { DemoBanner } from "./DemoBanner";
 import {
   DropdownMenu,
@@ -98,9 +99,11 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const { data: notifData } = useListNotifications(
     { is_read: false, limit: 99 },
-    { query: { queryKey: getListNotificationsQueryKey({ is_read: false, limit: 99 }), refetchInterval: 30000 } },
+    { query: { queryKey: getListNotificationsQueryKey({ is_read: false, limit: 99 }), refetchInterval: 12000 } },
   );
   const unreadNotifCount = notifData?.data?.length ?? 0;
+
+  useQuestionNotificationAlerts(notifData);
 
   const { data: questionsData } = useListQuestions(
     { status: ListQuestionsStatus.unanswered, limit: 99 },

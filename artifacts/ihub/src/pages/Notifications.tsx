@@ -6,7 +6,7 @@ import {
   getListNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
-import { Bell, BellOff, CheckCheck, ShoppingCart, MessageSquare, Package, RefreshCw } from "lucide-react";
+import { Bell, BellOff, CheckCheck, ShoppingCart, MessageSquare, Package, RefreshCw, ExternalLink } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,8 @@ interface Notification {
   resourceType?: string | null;
   resourceId?: string | null;
   accountNickname?: string | null;
+  listingThumbnailUrl?: string | null;
+  listingPermalink?: string | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -141,14 +143,23 @@ export default function Notifications() {
                     n.isRead
                       ? "bg-card border-card-border"
                       : "bg-primary/5 border-primary/30",
+                    !n.isRead && n.type === "new_question" && "ring-2 ring-primary/20 shadow-sm",
                   )}
                 >
-                  <div className={cn(
-                    "w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5",
-                    n.isRead ? "bg-muted border-border" : "bg-primary/10 border-primary/30",
-                  )}>
-                    {icon}
-                  </div>
+                  {n.type === "new_question" && n.listingThumbnailUrl ? (
+                    <img
+                      src={n.listingThumbnailUrl}
+                      alt=""
+                      className="size-14 rounded-lg border border-border object-cover flex-shrink-0 bg-muted mt-0.5"
+                    />
+                  ) : (
+                    <div className={cn(
+                      "w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5",
+                      n.isRead ? "bg-muted border-border" : "bg-primary/10 border-primary/30",
+                    )}>
+                      {icon}
+                    </div>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -170,6 +181,17 @@ export default function Notifications() {
                     </p>
                     {n.message && (
                       <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">{n.message}</p>
+                    )}
+                    {n.type === "new_question" && n.listingPermalink && (
+                      <a
+                        href={n.listingPermalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline mt-1.5"
+                      >
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        Ver anúncio no Mercado Livre
+                      </a>
                     )}
                     <p className="text-muted-foreground/60 text-xs mt-1">{formatDateTime(n.createdAt)}</p>
                   </div>

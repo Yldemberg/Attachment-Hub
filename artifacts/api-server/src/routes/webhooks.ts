@@ -247,6 +247,33 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           });
 
         if (q.status.toLowerCase() === "unanswered") {
+          let listingThumbnailUrl: string | null = null;
+          let listingPermalink: string | null = null;
+          if (q.item_id) {
+            const [fromDb] = await db
+              .select({
+                thumbnail: productsTable.thumbnail,
+                permalink: productsTable.permalink,
+              })
+              .from(productsTable)
+              .where(and(eq(productsTable.accountId, account.id), eq(productsTable.mlItemId, q.item_id)))
+              .limit(1);
+            if (fromDb?.thumbnail) listingThumbnailUrl = fromDb.thumbnail;
+            if (fromDb?.permalink) listingPermalink = fromDb.permalink;
+            if (!listingThumbnailUrl || !listingPermalink) {
+              try {
+                const item = await ml.get<{ thumbnail?: string; permalink?: string }>(
+                  account.id,
+                  `/items/${encodeURIComponent(q.item_id)}`,
+                );
+                if (!listingThumbnailUrl && item.thumbnail) listingThumbnailUrl = item.thumbnail;
+                if (!listingPermalink && item.permalink) listingPermalink = item.permalink;
+              } catch (err) {
+                logger.warn({ err, itemId: q.item_id }, "ML webhook: failed to enrich question notification with item");
+              }
+            }
+          }
+
           await db.insert(notificationsTable).values({
             userId: account.userId,
             accountId: account.id,
@@ -256,6 +283,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             isRead: false,
             resourceType: "question",
             resourceId: q.id.toString(),
+            listingThumbnailUrl,
+            listingPermalink,
           });
         }
       } else if (topic === "orders_v2") {

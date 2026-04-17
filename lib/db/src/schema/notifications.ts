@@ -17,6 +17,10 @@ export const notificationsTable = pgTable("notifications", {
   isRead: boolean("is_read").default(false).notNull(),
   resourceType: text("resource_type"),
   resourceId: text("resource_id"),
+  /** Miniatura do anúncio (ex.: notificação de nova pergunta). */
+  listingThumbnailUrl: text("listing_thumbnail_url"),
+  /** Link público do anúncio no Mercado Livre. */
+  listingPermalink: text("listing_permalink"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

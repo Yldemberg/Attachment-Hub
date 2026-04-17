@@ -2,8 +2,8 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
-import { questionsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { questionsTable, accountsTable, productsTable } from "@workspace/db/schema";
+import { eq, and, inArray, or, sql } from "drizzle-orm";
 import { ml } from "../lib/mercadolivre";
 
 const router = Router();
@@ -54,13 +54,45 @@ router.get("/questions", ...auth, async (req, res) => {
       .where(inArray(accountsTable.id, accountIds));
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
+    const pairs = rows.filter((r) => r.mlItemId != null && String(r.mlItemId).length > 0);
+    const listingByKey: Record<string, { listingThumbnailUrl: string | null; listingPermalink: string | null }> = {};
+    if (pairs.length > 0) {
+      const prods = await db
+        .select({
+          accountId: productsTable.accountId,
+          mlItemId: productsTable.mlItemId,
+          thumbnail: productsTable.thumbnail,
+          permalink: productsTable.permalink,
+        })
+        .from(productsTable)
+        .where(
+          or(
+            ...pairs.map((r) =>
+              and(eq(productsTable.accountId, r.accountId), eq(productsTable.mlItemId, String(r.mlItemId))),
+            ),
+          )!,
+        );
+      for (const p of prods) {
+        listingByKey[`${p.accountId}:${p.mlItemId}`] = {
+          listingThumbnailUrl: p.thumbnail,
+          listingPermalink: p.permalink,
+        };
+      }
+    }
+
     res.json({
-      data: rows.map((q) => ({
-        ...q,
-        mlQuestionId: q.mlQuestionId !== null ? Number(q.mlQuestionId) : null,
-        fromUserId: q.fromUserId !== null ? Number(q.fromUserId) : null,
-        account: accountMap[q.accountId] ?? null,
-      })),
+      data: rows.map((q) => {
+        const key = q.mlItemId ? `${q.accountId}:${q.mlItemId}` : "";
+        const listing = key ? listingByKey[key] : undefined;
+        return {
+          ...q,
+          mlQuestionId: q.mlQuestionId !== null ? Number(q.mlQuestionId) : null,
+          fromUserId: q.fromUserId !== null ? Number(q.fromUserId) : null,
+          listingThumbnailUrl: listing?.listingThumbnailUrl ?? null,
+          listingPermalink: listing?.listingPermalink ?? null,
+          account: accountMap[q.accountId] ?? null,
+        };
+      }),
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
@@ -93,10 +125,26 @@ router.get("/questions/:id", ...auth, async (req, res) => {
       .from(accountsTable)
       .where(eq(accountsTable.id, question.accountId));
 
+    let listingThumbnailUrl: string | null = null;
+    let listingPermalink: string | null = null;
+    if (question.mlItemId) {
+      const [p] = await db
+        .select({ thumbnail: productsTable.thumbnail, permalink: productsTable.permalink })
+        .from(productsTable)
+        .where(
+          and(eq(productsTable.accountId, question.accountId), eq(productsTable.mlItemId, question.mlItemId)),
+        )
+        .limit(1);
+      listingThumbnailUrl = p?.thumbnail ?? null;
+      listingPermalink = p?.permalink ?? null;
+    }
+
     res.json({
       ...question,
       mlQuestionId: question.mlQuestionId !== null ? Number(question.mlQuestionId) : null,
       fromUserId: question.fromUserId !== null ? Number(question.fromUserId) : null,
+      listingThumbnailUrl,
+      listingPermalink,
       account: account ?? null,
     });
   } catch (err) {

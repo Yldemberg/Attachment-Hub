@@ -19,6 +19,18 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function productListingForMlItem(mlItemId: string | undefined | null): {
+  listingThumbnailUrl: string | null;
+  listingPermalink: string | null;
+} {
+  if (!mlItemId) return { listingThumbnailUrl: null, listingPermalink: null };
+  const p = DEMO_PRODUCTS.find((pr) => pr.mlItemId === mlItemId);
+  return {
+    listingThumbnailUrl: (p?.thumbnail as string | undefined) ?? null,
+    listingPermalink: (p as { permalink?: string | null } | undefined)?.permalink ?? null,
+  };
+}
+
 function paginate<T>(items: T[], page: number, limit: number) {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -233,7 +245,11 @@ export function installMockFetch(): void {
       if (status) {
         filtered = filtered.filter((q) => q.status === status);
       }
-      return jsonResponse(paginate(filtered, page, limit));
+      const enriched = filtered.map((q) => ({
+        ...q,
+        ...productListingForMlItem(q.mlItemId),
+      }));
+      return jsonResponse(paginate(enriched, page, limit));
     }
 
     if (path.match(/^\/questions\/([^/]+)\/answer$/) && method === "POST") {
@@ -250,7 +266,10 @@ export function installMockFetch(): void {
     if (path.match(/^\/questions\/[^/]+$/) && method === "GET") {
       const id = path.split("/")[2];
       const question = _mockQuestions.find((q) => q.id === id) ?? _mockQuestions[0];
-      return jsonResponse(question);
+      return jsonResponse({
+        ...question,
+        ...productListingForMlItem(question.mlItemId),
+      });
     }
 
     if (path === "/notifications") {

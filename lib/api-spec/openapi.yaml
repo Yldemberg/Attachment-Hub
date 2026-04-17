@@ -1194,6 +1194,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        listingThumbnailUrl:
+          type: string
+          nullable: true
+          description: Miniatura do anúncio (produto vinculado no iHub)
+        listingPermalink:
+          type: string
+          nullable: true
+          description: URL pública do anúncio no Mercado Livre
         account:
           $ref: "#/components/schemas/AccountSummary"
           nullable: true
@@ -1249,6 +1257,14 @@ components:
         resourceId:
           type: string
           nullable: true
+        listingThumbnailUrl:
+          type: string
+          nullable: true
+          description: Miniatura do anúncio (nova pergunta)
+        listingPermalink:
+          type: string
+          nullable: true
+          description: Link do anúncio no Mercado Livre
         createdAt:
           type: string
           format: date-time

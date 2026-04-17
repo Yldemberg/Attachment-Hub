@@ -582,6 +582,8 @@ export const DEMO_NOTIFICATIONS = [
     resourceType: "question",
     resourceId: "demo-q-1",
     accountNickname: "LOJA_DEMO_BR",
+    listingThumbnailUrl: "https://picsum.photos/seed/phone1/200/200",
+    listingPermalink: "https://www.mercadolivre.com.br/samsung-a54",
     createdAt: daysAgo(0),
   },
   {

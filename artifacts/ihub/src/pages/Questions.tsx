@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Question as ApiQuestion } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
-import { MessageSquare, Send, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageSquare, Send, ChevronDown, ChevronRight, ChevronLeft, ExternalLink, Package } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +65,17 @@ function QuestionCard({ q }: { q: Question }) {
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           )}
         </div>
+        {q.listingThumbnailUrl ? (
+          <img
+            src={q.listingThumbnailUrl}
+            alt=""
+            className="size-14 rounded-lg border border-border object-cover flex-shrink-0 bg-muted"
+          />
+        ) : (
+          <div className="size-14 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0">
+            <Package className="w-6 h-6 text-muted-foreground/50" />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-foreground text-sm font-medium truncate">{q.fromUserNickname ?? "Comprador"}</span>
@@ -73,15 +84,29 @@ function QuestionCard({ q }: { q: Question }) {
             </span>
           </div>
           <p className="text-foreground/80 text-sm leading-relaxed line-clamp-2">{q.text}</p>
-          {q.mlItemId && (
-            <p className="text-muted-foreground text-xs mt-1 truncate">Item: {q.mlItemId}</p>
-          )}
+          <div className="flex flex-col gap-1 mt-1 min-w-0">
+            {q.mlItemId && (
+              <p className="text-muted-foreground text-[10px] font-mono truncate">MLB {q.mlItemId}</p>
+            )}
+            {q.listingPermalink ? (
+              <a
+                href={q.listingPermalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline w-fit"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                Ver anúncio no Mercado Livre
+              </a>
+            ) : null}
+          </div>
           <p className="text-muted-foreground/60 text-xs mt-1">{formatDateTime(q.createdAt)}</p>
         </div>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 pl-11 space-y-3 border-t border-border">
+        <div className="px-4 pb-4 space-y-3 border-t border-border">
           {q.answerText && (
             <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
               <p className="text-xs text-emerald-700 font-medium mb-1">Sua resposta</p>

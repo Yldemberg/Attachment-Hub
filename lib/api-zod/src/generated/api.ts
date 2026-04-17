@@ -542,6 +542,14 @@ export const ListQuestionsResponse = zod.object({
       dateCreated: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
+      listingThumbnailUrl: zod
+        .string()
+        .nullish()
+        .describe("Miniatura do anúncio (produto vinculado no iHub)"),
+      listingPermalink: zod
+        .string()
+        .nullish()
+        .describe("URL pública do anúncio no Mercado Livre"),
       account: zod
         .object({
           id: zod.string(),
@@ -585,6 +593,14 @@ export const GetQuestionResponse = zod.object({
   dateCreated: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
+  listingThumbnailUrl: zod
+    .string()
+    .nullish()
+    .describe("Miniatura do anúncio (produto vinculado no iHub)"),
+  listingPermalink: zod
+    .string()
+    .nullish()
+    .describe("URL pública do anúncio no Mercado Livre"),
   account: zod
     .object({
       id: zod.string(),
@@ -625,6 +641,14 @@ export const AnswerQuestionResponse = zod.object({
   dateCreated: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
+  listingThumbnailUrl: zod
+    .string()
+    .nullish()
+    .describe("Miniatura do anúncio (produto vinculado no iHub)"),
+  listingPermalink: zod
+    .string()
+    .nullish()
+    .describe("URL pública do anúncio no Mercado Livre"),
   account: zod
     .object({
       id: zod.string(),
@@ -668,6 +692,14 @@ export const ListNotificationsResponse = zod.object({
       isRead: zod.boolean(),
       resourceType: zod.string().nullish(),
       resourceId: zod.string().nullish(),
+      listingThumbnailUrl: zod
+        .string()
+        .nullish()
+        .describe("Miniatura do anúncio (nova pergunta)"),
+      listingPermalink: zod
+        .string()
+        .nullish()
+        .describe("Link do anúncio no Mercado Livre"),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -707,6 +739,14 @@ export const MarkNotificationReadResponse = zod.object({
   isRead: zod.boolean(),
   resourceType: zod.string().nullish(),
   resourceId: zod.string().nullish(),
+  listingThumbnailUrl: zod
+    .string()
+    .nullish()
+    .describe("Miniatura do anúncio (nova pergunta)"),
+  listingPermalink: zod
+    .string()
+    .nullish()
+    .describe("Link do anúncio no Mercado Livre"),
   createdAt: zod.coerce.date(),
 });
 

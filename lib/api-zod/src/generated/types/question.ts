@@ -22,5 +22,9 @@ export interface Question {
   dateCreated?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Miniatura do anúncio (produto vinculado no iHub) */
+  listingThumbnailUrl?: string | null;
+  /** URL pública do anúncio no Mercado Livre */
+  listingPermalink?: string | null;
   account?: AccountSummary | null;
 }

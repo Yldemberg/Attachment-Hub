@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   is_read       BOOLEAN NOT NULL DEFAULT FALSE,
   resource_type TEXT,
   resource_id   TEXT,
+  listing_thumbnail_url TEXT,
+  listing_permalink TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

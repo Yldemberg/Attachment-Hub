@@ -18,5 +18,9 @@ export interface Notification {
   isRead: boolean;
   resourceType?: string | null;
   resourceId?: string | null;
+  /** Miniatura do anúncio (nova pergunta) */
+  listingThumbnailUrl?: string | null;
+  /** Link do anúncio no Mercado Livre */
+  listingPermalink?: string | null;
   createdAt: Date;
 }
