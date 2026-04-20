@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { ordersTable, questionsTable, productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, lt, lte, sql, gte } from "drizzle-orm";
+import { eq, and, inArray, lt, sql } from "drizzle-orm";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -11,8 +11,27 @@ const auth = [requireAuth, requireActivePlan];
 /** Status ML pós-pagamento (pagamento aprovado / pedido em preparação). */
 const PAID_ORDER_STATUSES = ["paid", "confirmed"] as const;
 
-/** Instante do pagamento validado: `date_closed` do ML; fallback para `date_created`. */
-const orderPaidAt = sql`coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})`;
+/**
+ * Fuso usado no painel do Mercado Livre para vendedores no Brasil.
+ * Contagens por "dia" no Dashboard seguem o calendário deste fuso — não o TZ do servidor (muitas vezes UTC).
+ */
+const ML_REPORT_TZ = "America/Sao_Paulo";
+
+/** Data civil (DATE) em ML_REPORT_TZ no instante do pagamento: fecha ML ou criação do pedido. */
+const orderPaidLocalDateSp = sql`
+  CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})) AS date)
+`;
+
+/** Pedido pago cuja data de referência cai no mesmo dia civil que "agora" no Brasil. */
+const isPaidOrderTodaySp = sql`
+  ${orderPaidLocalDateSp} = CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, now()) AS date)
+`;
+
+/** Pedido pago no mês civil atual em ML_REPORT_TZ. */
+const isPaidOrderThisCalendarMonthSp = sql`
+  to_char(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})), 'YYYY-MM')
+  = to_char(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, now()), 'YYYY-MM')
+`;
 
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
@@ -45,27 +64,13 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
       return;
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 1, 0);
-
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 1, 0);
-
-    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-    monthEnd.setHours(23, 59, 59, 999);
-
     const [todaySalesRow, monthSalesRow, todayOrdersRow, monthOrdersRow, pendingOrdersRow, unansweredQRow, criticalStockRow] = await Promise.all([
       db
         .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(orderPaidAt, todayStart),
-          lte(orderPaidAt, todayEnd),
+          isPaidOrderTodaySp,
           inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
@@ -73,8 +78,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(orderPaidAt, monthStart),
-          lte(orderPaidAt, monthEnd),
+          isPaidOrderThisCalendarMonthSp,
           inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
@@ -82,8 +86,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(orderPaidAt, todayStart),
-          lte(orderPaidAt, todayEnd),
+          isPaidOrderTodaySp,
           inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
@@ -91,8 +94,7 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(orderPaidAt, monthStart),
-          lte(orderPaidAt, monthEnd),
+          isPaidOrderThisCalendarMonthSp,
           inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
@@ -141,55 +143,70 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
     const accountIds = await getUserAccountIds(req.user!.id, account_id);
 
     const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-    const now = new Date();
-
-    const endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
-
-    let startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - (days - 1));
-    startDate.setHours(0, 0, 1, 0);
-
-    if (period === "30d") {
-      const monthStartChart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 1, 0);
-      if (startDate < monthStartChart) startDate = monthStartChart;
-    }
 
     if (accountIds.length === 0) {
       res.json({ period, data: [] });
       return;
     }
 
+    const todaySpDate = sql`CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, now()) AS date)`;
+    const chartFromSp =
+      period === "30d"
+        ? sql`GREATEST((${todaySpDate}) - ${days - 1}, date_trunc('month', (${todaySpDate}))::date)`
+        : sql`(${todaySpDate}) - ${days - 1}`;
+
+    const paidYmdSp = sql<string>`
+      to_char(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})), 'YYYY-MM-DD')
+    `;
+
     const rows = await db
       .select({
-        date: sql<string>`cast(${orderPaidAt} as date)`,
+        date: paidYmdSp,
         revenue: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)`,
         orders: sql<number>`cast(count(*) as int)`,
       })
       .from(ordersTable)
       .where(and(
         inArray(ordersTable.accountId, accountIds),
-        gte(orderPaidAt, startDate),
-        lte(orderPaidAt, endDate),
+        sql`${orderPaidLocalDateSp} >= ${chartFromSp}`,
+        sql`${orderPaidLocalDateSp} <= ${todaySpDate}`,
         inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
       ))
-      .groupBy(sql`cast(${orderPaidAt} as date)`)
-      .orderBy(sql`cast(${orderPaidAt} as date) asc`);
+      .groupBy(paidYmdSp)
+      .orderBy(paidYmdSp);
 
     const dataMap = Object.fromEntries(rows.map((r) => [r.date, r]));
-    const data = [];
-    const iterStart = new Date(startDate);
-    iterStart.setHours(0, 0, 0, 0);
-    const iterEnd = new Date(endDate);
-    iterEnd.setHours(0, 0, 0, 0);
-    for (let d = new Date(iterStart); d <= iterEnd; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split("T")[0];
-      data.push({
-        date: dateStr,
-        revenue: Number(dataMap[dateStr]?.revenue ?? 0),
-        orders: dataMap[dateStr]?.orders ?? 0,
-      });
-    }
+
+    const daySpanQuery =
+      period === "30d"
+        ? `
+        SELECT to_char(gs::date, 'YYYY-MM-DD') AS date
+        FROM generate_series(
+          GREATEST(
+            CAST(timezone('America/Sao_Paulo', now()) AS date) - ${days - 1},
+            date_trunc('month', CAST(timezone('America/Sao_Paulo', now()) AS date))::date
+          ),
+          CAST(timezone('America/Sao_Paulo', now()) AS date),
+          interval '1 day'
+        ) AS gs
+      `
+        : `
+        SELECT to_char(gs::date, 'YYYY-MM-DD') AS date
+        FROM generate_series(
+          CAST(timezone('America/Sao_Paulo', now()) AS date) - ${days - 1},
+          CAST(timezone('America/Sao_Paulo', now()) AS date),
+          interval '1 day'
+        ) AS gs
+      `;
+
+    const spanResult = await db.execute<{ date: string }>(sql.raw(daySpanQuery.trim()));
+    const dateKeys = spanResult.rows;
+
+    const data = dateKeys.map((row) => ({
+      date: row.date,
+      revenue: Number(dataMap[row.date]?.revenue ?? 0),
+      orders: dataMap[row.date]?.orders ?? 0,
+    }));
 
     res.json({ period, data });
   } catch (err) {
