@@ -135,7 +135,9 @@ function OrderCard({ o }: { o: Order }) {
           <p className="text-amber-600 text-sm font-semibold">
             {formatCurrency(o.totalAmount, o.currencyId ?? "BRL")}
           </p>
-          <p className="text-muted-foreground text-[10px]">{formatDateTime(o.createdAt)}</p>
+          <p className="text-muted-foreground text-[10px]">
+            {formatDateTime(o.dateClosed ?? o.dateCreated ?? o.createdAt)}
+          </p>
         </div>
 
         <div className="flex-shrink-0">
