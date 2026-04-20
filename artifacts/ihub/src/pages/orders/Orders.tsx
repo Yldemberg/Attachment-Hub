@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useListOrders,
   useListAccounts,
@@ -50,6 +50,127 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-slate-100 text-slate-500 border-slate-200",
   invalid: "bg-red-50 text-red-600 border-red-200",
 };
+
+/** Calendário no fuso do Mercado Livre Brasil (pedidos / pagamento). */
+const REPORT_TZ = "America/Sao_Paulo";
+
+function formatYmdSp(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORT_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function addCalendarDaysSp(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const anchorUtc = Date.UTC(y, m - 1, d, 15, 0, 0);
+  return formatYmdSp(new Date(anchorUtc + deltaDays * 86400000));
+}
+
+function calendarPartsSp(): { y: number; m: number; d: number } {
+  const ymd = formatYmdSp(new Date());
+  const [y, m, d] = ymd.split("-").map(Number);
+  return { y, m, d };
+}
+
+function ymdParts(y: number, m: number, d: number): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${p(m)}-${p(d)}`;
+}
+
+type PeriodPreset =
+  | "all"
+  | "yesterday"
+  | "today"
+  | "last7"
+  | "last15"
+  | "month_current"
+  | "month_previous"
+  | "custom";
+
+function dateRangeForPreset(
+  preset: PeriodPreset,
+  customFrom: string,
+  customTo: string,
+): { date_from?: string; date_to?: string } {
+  const today = formatYmdSp(new Date());
+  switch (preset) {
+    case "all":
+      return {};
+    case "today":
+      return { date_from: today, date_to: today };
+    case "yesterday": {
+      const y = addCalendarDaysSp(today, -1);
+      return { date_from: y, date_to: y };
+    }
+    case "last7":
+      return { date_from: addCalendarDaysSp(today, -6), date_to: today };
+    case "last15":
+      return { date_from: addCalendarDaysSp(today, -14), date_to: today };
+    case "month_current": {
+      const { y, m } = calendarPartsSp();
+      return { date_from: ymdParts(y, m, 1), date_to: today };
+    }
+    case "month_previous": {
+      const { y, m } = calendarPartsSp();
+      const firstCurrent = ymdParts(y, m, 1);
+      const lastPrev = addCalendarDaysSp(firstCurrent, -1);
+      let pm = m - 1,
+        py = y;
+      if (pm < 1) {
+        pm = 12;
+        py--;
+      }
+      const firstPrev = ymdParts(py, pm, 1);
+      return { date_from: firstPrev, date_to: lastPrev };
+    }
+    case "custom":
+      if (!customFrom?.trim() || !customTo?.trim()) return {};
+      return customFrom <= customTo
+        ? { date_from: customFrom, date_to: customTo }
+        : { date_from: customTo, date_to: customFrom };
+    default:
+      return {};
+  }
+}
+
+function formatIsoDatePtBr(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
+
+function periodSummaryLabel(preset: PeriodPreset, customFrom: string, customTo: string): string {
+  switch (preset) {
+    case "all":
+      return "Todos os períodos";
+    case "today":
+      return "Hoje";
+    case "yesterday":
+      return "Ontem";
+    case "last7":
+      return "Últimos 7 dias";
+    case "last15":
+      return "Últimos 15 dias";
+    case "month_current":
+      return "Mês atual";
+    case "month_previous":
+      return "Mês passado";
+    case "custom":
+      if (customFrom && customTo) {
+        return `${formatIsoDatePtBr(customFrom)} — ${formatIsoDatePtBr(customTo)}`;
+      }
+      return "Por período (defina as datas)";
+    default:
+      return "";
+  }
+}
 
 const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   fulfillment: { label: "Full", cls: "bg-sky-50 text-sky-700 border-sky-200" },
@@ -155,17 +276,30 @@ export default function Orders() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [statusFilter, setStatusFilter] = useState("all");
   const [accountId, setAccountId] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+
+  const dateRange = useMemo(
+    () => dateRangeForPreset(periodPreset, customDateFrom, customDateTo),
+    [periodPreset, customDateFrom, customDateTo],
+  );
 
   const params = {
     page,
     limit: rowsPerPage,
     ...(statusFilter !== "all" ? { status: statusFilter } : {}),
     ...(accountId !== "all" ? { account_id: accountId } : {}),
-    ...(dateFrom ? { date_from: dateFrom } : {}),
-    ...(dateTo ? { date_to: dateTo } : {}),
+    ...(dateRange.date_from ? { date_from: dateRange.date_from } : {}),
+    ...(dateRange.date_to ? { date_to: dateRange.date_to } : {}),
   };
+
+  const periodHasFilter =
+    periodPreset !== "all" &&
+    (periodPreset !== "custom" || !!(customDateFrom && customDateTo));
+
+  const customPeriodIncomplete =
+    periodPreset === "custom" && (!customDateFrom || !customDateTo);
 
   const { data, isLoading } = useListOrders(params, {
     query: { queryKey: getListOrdersQueryKey(params) },
@@ -183,7 +317,28 @@ export default function Orders() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-base font-bold text-foreground">Pedidos</h1>
-            <p className="text-muted-foreground text-xs">{pagination?.total ?? 0} pedidos encontrados</p>
+            <p className="text-muted-foreground text-xs">
+              <span className={`font-semibold tabular-nums ${periodHasFilter ? "text-foreground" : ""}`}>
+                {pagination?.total ?? 0}
+              </span>
+              {" "}
+              {periodHasFilter ? (
+                <>
+                  pedidos no período
+                  <span className="font-normal">
+                    {" "}
+                    · {periodSummaryLabel(periodPreset, customDateFrom, customDateTo)}
+                  </span>
+                </>
+              ) : customPeriodIncomplete ? (
+                <>
+                  pedidos encontrados
+                  <span className="font-normal"> · informe “Do dia” e “ao dia” para filtrar</span>
+                </>
+              ) : (
+                <>pedidos encontrados</>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-1">
             {([20, 50] as const).map((n) => (
@@ -199,6 +354,53 @@ export default function Orders() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={periodPreset}
+            onValueChange={(v) => {
+              setPeriodPreset(v as PeriodPreset);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="min-w-[220px] max-w-[min(100%,280px)] text-xs h-7">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os períodos</SelectItem>
+              <SelectItem value="yesterday">Ontem</SelectItem>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="last7">Últimos 7 dias</SelectItem>
+              <SelectItem value="last15">Últimos 15 dias</SelectItem>
+              <SelectItem value="month_current">Mês atual</SelectItem>
+              <SelectItem value="month_previous">Mês passado</SelectItem>
+              <SelectItem value="custom">Por período</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {periodPreset === "custom" && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">Do dia:</span>
+              <Input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => {
+                  setCustomDateFrom(e.target.value);
+                  setPage(1);
+                }}
+                className="w-[132px] h-7 text-xs"
+              />
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">ao dia:</span>
+              <Input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => {
+                  setCustomDateTo(e.target.value);
+                  setPage(1);
+                }}
+                className="w-[132px] h-7 text-xs"
+              />
+            </div>
+          )}
+
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-44 text-xs h-7">
               <SelectValue placeholder="Status" />
@@ -227,19 +429,6 @@ export default function Orders() {
               </SelectContent>
             </Select>
           )}
-
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-            className="w-32 h-7 text-xs"
-          />
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-            className="w-32 h-7 text-xs"
-          />
         </div>
       </div>
 

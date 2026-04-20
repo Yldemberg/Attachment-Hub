@@ -3,10 +3,23 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { ordersTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, gte, lte, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
+
+/** Alinhado ao Dashboard: dia civil no Brasil sobre data de pagamento/fechamento ML. */
+const ML_REPORT_TZ = "America/Sao_Paulo";
+
+function isIsoDateOnly(s: string | undefined): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+const orderReferenceLocalDateSp = sql`
+  CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})) AS date)
+`;
+
+const orderSortInstant = sql`coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})`;
 
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
@@ -35,15 +48,19 @@ router.get("/orders", ...auth, async (req, res) => {
 
     const conditions = [inArray(ordersTable.accountId, accountIds)];
     if (status) conditions.push(eq(ordersTable.status, status));
-    if (date_from) conditions.push(gte(ordersTable.dateCreated, new Date(date_from)));
-    if (date_to) conditions.push(lte(ordersTable.dateCreated, new Date(date_to)));
+    if (isIsoDateOnly(date_from)) {
+      conditions.push(sql`${orderReferenceLocalDateSp} >= ${sql.raw(`'${date_from}'`)}::date`);
+    }
+    if (isIsoDateOnly(date_to)) {
+      conditions.push(sql`${orderReferenceLocalDateSp} <= ${sql.raw(`'${date_to}'`)}::date`);
+    }
 
     const where = and(...conditions);
 
     const [countResult, rows] = await Promise.all([
       db.select({ count: sql<number>`cast(count(*) as int)` }).from(ordersTable).where(where),
       db.select().from(ordersTable).where(where)
-        .orderBy(sql`${ordersTable.dateCreated} desc nulls last`)
+        .orderBy(sql`${orderSortInstant} desc nulls last`)
         .limit(limitNum).offset(offset),
     ]);
 
