@@ -8,6 +8,12 @@ import { eq, and, inArray, lt, lte, sql, gte } from "drizzle-orm";
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
+/** Status ML pós-pagamento (pagamento aprovado / pedido em preparação). */
+const PAID_ORDER_STATUSES = ["paid", "confirmed"] as const;
+
+/** Instante do pagamento validado: `date_closed` do ML; fallback para `date_created`. */
+const orderPaidAt = sql`coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})`;
+
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
   const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
@@ -40,14 +46,14 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
     }
 
     const todayStart = new Date();
-    todayStart.setHours(0, 1, 0, 0);
+    todayStart.setHours(0, 0, 1, 0);
 
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
     const monthStart = new Date();
     monthStart.setDate(1);
-    monthStart.setHours(0, 1, 0, 0);
+    monthStart.setHours(0, 0, 1, 0);
 
     const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
     monthEnd.setHours(23, 59, 59, 999);
@@ -58,36 +64,36 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(ordersTable.dateCreated, todayStart),
-          lte(ordersTable.dateCreated, todayEnd),
-          eq(ordersTable.status, "paid"),
+          gte(orderPaidAt, todayStart),
+          lte(orderPaidAt, todayEnd),
+          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
         .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(ordersTable.dateCreated, monthStart),
-          lte(ordersTable.dateCreated, monthEnd),
-          eq(ordersTable.status, "paid"),
+          gte(orderPaidAt, monthStart),
+          lte(orderPaidAt, monthEnd),
+          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
         .select({ count: sql<number>`cast(count(*) as int)` })
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(ordersTable.dateCreated, todayStart),
-          lte(ordersTable.dateCreated, todayEnd),
-          eq(ordersTable.status, "paid"),
+          gte(orderPaidAt, todayStart),
+          lte(orderPaidAt, todayEnd),
+          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
         .select({ count: sql<number>`cast(count(*) as int)` })
         .from(ordersTable)
         .where(and(
           inArray(ordersTable.accountId, accountIds),
-          gte(ordersTable.dateCreated, monthStart),
-          lte(ordersTable.dateCreated, monthEnd),
-          eq(ordersTable.status, "paid"),
+          gte(orderPaidAt, monthStart),
+          lte(orderPaidAt, monthEnd),
+          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
         )),
       db
         .select({ count: sql<number>`cast(count(*) as int)` })
@@ -142,12 +148,11 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
 
     let startDate = new Date(now);
     startDate.setDate(startDate.getDate() - (days - 1));
-    startDate.setHours(0, 1, 0, 0);
-    startDate.setMilliseconds(0);
+    startDate.setHours(0, 0, 1, 0);
 
     if (period === "30d") {
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 1, 0, 0);
-      if (startDate < monthStart) startDate = monthStart;
+      const monthStartChart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 1, 0);
+      if (startDate < monthStartChart) startDate = monthStartChart;
     }
 
     if (accountIds.length === 0) {
@@ -157,20 +162,19 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
 
     const rows = await db
       .select({
-        date: sql<string>`cast(${ordersTable.dateCreated} as date)`,
+        date: sql<string>`cast(${orderPaidAt} as date)`,
         revenue: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)`,
         orders: sql<number>`cast(count(*) as int)`,
       })
       .from(ordersTable)
       .where(and(
         inArray(ordersTable.accountId, accountIds),
-        gte(ordersTable.dateCreated, startDate),
-        lte(ordersTable.dateCreated, endDate),
-        eq(ordersTable.status, "paid"),
-        sql`cast(${ordersTable.dateCreated} as time) >= '00:01:00'`,
+        gte(orderPaidAt, startDate),
+        lte(orderPaidAt, endDate),
+        inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
       ))
-      .groupBy(sql`cast(${ordersTable.dateCreated} as date)`)
-      .orderBy(sql`cast(${ordersTable.dateCreated} as date) asc`);
+      .groupBy(sql`cast(${orderPaidAt} as date)`)
+      .orderBy(sql`cast(${orderPaidAt} as date) asc`);
 
     const dataMap = Object.fromEntries(rows.map((r) => [r.date, r]));
     const data = [];
