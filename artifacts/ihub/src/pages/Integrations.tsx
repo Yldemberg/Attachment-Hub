@@ -8,7 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, Copy, Check } from "lucide-react";
+import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, Copy, Check, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -91,6 +91,26 @@ function ConnectButton() {
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
       Conectar conta ML
+    </Button>
+  );
+}
+
+function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" | "Amazon" }) {
+  const { toast } = useToast();
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="mt-3 h-8 text-xs w-full"
+      onClick={() =>
+        toast({
+          title: `${marketplace} em breve`,
+          description: `O botão de conexão da ${marketplace} já está preparado e será ativado quando a integração estiver disponível.`,
+        })
+      }
+    >
+      Conectar {marketplace}
     </Button>
   );
 }
@@ -270,9 +290,46 @@ export default function Integrations() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Integrações</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Gerencie suas contas do Mercado Livre</p>
+            <p className="text-muted-foreground text-sm mt-0.5">Gerencie suas integrações com marketplaces</p>
           </div>
           <ConnectButton />
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <h3 className="text-foreground text-sm font-medium mb-3">Marketplaces disponíveis</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-800">Mercado Livre</span>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  Ativo
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/80 mt-1.5">Conexão via OAuth com sincronização automática de conta.</p>
+            </div>
+
+            <div className="rounded-lg border border-card-border bg-background p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">Shopee</span>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  Em breve
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">Integração em preparação para pedidos, estoque e anúncios.</p>
+              <ConnectComingSoonButton marketplace="Shopee" />
+            </div>
+
+            <div className="rounded-lg border border-card-border bg-background p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">Amazon</span>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  Em breve
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">Conector planejado para catálogo, pedidos e status logístico.</p>
+              <ConnectComingSoonButton marketplace="Amazon" />
+            </div>
+          </div>
         </div>
 
         {isLoading ? (
@@ -283,7 +340,7 @@ export default function Integrations() {
           </div>
         ) : accounts.length === 0 ? (
           <div className="bg-card border border-card-border border-dashed rounded-xl py-16 text-center">
-            <Plug className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+            <Store className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <h3 className="text-foreground font-medium mb-1">Nenhuma conta conectada</h3>
             <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
               Conecte sua conta do Mercado Livre para começar a gerenciar seus anúncios e pedidos.
