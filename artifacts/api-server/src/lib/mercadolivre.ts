@@ -202,6 +202,9 @@ export const ml = {
   get: <T>(accountId: string, path: string) =>
     mlFetch<T>(accountId, path, { method: "GET" }),
 
+  getWithHeaders: <T>(accountId: string, path: string, extraHeaders: Record<string, string>) =>
+    mlFetch<T>(accountId, path, { method: "GET", headers: extraHeaders }),
+
   post: <T>(accountId: string, path: string, body: unknown) =>
     mlFetch<T>(accountId, path, {
       method: "POST",
@@ -399,6 +402,51 @@ export function getMlEffectiveLogisticType(item: MlItem): string | null {
     if (!types.includes("self_service_in")) types.push("self_service_in");
   }
   return types.length > 0 ? types.join(",") : null;
+}
+
+/** GET /shipments/:id (`x-format-new`) — formato usado pelo ML para o envio concretizado na venda. */
+export type MlShipmentApi = {
+  logistic?: {
+    direction?: string;
+    mode?: string | null;
+    /** Ex.: fulfillment, drop_off, cross_docking, xd_drop_off, self_service … */
+    type?: string | null;
+  } | null;
+  tags?: string[] | null;
+};
+
+/**
+ * Modalidade de envio efetiva desta compra (shipment), em chaves compatíveis com badges de logística dos anúncios.
+ */
+export function getMlSaleLogisticTypeFromShipment(shipment: MlShipmentApi | null | undefined): string | null {
+  if (!shipment?.logistic && !Array.isArray(shipment?.tags)) return null;
+  const types: string[] = [];
+  const raw = shipment?.logistic?.type;
+  if (raw) {
+    if (raw === "xd_drop_off") types.push("cross_docking");
+    else types.push(raw);
+  }
+  if (Array.isArray(shipment.tags) && shipment.tags.includes("self_service_in") && !types.includes("self_service_in")) {
+    types.push("self_service_in");
+  }
+  return types.length > 0 ? types.join(",") : null;
+}
+
+/** Busca shipment da venda para saber Flex/Full/Padrão efetivos no checkout (não só o que o anúncio oferece). */
+export async function fetchMlShipmentSaleLogisticType(accountId: string, shippingId: number | bigint | null | undefined): Promise<string | null> {
+  if (shippingId == null) return null;
+  try {
+    const sid = typeof shippingId === "bigint" ? Number(shippingId) : shippingId;
+    const shipment = await ml.getWithHeaders<MlShipmentApi>(
+      accountId,
+      `/shipments/${sid}`,
+      { "x-format-new": "true" },
+    );
+    return getMlSaleLogisticTypeFromShipment(shipment);
+  } catch (err) {
+    logger.warn({ err, shippingId }, "ML fetch shipment for sale logistic type failed");
+    return null;
+  }
 }
 
 const SKU_ATTR_ID = "SELLER_SKU";
@@ -599,7 +647,7 @@ export type MlOrder = {
   total_amount: number;
   currency_id: string;
   buyer: { id: number; nickname: string };
-  shipping: { id: number; status: string };
+  shipping?: { id: number; status?: string } | null;
   date_created: string;
   date_closed: string;
   order_items: Array<{

@@ -14,6 +14,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
   ml,
+  fetchMlShipmentSaleLogisticType,
   MlItem,
   MlOrder,
   MlQuestion,
@@ -73,7 +74,7 @@ function verifyMlSignature(req: Request): boolean {
 
 async function enrichOrderItemsJson(
   accountId: string,
-  orderItems: MlOrder["order_items"],
+  order: MlOrder,
 ): Promise<Array<{
   item_id: string;
   title: string;
@@ -81,11 +82,15 @@ async function enrichOrderItemsJson(
   price: number;
   thumbnail: string | null;
   sku: string | null;
+  /** Modalidades do anúncio (podem ser várias). */
   logistic_type: string | null;
+  /** Envio concretizado na venda (shipment). */
+  sale_logistic_type: string | null;
 }>> {
   const db = getDb();
+  const saleLogisticType = await fetchMlShipmentSaleLogisticType(accountId, order.shipping?.id);
   return Promise.all(
-    orderItems.map(async (oi) => {
+    order.order_items.map(async (oi) => {
       const [product] = await db
         .select({
           thumbnail: productsTable.thumbnail,
@@ -104,6 +109,7 @@ async function enrichOrderItemsJson(
         thumbnail: product?.thumbnail ?? null,
         sku: product?.sku ?? null,
         logistic_type: product?.logisticType ?? null,
+        sale_logistic_type: saleLogisticType,
       };
     }),
   );
@@ -292,7 +298,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (!orderId) return;
 
         const order = await ml.get<MlOrder>(account.id, `/orders/${orderId}`);
-        const itemsJson = await enrichOrderItemsJson(account.id, order.order_items);
+        const itemsJson = await enrichOrderItemsJson(account.id, order);
 
         await db
           .insert(ordersTable)

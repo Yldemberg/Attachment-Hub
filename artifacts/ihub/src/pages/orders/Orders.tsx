@@ -28,7 +28,10 @@ interface OrderItem {
   price: number;
   thumbnail?: string | null;
   sku?: string | null;
+  /** Modalidades do anúncio (pode listar mais de uma, ex. Full e Flex). */
   logistic_type?: string | null;
+  /** Envio concretizado na venda (shipment), ex. Flex no checkout. */
+  sale_logistic_type?: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -177,15 +180,18 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   cross_docking: { label: "Cross-docking", cls: "bg-amber-50 text-amber-700 border-amber-200" },
   self_service: { label: "Flex", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   self_service_in: { label: "Flex", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+  /** Mercado Envíos padrão (ex. `logistic.type` no shipment). */
+  drop_off: { label: "Padrão", cls: "bg-slate-100 text-slate-600 border-slate-200" },
   default: { label: "Padrão", cls: "bg-slate-100 text-slate-600 border-slate-200" },
 };
 
-function LogisticBadge({ type }: { type?: string | null }) {
+function LogisticBadge({ type, prefix }: { type?: string | null; prefix?: string }) {
   if (!type) return null;
   const types = type.split(",").map((t) => t.trim()).filter(Boolean);
   if (types.length === 0) return null;
   return (
-    <span className="inline-flex flex-wrap gap-1">
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {prefix && <span className="text-[9px] text-muted-foreground font-medium shrink-0">{prefix}</span>}
       {types.map((t) => {
         const { label, cls } = LOGISTIC_LABELS[t] ?? LOGISTIC_LABELS.default;
         return (
@@ -202,7 +208,17 @@ function OrderCard({ o }: { o: Order }) {
   const items = (o.itemsJson as unknown as OrderItem[]) ?? [];
   const firstItem = items[0];
   const totalQty = items.reduce((s, i) => s + (i.quantity ?? 0), 0);
-  const logisticTypes = [...new Set(items.map((i) => i.logistic_type).filter(Boolean))];
+  const listingLogisticKeys = [
+    ...new Set(
+      items.flatMap((i) =>
+        (i.logistic_type ?? "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      ),
+    ),
+  ];
+  const saleLogistic = items.find((i) => i.sale_logistic_type)?.sale_logistic_type ?? null;
 
   return (
     <Link to={`/orders/${o.id}`}>
@@ -224,9 +240,14 @@ function OrderCard({ o }: { o: Order }) {
             <span className="text-primary text-xs font-mono font-medium">
               #{o.mlOrderId ?? o.id.slice(0, 8)}
             </span>
-            {logisticTypes.map((lt) => (
-              <LogisticBadge key={lt} type={lt} />
+            {listingLogisticKeys.map((lt) => (
+              <LogisticBadge key={`a-${lt}`} type={lt} />
             ))}
+            {saleLogistic && (
+              <span className="inline-flex items-center ml-0.5 pl-1.5 border-l border-border">
+                <LogisticBadge type={saleLogistic} prefix="Venda:" />
+              </span>
+            )}
           </div>
           <p className="text-foreground text-sm truncate font-medium">
             {firstItem?.title ?? "—"}
