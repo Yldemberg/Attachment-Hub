@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import { profilesTable } from "./profiles";
 import { accountsTable } from "./accounts";
+import { skuMandateInventoryTable } from "./sku-mandate-inventory";
 import { productsTable } from "./products";
 import { ordersTable } from "./orders";
 import { questionsTable } from "./questions";
@@ -9,6 +10,7 @@ import { notificationsTable } from "./notifications";
 export const profilesRelations = relations(profilesTable, ({ many }) => ({
   accounts: many(accountsTable),
   notifications: many(notificationsTable),
+  skuMandateInventories: many(skuMandateInventoryTable),
 }));
 
 export const accountsRelations = relations(accountsTable, ({ one, many }) => ({
@@ -19,6 +21,13 @@ export const accountsRelations = relations(accountsTable, ({ one, many }) => ({
   products: many(productsTable),
   orders: many(ordersTable),
   questions: many(questionsTable),
+}));
+
+export const skuMandateInventoryRelations = relations(skuMandateInventoryTable, ({ one }) => ({
+  profile: one(profilesTable, {
+    fields: [skuMandateInventoryTable.userId],
+    references: [profilesTable.id],
+  }),
 }));
 
 export const productsRelations = relations(productsTable, ({ one }) => ({

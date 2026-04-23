@@ -71,6 +71,21 @@ CREATE INDEX IF NOT EXISTS products_sku_idx ON public.products(sku) WHERE sku IS
 CREATE INDEX IF NOT EXISTS products_status_idx ON public.products(status);
 
 -- ============================================================================
+-- TABLE: sku_mandate_inventory (estoque mandatário por SKU / usuário)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.sku_mandate_inventory (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  sku        TEXT NOT NULL,
+  quantity   INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, sku)
+);
+
+CREATE INDEX IF NOT EXISTS sku_mandate_inventory_user_id_idx ON public.sku_mandate_inventory(user_id);
+
+-- ============================================================================
 -- TABLE: orders
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.orders (

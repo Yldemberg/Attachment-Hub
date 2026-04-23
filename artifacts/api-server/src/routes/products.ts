@@ -4,7 +4,14 @@ import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, or, inArray, lt, sql, gt, isNotNull } from "drizzle-orm";
-import { fetchMlItemPrices, ml, resolveProductPricesFromMlPricesApi, MlItem } from "../lib/mercadolivre";
+import {
+  fetchMlItemPrices,
+  ml,
+  putMlItemStockForSellerSku,
+  resolveProductPricesFromMlPricesApi,
+  MlItem,
+} from "../lib/mercadolivre";
+import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -377,13 +384,22 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
       return;
     }
 
-    await ml.put(product.accountId, `/items/${product.mlItemId}`, { available_quantity: quantity });
+    if (product.sku) {
+      await putMlItemStockForSellerSku(product.accountId, product.mlItemId, product.sku, quantity);
+    } else {
+      await ml.put(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`, { available_quantity: quantity });
+    }
+    const after = await ml.get<MlItem>(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`);
     await db
       .update(productsTable)
-      .set({ availableQuantity: quantity })
+      .set({ availableQuantity: after.available_quantity })
       .where(eq(productsTable.id, product.id));
 
-    res.json({ success: true, productId: product.id, quantity });
+    if (product.sku) {
+      await upsertSkuMandateQuantity(req.user!.id, product.sku, quantity);
+    }
+
+    res.json({ success: true, productId: product.id, quantity: after.available_quantity });
   } catch (err) {
     req.log.error({ err }, "Failed to update single product stock");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -423,10 +439,11 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
       }
 
       try {
-        await ml.put(product.accountId, `/items/${product.mlItemId}`, { available_quantity: quantity });
+        await putMlItemStockForSellerSku(product.accountId, product.mlItemId, req.params.sku as string, quantity);
+        const after = await ml.get<MlItem>(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`);
         await db
           .update(productsTable)
-          .set({ availableQuantity: quantity })
+          .set({ availableQuantity: after.available_quantity })
           .where(eq(productsTable.id, product.id));
         updated++;
         results.push({ productId: product.id, mlItemId: product.mlItemId, success: true, reason: null });
@@ -434,6 +451,10 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
         failed++;
         results.push({ productId: product.id, mlItemId: product.mlItemId, success: false, reason: (err as Error).message });
       }
+    }
+
+    if (updated > 0) {
+      await upsertSkuMandateQuantity(req.user!.id, req.params.sku as string, quantity);
     }
 
     res.json({ sku: req.params.sku, updated, skipped, failed, results });

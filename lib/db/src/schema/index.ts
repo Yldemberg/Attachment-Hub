@@ -1,5 +1,6 @@
 export * from "./profiles";
 export * from "./accounts";
+export * from "./sku-mandate-inventory";
 export * from "./products";
 export * from "./orders";
 export * from "./questions";

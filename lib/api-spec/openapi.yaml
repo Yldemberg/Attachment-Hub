@@ -16,6 +16,8 @@ tags:
     description: Mercado Livre account integrations
   - name: products
     description: Product and inventory management
+  - name: inventory
+    description: Inventário geral e estoque mandatário por SKU
   - name: orders
     description: Order management
   - name: questions
@@ -424,6 +426,65 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /inventory/search:
+    get:
+      operationId: searchInventory
+      tags: [inventory]
+      summary: Buscar SKUs para inventário geral
+      description: >-
+        Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário).
+        Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Texto ou código de barras / SKU
+      responses:
+        "200":
+          description: Resultados agrupados por SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySearchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /inventory/mandate-adjust:
+    post:
+      operationId: adjustMandateInventory
+      tags: [inventory]
+      summary: Ajustar estoque mandatário e espelhar nos anúncios
+      description: >-
+        Atualiza sku_mandate_inventory e aplica a quantidade em todos os anúncios não Full
+        com o mesmo SKU nas contas do usuário.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MandateAdjustRequest"
+      responses:
+        "200":
+          description: Resultado do espelhamento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MandateAdjustResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ---------------------------------------------------------------------------
   # Orders
@@ -1059,6 +1120,89 @@ components:
                 nullable: true
             required: [productId, mlItemId, success]
       required: [sku, updated, skipped, failed, results]
+
+    InventorySearchItem:
+      type: object
+      properties:
+        sku:
+          type: string
+        mandateQuantity:
+          type: integer
+          nullable: true
+          description: Valor em sku_mandate_inventory, se existir
+        thumbnail:
+          type: string
+          nullable: true
+        titleShort:
+          type: string
+        variationLabel:
+          type: string
+          nullable: true
+          description: Cor / tamanho etc. quando há variações
+        currentStock:
+          type: integer
+          description: Estoque no anúncio representativo (banco)
+        representativeProductId:
+          type: string
+        listingCount:
+          type: integer
+          description: Quantidade de anúncios não Full com este SKU
+      required:
+        - sku
+        - titleShort
+        - currentStock
+        - representativeProductId
+        - listingCount
+
+    InventorySearchResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventorySearchItem"
+      required: [data]
+
+    MandateAdjustRequest:
+      type: object
+      properties:
+        sku:
+          type: string
+        operation:
+          type: string
+          enum: [add, subtract, set]
+        amount:
+          type: integer
+          minimum: 0
+      required: [sku, operation, amount]
+
+    MandateAdjustResponse:
+      type: object
+      properties:
+        sku:
+          type: string
+        mandateQuantity:
+          type: integer
+        updated:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+              mlItemId:
+                type: string
+              success:
+                type: boolean
+              reason:
+                type: string
+                nullable: true
+            required: [productId, mlItemId, success]
+      required: [sku, mandateQuantity, updated, failed, results]
 
     # --------------------------------------------------------------------------
     # Orders

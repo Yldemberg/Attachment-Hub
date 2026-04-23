@@ -137,6 +137,56 @@ export interface UpdateStockResponse {
   results: UpdateStockResponseResultsItem[];
 }
 
+export interface InventorySearchItem {
+  sku: string;
+  /** Valor em sku_mandate_inventory, se existir */
+  mandateQuantity?: number | null;
+  thumbnail?: string | null;
+  titleShort: string;
+  /** Cor / tamanho etc. quando há variações */
+  variationLabel?: string | null;
+  /** Estoque no anúncio representativo (banco) */
+  currentStock: number;
+  representativeProductId: string;
+  /** Quantidade de anúncios não Full com este SKU */
+  listingCount: number;
+}
+
+export interface InventorySearchResponse {
+  data: InventorySearchItem[];
+}
+
+export type MandateAdjustRequestOperation =
+  (typeof MandateAdjustRequestOperation)[keyof typeof MandateAdjustRequestOperation];
+
+export const MandateAdjustRequestOperation = {
+  add: "add",
+  subtract: "subtract",
+  set: "set",
+} as const;
+
+export interface MandateAdjustRequest {
+  sku: string;
+  operation: MandateAdjustRequestOperation;
+  /** @minimum 0 */
+  amount: number;
+}
+
+export type MandateAdjustResponseResultsItem = {
+  productId: string;
+  mlItemId: string;
+  success: boolean;
+  reason?: string | null;
+};
+
+export interface MandateAdjustResponse {
+  sku: string;
+  mandateQuantity: number;
+  updated: number;
+  failed: number;
+  results: MandateAdjustResponseResultsItem[];
+}
+
 export interface OrderItem {
   item_id: string;
   title?: string;
@@ -378,6 +428,13 @@ export type UpdateStockBySkuParams = {
    * Restrict update to products belonging to this account
    */
   account_id?: string;
+};
+
+export type SearchInventoryParams = {
+  /**
+   * Texto ou código de barras / SKU
+   */
+  query: string;
 };
 
 export type ListOrdersParams = {

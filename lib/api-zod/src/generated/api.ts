@@ -401,6 +401,66 @@ export const UpdateStockBySkuResponse = zod.object({
 });
 
 /**
+ * Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
+ * @summary Buscar SKUs para inventário geral
+ */
+export const SearchInventoryQueryParams = zod.object({
+  query: zod.coerce.string().describe("Texto ou código de barras \/ SKU"),
+});
+
+export const SearchInventoryResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      sku: zod.string(),
+      mandateQuantity: zod
+        .number()
+        .nullish()
+        .describe("Valor em sku_mandate_inventory, se existir"),
+      thumbnail: zod.string().nullish(),
+      titleShort: zod.string(),
+      variationLabel: zod
+        .string()
+        .nullish()
+        .describe("Cor \/ tamanho etc. quando há variações"),
+      currentStock: zod
+        .number()
+        .describe("Estoque no anúncio representativo (banco)"),
+      representativeProductId: zod.string(),
+      listingCount: zod
+        .number()
+        .describe("Quantidade de anúncios não Full com este SKU"),
+    }),
+  ),
+});
+
+/**
+ * Atualiza sku_mandate_inventory e aplica a quantidade em todos os anúncios não Full com o mesmo SKU nas contas do usuário.
+ * @summary Ajustar estoque mandatário e espelhar nos anúncios
+ */
+export const adjustMandateInventoryBodyAmountMin = 0;
+
+export const AdjustMandateInventoryBody = zod.object({
+  sku: zod.string(),
+  operation: zod.enum(["add", "subtract", "set"]),
+  amount: zod.number().min(adjustMandateInventoryBodyAmountMin),
+});
+
+export const AdjustMandateInventoryResponse = zod.object({
+  sku: zod.string(),
+  mandateQuantity: zod.number(),
+  updated: zod.number(),
+  failed: zod.number(),
+  results: zod.array(
+    zod.object({
+      productId: zod.string(),
+      mlItemId: zod.string(),
+      success: zod.boolean(),
+      reason: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
  * @summary List orders with filters and pagination
  */
 export const listOrdersQueryPageDefault = 1;

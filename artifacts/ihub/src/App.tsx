@@ -17,6 +17,7 @@ import Questions from "@/pages/Questions";
 import Notifications from "@/pages/Notifications";
 import Integrations from "@/pages/Integrations";
 import Profile from "@/pages/Profile";
+import GeneralInventory from "@/pages/inventory/GeneralInventory";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,6 +68,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <Products />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/inventory">
+        <ProtectedRoute>
+          <AppLayout>
+            <GeneralInventory />
           </AppLayout>
         </ProtectedRoute>
       </Route>

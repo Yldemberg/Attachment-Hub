@@ -62,6 +62,8 @@ type DemoProduct = (typeof DEMO_PRODUCTS)[number];
 let _mockQuestions: DemoQuestion[] = DEMO_QUESTIONS.map((q) => ({ ...q }));
 let _mockNotifications: DemoNotification[] = DEMO_NOTIFICATIONS.map((n) => ({ ...n }));
 let _mockProducts: DemoProduct[] = DEMO_PRODUCTS.map((p) => ({ ...p }));
+/** Estoque mandatário demo por SKU */
+let _mockMandateQty: Record<string, number> = {};
 
 const _originalFetch = globalThis.fetch;
 
@@ -295,6 +297,102 @@ export function installMockFetch(): void {
       const count = _mockNotifications.filter((n) => !n.isRead).length;
       _mockNotifications = _mockNotifications.map((n) => ({ ...n, isRead: true }));
       return jsonResponse({ updated: count });
+    }
+
+    if (path === "/inventory/search" && method === "GET") {
+      const q = params.get("query")?.trim() ?? "";
+      if (!q) {
+        return jsonResponse({ error: { code: "BAD_REQUEST", message: "Parâmetro query é obrigatório" } }, 400);
+      }
+      const tokens = q
+        .toLowerCase()
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+      let filtered = _mockProducts.filter((p) => !p.isFull && !!p.sku);
+      filtered = filtered.filter((p) => {
+        const hay = [
+          p.title ?? "",
+          p.sku ?? "",
+          p.mlItemId ?? "",
+          JSON.stringify((p as Record<string, unknown>).variationsJson ?? ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return tokens.every((t) => hay.includes(t));
+      });
+      const bySku = new Map<string, DemoProduct[]>();
+      for (const p of filtered) {
+        const sku = p.sku as string;
+        const list = bySku.get(sku) ?? [];
+        list.push(p);
+        bySku.set(sku, list);
+      }
+      const skus = [...bySku.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const data = skus.map((sku) => {
+        const list = bySku.get(sku)!;
+        const rep = list[0];
+        const title = (rep.title ?? "").trim();
+        const titleShort = title.length <= 72 ? title : `${title.slice(0, 71)}…`;
+        return {
+          sku,
+          mandateQuantity: _mockMandateQty[sku] ?? null,
+          thumbnail: rep.thumbnail ?? null,
+          titleShort,
+          variationLabel: null as string | null,
+          currentStock: rep.availableQuantity ?? 0,
+          representativeProductId: rep.id,
+          listingCount: list.length,
+        };
+      });
+      return jsonResponse({ data });
+    }
+
+    if (path === "/inventory/mandate-adjust" && method === "POST") {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      const sku = typeof body.sku === "string" ? body.sku.trim() : "";
+      const operation = body.operation;
+      const amount = typeof body.amount === "number" ? body.amount : -1;
+      if (!sku) {
+        return jsonResponse({ error: { code: "BAD_REQUEST", message: "sku é obrigatório" } }, 400);
+      }
+      if (operation !== "add" && operation !== "subtract" && operation !== "set") {
+        return jsonResponse({ error: { code: "BAD_REQUEST", message: "operation inválida" } }, 400);
+      }
+      if (!Number.isInteger(amount) || amount < 0) {
+        return jsonResponse({ error: { code: "BAD_REQUEST", message: "amount inválido" } }, 400);
+      }
+      if ((operation === "add" || operation === "subtract") && amount === 0) {
+        return jsonResponse({ error: { code: "BAD_REQUEST", message: "amount deve ser > 0" } }, 400);
+      }
+      const targets = _mockProducts.filter((p) => p.sku === sku && !p.isFull);
+      if (targets.length === 0) {
+        return jsonResponse({ error: { code: "NOT_FOUND", message: "SKU não encontrado" } }, 404);
+      }
+      const baseline =
+        _mockMandateQty[sku] !== undefined
+          ? _mockMandateQty[sku]
+          : Math.min(...targets.map((p) => p.availableQuantity ?? 0));
+      let mandateQty: number;
+      if (operation === "set") mandateQty = amount;
+      else if (operation === "add") mandateQty = baseline + amount;
+      else mandateQty = Math.max(0, baseline - amount);
+      _mockMandateQty[sku] = mandateQty;
+      const results: Array<{ productId: string; mlItemId: string; success: boolean; reason: string | null }> = [];
+      let updated = 0;
+      let failed = 0;
+      _mockProducts = _mockProducts.map((p) => {
+        if (p.sku !== sku || p.isFull) return p;
+        updated++;
+        results.push({ productId: p.id, mlItemId: p.mlItemId, success: true, reason: null });
+        return { ...p, availableQuantity: mandateQty };
+      });
+      return jsonResponse({ sku, mandateQuantity: mandateQty, updated, failed, results });
     }
 
     if (path === "/healthz") {

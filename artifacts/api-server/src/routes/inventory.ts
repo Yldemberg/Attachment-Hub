@@ -1,0 +1,272 @@
+import { Router } from "express";
+import { requireAuth } from "../lib/auth";
+import { requireActivePlan } from "../lib/trial";
+import { getDb } from "../lib/db";
+import { productsTable, accountsTable, skuMandateInventoryTable } from "@workspace/db/schema";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
+import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
+
+const router = Router();
+const auth = [requireAuth, requireActivePlan];
+
+async function getUserAccountIds(userId: string): Promise<string[]> {
+  const db = getDb();
+  const accounts = await db
+    .select({ id: accountsTable.id })
+    .from(accountsTable)
+    .where(and(eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)));
+  return accounts.map((a) => a.id);
+}
+
+function escapeIlikePattern(token: string): string {
+  return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+type VariationJsonRow = {
+  sku?: string | null;
+  attributes?: Array<{ name?: string; value_name?: string | null }>;
+  attribute_combinations?: Array<{ name?: string; value_name?: string | null }>;
+};
+
+function variationLabelFromProduct(
+  variationsJson: unknown,
+  effectiveSku: string,
+  shortTitle: string,
+): string | null {
+  if (!variationsJson || !Array.isArray(variationsJson)) {
+    if (shortTitle.length > 0 && shortTitle !== effectiveSku) {
+      return shortTitle.slice(0, 80);
+    }
+    return null;
+  }
+  const rows = variationsJson as VariationJsonRow[];
+  const match = rows.find((r) => r.sku === effectiveSku) ?? rows[0];
+  if (!match) return null;
+  const combos = match.attribute_combinations ?? [];
+  const attrs = match.attributes ?? [];
+  const parts: string[] = [];
+  for (const c of combos) {
+    if (c.name && c.value_name) parts.push(`${c.name}: ${c.value_name}`);
+  }
+  if (parts.length === 0) {
+    for (const a of attrs) {
+      if (a.name && a.value_name) parts.push(`${a.name}: ${a.value_name}`);
+    }
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function shortTitle(title: string | null | undefined, max = 72): string {
+  if (!title) return "";
+  const t = title.trim();
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+/** GET /inventory/search — anúncios não Full com SKU; agrupa por SKU para inventário mandatário. */
+router.get("/inventory/search", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { query: q } = req.query as Record<string, string>;
+    if (!q || !q.trim()) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Parâmetro query é obrigatório" } });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.json({ data: [] });
+      return;
+    }
+
+    const tokens = q
+      .trim()
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    const conditions = [
+      inArray(productsTable.accountId, accountIds),
+      eq(productsTable.isFull, false),
+      isNotNull(productsTable.sku),
+    ];
+
+    for (const token of tokens) {
+      const pat = `%${escapeIlikePattern(token)}%`;
+      conditions.push(
+        sql`(
+            coalesce(${productsTable.title}, '') ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.sku}, '') ILIKE ${pat} ESCAPE '\\'
+            OR ${productsTable.mlItemId} ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.variationsJson}::text, '') ILIKE ${pat} ESCAPE '\\'
+          )`,
+      );
+    }
+
+    const where = and(...conditions);
+    const rows = await db.select().from(productsTable).where(where).limit(120);
+
+    const bySku = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const sku = row.sku!;
+      const list = bySku.get(sku) ?? [];
+      list.push(row);
+      bySku.set(sku, list);
+    }
+
+    const skus = [...bySku.keys()];
+    const mandateRows =
+      skus.length === 0
+        ? []
+        : await db
+            .select()
+            .from(skuMandateInventoryTable)
+            .where(
+              and(
+                eq(skuMandateInventoryTable.userId, req.user!.id),
+                inArray(skuMandateInventoryTable.sku, skus),
+              ),
+            );
+    const mandateMap = Object.fromEntries(mandateRows.map((m) => [m.sku, m.quantity]));
+
+    const qLower = q.trim().toLowerCase();
+    const data = skus.map((sku) => {
+      const list = bySku.get(sku)!;
+      const exactSku = list.find((r) => r.sku?.toLowerCase() === qLower);
+      const rep = exactSku ?? list[0];
+      const mandateQty = mandateMap[sku];
+      const titleShort = shortTitle(rep.title);
+      const varLabel = variationLabelFromProduct(rep.variationsJson, sku, titleShort);
+      return {
+        sku,
+        mandateQuantity: mandateQty ?? null,
+        thumbnail: rep.thumbnail ?? null,
+        titleShort,
+        variationLabel: varLabel,
+        currentStock: rep.availableQuantity,
+        representativeProductId: rep.id,
+        listingCount: list.length,
+      };
+    });
+
+    data.sort((a, b) => a.sku.localeCompare(b.sku, "pt-BR"));
+    res.json({ data });
+  } catch (err) {
+    req.log.error({ err }, "inventory search failed");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+/** POST /inventory/mandate-adjust — atualiza mandatário e espelha em todos os anúncios não Full do SKU. */
+router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const body = req.body as { sku?: string; operation?: string; amount?: number };
+    const sku = typeof body.sku === "string" ? body.sku.trim() : "";
+    const operation = body.operation;
+    const amount = body.amount;
+
+    if (!sku) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "sku é obrigatório" } });
+      return;
+    }
+    if (operation !== "add" && operation !== "subtract" && operation !== "set") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "operation deve ser add, subtract ou set" } });
+      return;
+    }
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || !Number.isInteger(amount)) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "amount deve ser um inteiro >= 0" } });
+      return;
+    }
+    if ((operation === "add" || operation === "subtract") && amount === 0) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "amount deve ser > 0 para add ou subtract" } });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhuma conta ativa" } });
+      return;
+    }
+
+    const products = await db
+      .select()
+      .from(productsTable)
+      .where(
+        and(
+          inArray(productsTable.accountId, accountIds),
+          eq(productsTable.sku, sku),
+          eq(productsTable.isFull, false),
+        ),
+      );
+
+    if (products.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
+      return;
+    }
+
+    const [mandateRow] = await db
+      .select()
+      .from(skuMandateInventoryTable)
+      .where(
+        and(eq(skuMandateInventoryTable.userId, req.user!.id), eq(skuMandateInventoryTable.sku, sku)),
+      )
+      .limit(1);
+
+    const listingMins = products.map((p) => p.availableQuantity);
+    const baseline = mandateRow
+      ? mandateRow.quantity
+      : listingMins.length > 0
+        ? Math.min(...listingMins)
+        : 0;
+
+    let mandateQty: number;
+    if (operation === "set") {
+      mandateQty = amount;
+    } else if (operation === "add") {
+      mandateQty = baseline + amount;
+    } else {
+      mandateQty = Math.max(0, baseline - amount);
+    }
+
+    await upsertSkuMandateQuantity(req.user!.id, sku, mandateQty);
+
+    const results: Array<{ productId: string; mlItemId: string; success: boolean; reason: string | null }> = [];
+    let updated = 0;
+    let failed = 0;
+
+    for (const product of products) {
+      try {
+        await putMlItemStockForSellerSku(product.accountId, product.mlItemId, sku, mandateQty);
+        const after = await ml.get<MlItem>(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`);
+        await db
+          .update(productsTable)
+          .set({ availableQuantity: after.available_quantity })
+          .where(eq(productsTable.id, product.id));
+        updated++;
+        results.push({ productId: product.id, mlItemId: product.mlItemId, success: true, reason: null });
+      } catch (err) {
+        failed++;
+        results.push({
+          productId: product.id,
+          mlItemId: product.mlItemId,
+          success: false,
+          reason: (err as Error).message,
+        });
+      }
+    }
+
+    res.json({
+      sku,
+      mandateQuantity: mandateQty,
+      updated,
+      failed,
+      results,
+    });
+  } catch (err) {
+    req.log.error({ err }, "mandate adjust failed");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+export default router;

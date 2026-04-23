@@ -651,11 +651,88 @@ export type MlOrder = {
   date_created: string;
   date_closed: string;
   order_items: Array<{
-    item: { id: string; title: string };
+    item: { id: string; title: string; variation_id?: number | null };
     quantity: number;
     unit_price: number;
   }>;
 };
+
+/**
+ * After a sale/cancel, reads the authoritative remaining stock for the sold line:
+ * variation-level quantity when `variation_id` or SKU match applies; otherwise root `available_quantity`.
+ */
+export async function resolveStockPropagationSource(
+  accountId: string,
+  mlItemId: string,
+  orderLineItem: { variation_id?: number | null },
+  dbFallbackSku: string | null,
+): Promise<{ effectiveSku: string; newStock: number; mlItem: MlItem } | null> {
+  const mlItem = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(mlItemId)}`);
+  let effectiveSku = trimNonEmpty(dbFallbackSku) ?? getMlItemRepresentativeSku(mlItem);
+  let newStock = mlItem.available_quantity;
+
+  const hasVars = Array.isArray(mlItem.variations) && mlItem.variations.length > 0;
+  if (!hasVars) {
+    if (!effectiveSku) return null;
+    return { effectiveSku, newStock, mlItem };
+  }
+
+  const detailed = await fetchMlItemVariations(accountId, mlItemId);
+  const byId = new Map(detailed.map((d) => [d.id, d]));
+  const merged = mlItem.variations!.map((v) => mergeMlVariation(v, byId.get(v.id)));
+
+  const vid = orderLineItem.variation_id;
+  if (vid != null) {
+    const soldVar = merged.find((v) => v.id === vid);
+    if (soldVar) {
+      newStock = soldVar.available_quantity;
+      const s = getMlVariationSku(soldVar);
+      if (s) effectiveSku = s;
+    }
+  } else if (dbFallbackSku) {
+    const soldVar = merged.find((v) => getMlVariationSku(v) === dbFallbackSku);
+    if (soldVar) {
+      newStock = soldVar.available_quantity;
+      effectiveSku = dbFallbackSku;
+    }
+  }
+
+  if (!effectiveSku) return null;
+  return { effectiveSku, newStock, mlItem };
+}
+
+/**
+ * Sets stock for a listing identified by seller SKU. Items with variations need a `variations` PUT
+ * (root-only `available_quantity` does not reliably update each variant on ML).
+ */
+export async function putMlItemStockForSellerSku(
+  accountId: string,
+  mlItemId: string,
+  sellerSku: string,
+  quantity: number,
+): Promise<void> {
+  const item = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(mlItemId)}`);
+  const hasVars = Array.isArray(item.variations) && item.variations.length > 0;
+  if (!hasVars) {
+    await ml.put(accountId, `/items/${encodeURIComponent(mlItemId)}`, { available_quantity: quantity });
+    return;
+  }
+
+  const detailed = await fetchMlItemVariations(accountId, mlItemId);
+  const byId = new Map(detailed.map((d) => [d.id, d]));
+  const merged = item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id)));
+  const matched = merged.filter((v) => getMlVariationSku(v) === sellerSku);
+  if (matched.length === 0) {
+    await ml.put(accountId, `/items/${encodeURIComponent(mlItemId)}`, { available_quantity: quantity });
+    return;
+  }
+
+  const payloadVars = merged.map((v) => ({
+    id: v.id,
+    available_quantity: getMlVariationSku(v) === sellerSku ? quantity : v.available_quantity,
+  }));
+  await ml.put(accountId, `/items/${encodeURIComponent(mlItemId)}`, { variations: payloadVars });
+}
 
 export type MlQuestion = {
   id: number;

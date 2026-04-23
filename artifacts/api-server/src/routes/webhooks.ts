@@ -9,9 +9,11 @@ import {
   ordersTable,
   questionsTable,
   profilesTable,
+  skuMandateInventoryTable,
 } from "@workspace/db/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import {
   ml,
   fetchMlShipmentSaleLogisticType,
@@ -26,6 +28,8 @@ import {
   getMlOriginalListPrice,
   getMlVariationSku,
   mergeMlVariation,
+  putMlItemStockForSellerSku,
+  resolveStockPropagationSource,
 } from "../lib/mercadolivre";
 
 const router = Router();
@@ -116,19 +120,28 @@ async function enrichOrderItemsJson(
 }
 
 /**
- * After a confirmed sale, fetches the current stock from ML for each sold item,
- * then pushes that quantity to ALL non-Full listings with the same SKU across
- * every account. Full (fulfillment) listings are skipped — stock is managed by
- * the ML warehouse.
+ * Atualiza o estoque mandatário (sku_mandate_inventory) e espelha a quantidade em todos os anúncios
+ * não Full com o mesmo SKU nas contas do mesmo usuário. Em pedido pago, decrementa o mandatário pela
+ * quantidade vendida; em cancelado, reincrementa. Sem linha mandatária ainda, usa o estoque lido no ML
+ * como valor inicial.
  */
 async function propagateStockFromSale(
   sellingAccountId: string,
   orderItems: MlOrder["order_items"],
+  orderStatus: string,
 ): Promise<void> {
   const db = getDb();
 
   for (const oi of orderItems) {
     const mlItemId = oi.item.id;
+
+    const [sellingAccount] = await db
+      .select({ userId: accountsTable.userId })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, sellingAccountId))
+      .limit(1);
+    if (!sellingAccount) continue;
+    const userId = sellingAccount.userId;
 
     // Find the sold item in our DB to get its SKU and logistic type.
     const [soldProduct] = await db
@@ -142,50 +155,80 @@ async function propagateStockFromSale(
       .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, mlItemId)))
       .limit(1);
 
-    // Skip if we don't know this product, it has no SKU, or it's Full.
-    if (!soldProduct || !soldProduct.sku || soldProduct.isFull) continue;
+    // Skip if we don't know this product or it's Full (ML manages Full stock).
+    if (!soldProduct || soldProduct.isFull) continue;
 
-    const sku = soldProduct.sku;
-
-    // Fetch the actual post-sale stock from ML (authoritative source).
-    let newStock: number;
+    let resolved: Awaited<ReturnType<typeof resolveStockPropagationSource>>;
     try {
-      const mlItem = await ml.get<MlItem>(sellingAccountId, `/items/${mlItemId}`);
-      newStock = mlItem.available_quantity;
-      // Update the sold item itself in our DB.
-      await db
-        .update(productsTable)
-        .set({ availableQuantity: newStock })
-        .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, mlItemId)));
+      resolved = await resolveStockPropagationSource(sellingAccountId, mlItemId, oi.item, soldProduct.sku);
     } catch (err) {
       logger.warn({ err, mlItemId }, "Stock propagation: failed to fetch post-sale stock from ML");
       continue;
     }
 
-    logger.info({ sku, mlItemId, newStock }, "Stock propagation: pushing updated stock to sibling listings");
+    if (!resolved) {
+      logger.warn(
+        { mlItemId, accountId: sellingAccountId, dbSku: soldProduct.sku },
+        "Stock propagation: could not resolve seller SKU / quantity for order line",
+      );
+      continue;
+    }
 
-    // Find all other non-Full listings with the same SKU (across all accounts).
-    const siblings = await db
-      .select()
+    const { effectiveSku, newStock } = resolved;
+
+    if (orderStatus !== "paid" && orderStatus !== "cancelled") continue;
+
+    const [mandateRow] = await db
+      .select({ quantity: skuMandateInventoryTable.quantity })
+      .from(skuMandateInventoryTable)
+      .where(
+        and(eq(skuMandateInventoryTable.userId, userId), eq(skuMandateInventoryTable.sku, effectiveSku)),
+      )
+      .limit(1);
+
+    let mandateQty: number;
+    if (orderStatus === "paid") {
+      mandateQty = mandateRow ? Math.max(0, mandateRow.quantity - oi.quantity) : newStock;
+    } else {
+      mandateQty = mandateRow ? mandateRow.quantity + oi.quantity : newStock;
+    }
+
+    await upsertSkuMandateQuantity(userId, effectiveSku, mandateQty);
+
+    logger.info(
+      { sku: effectiveSku, mlItemId, mandateQty, orderStatus },
+      "Stock propagation: mandate updated; pushing to all listings for user",
+    );
+
+    const targets = await db
+      .select({ product: productsTable })
       .from(productsTable)
+      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
       .where(
         and(
-          eq(productsTable.sku, sku),
+          eq(accountsTable.userId, userId),
+          eq(productsTable.sku, effectiveSku),
           eq(productsTable.isFull, false),
-          ne(productsTable.mlItemId, mlItemId), // exclude the sold item (already updated)
         ),
       );
 
-    for (const sibling of siblings) {
+    for (const { product: target } of targets) {
       try {
-        await ml.put(sibling.accountId, `/items/${sibling.mlItemId}`, { available_quantity: newStock });
+        await putMlItemStockForSellerSku(target.accountId, target.mlItemId, effectiveSku, mandateQty);
+        const after = await ml.get<MlItem>(target.accountId, `/items/${encodeURIComponent(target.mlItemId)}`);
         await db
           .update(productsTable)
-          .set({ availableQuantity: newStock })
-          .where(eq(productsTable.id, sibling.id));
-        logger.info({ mlItemId: sibling.mlItemId, accountId: sibling.accountId, sku, newStock }, "Stock propagation: sibling updated");
+          .set({ availableQuantity: after.available_quantity })
+          .where(eq(productsTable.id, target.id));
+        logger.info(
+          { mlItemId: target.mlItemId, accountId: target.accountId, sku: effectiveSku, mandateQty },
+          "Stock propagation: listing updated from mandate",
+        );
       } catch (err) {
-        logger.warn({ err, mlItemId: sibling.mlItemId, sku }, "Stock propagation: failed to update sibling listing");
+        logger.warn(
+          { err, mlItemId: target.mlItemId, sku: effectiveSku },
+          "Stock propagation: failed to update listing from mandate",
+        );
       }
     }
   }
@@ -341,7 +384,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         // AND on cancellation (ML restores stock of the original listing on cancel;
         // we fetch the current ML quantity and push it to all siblings).
         if (order.status === "paid" || order.status === "cancelled") {
-          await propagateStockFromSale(account.id, order.order_items);
+          await propagateStockFromSale(account.id, order.order_items, order.status);
         }
       } else if (topic === "items") {
         const itemId = resource.split("/").pop();

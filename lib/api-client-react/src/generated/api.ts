@@ -30,11 +30,14 @@ import type {
   HandleMercadoLivreWebhook200,
   HandleStripeWebhook200,
   HealthStatus,
+  InventorySearchResponse,
   ListAccounts200,
   ListNotificationsParams,
   ListOrdersParams,
   ListProductsParams,
   ListQuestionsParams,
+  MandateAdjustRequest,
+  MandateAdjustResponse,
   MarkAllNotificationsRead200,
   MercadoLivreWebhookPayload,
   NotFoundResponse,
@@ -47,6 +50,7 @@ import type {
   Question,
   QuestionListResponse,
   SalesChartResponse,
+  SearchInventoryParams,
   SyncAccount202,
   UnauthorizedResponse,
   UpdateProductListingStatus200,
@@ -1326,6 +1330,196 @@ export const useUpdateStockBySku = <
   TContext
 > => {
   return useMutation(getUpdateStockBySkuMutationOptions(options));
+};
+
+/**
+ * Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
+ * @summary Buscar SKUs para inventário geral
+ */
+export const getSearchInventoryUrl = (params: SearchInventoryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/search?${stringifiedParams}`
+    : `/api/inventory/search`;
+};
+
+export const searchInventory = async (
+  params: SearchInventoryParams,
+  options?: RequestInit,
+): Promise<InventorySearchResponse> => {
+  return customFetch<InventorySearchResponse>(getSearchInventoryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchInventoryQueryKey = (params?: SearchInventoryParams) => {
+  return [`/api/inventory/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchInventoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchInventory>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: SearchInventoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchInventory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSearchInventoryQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchInventory>>> = ({
+    signal,
+  }) => searchInventory(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchInventory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchInventoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchInventory>>
+>;
+export type SearchInventoryQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Buscar SKUs para inventário geral
+ */
+
+export function useSearchInventory<
+  TData = Awaited<ReturnType<typeof searchInventory>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: SearchInventoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchInventory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchInventoryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Atualiza sku_mandate_inventory e aplica a quantidade em todos os anúncios não Full com o mesmo SKU nas contas do usuário.
+ * @summary Ajustar estoque mandatário e espelhar nos anúncios
+ */
+export const getAdjustMandateInventoryUrl = () => {
+  return `/api/inventory/mandate-adjust`;
+};
+
+export const adjustMandateInventory = async (
+  mandateAdjustRequest: MandateAdjustRequest,
+  options?: RequestInit,
+): Promise<MandateAdjustResponse> => {
+  return customFetch<MandateAdjustResponse>(getAdjustMandateInventoryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(mandateAdjustRequest),
+  });
+};
+
+export const getAdjustMandateInventoryMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adjustMandateInventory>>,
+    TError,
+    { data: BodyType<MandateAdjustRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adjustMandateInventory>>,
+  TError,
+  { data: BodyType<MandateAdjustRequest> },
+  TContext
+> => {
+  const mutationKey = ["adjustMandateInventory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adjustMandateInventory>>,
+    { data: BodyType<MandateAdjustRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adjustMandateInventory(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdjustMandateInventoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adjustMandateInventory>>
+>;
+export type AdjustMandateInventoryMutationBody = BodyType<MandateAdjustRequest>;
+export type AdjustMandateInventoryMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Ajustar estoque mandatário e espelhar nos anúncios
+ */
+export const useAdjustMandateInventory = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adjustMandateInventory>>,
+    TError,
+    { data: BodyType<MandateAdjustRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adjustMandateInventory>>,
+  TError,
+  { data: BodyType<MandateAdjustRequest> },
+  TContext
+> => {
+  return useMutation(getAdjustMandateInventoryMutationOptions(options));
 };
 
 /**
