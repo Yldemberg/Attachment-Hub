@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Package, ScanBarcode, Loader2, Layers } from "lucide-react";
+import { Search, Package, ScanBarcode, Loader2, Layers, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Operation = MandateAdjustRequestOperation;
@@ -315,64 +315,75 @@ export default function GeneralInventory() {
               </Button>
             </div>
           </div>
-          <p className="text-[10px] text-muted-foreground leading-snug">
-            Resultados aparecem enquanto você digita. Leitor USB: foco no campo e escaneie (Enter força busca imediata).
-          </p>
+          {!selected && (
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              Resultados aparecem enquanto você digita. Leitor USB: foco no campo e escaneie (Enter força busca imediata).
+            </p>
+          )}
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4">
-        {debouncedQuery && searchQuery.isError && (
+        {debouncedQuery && !selected && searchQuery.isError && (
           <p className="text-sm text-destructive">Não foi possível buscar. Tente novamente.</p>
         )}
-        {debouncedQuery && searchQuery.data?.data?.length === 0 && !searchQuery.isFetching && (
+        {debouncedQuery && !selected && searchQuery.data?.data?.length === 0 && !searchQuery.isFetching && (
           <p className="text-sm text-muted-foreground">Nenhum anúncio não Full com SKU encontrado.</p>
         )}
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {searchQuery.data?.data.map((item) => (
-            <button
-              key={item.sku}
-              type="button"
-              onClick={() => setSelected(item)}
-              className={cn(
-                "text-left rounded-xl border p-3 transition-colors hover:border-primary/40",
-                selected?.sku === item.sku ? "border-primary bg-primary/5" : "border-border bg-card",
-              )}
-            >
-              <div className="flex gap-3">
-                {item.thumbnail ? (
-                  <img src={item.thumbnail} alt="" className="size-14 rounded-lg object-cover border border-border bg-muted shrink-0" />
-                ) : (
-                  <div className="size-14 rounded-lg border border-border bg-muted flex items-center justify-center shrink-0">
-                    <Package className="w-6 h-6 text-muted-foreground/50" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-mono text-muted-foreground truncate">{item.sku}</p>
-                  <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{item.titleShort}</p>
-                  {item.variationLabel && (
-                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{item.variationLabel}</p>
+        {!selected && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {searchQuery.data?.data.map((item) => (
+              <button
+                key={item.sku}
+                type="button"
+                onClick={() => setSelected(item)}
+                className="text-left rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/40"
+              >
+                <div className="flex gap-3">
+                  {item.thumbnail ? (
+                    <img src={item.thumbnail} alt="" className="size-14 rounded-lg object-cover border border-border bg-muted shrink-0" />
+                  ) : (
+                    <div className="size-14 rounded-lg border border-border bg-muted flex items-center justify-center shrink-0">
+                      <Package className="w-6 h-6 text-muted-foreground/50" />
+                    </div>
                   )}
-                  <div className="flex items-center gap-2 mt-2 text-xs">
-                    <span className={cn("font-bold tabular-nums", stockColorClass(item.currentStock))}>
-                      {item.currentStock} un.
-                    </span>
-                    {item.listingCount > 1 && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                        <Layers className="w-3 h-3" />
-                        {item.listingCount} anúncios
-                      </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-mono text-muted-foreground truncate">{item.sku}</p>
+                    <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{item.titleShort}</p>
+                    {item.variationLabel && (
+                      <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{item.variationLabel}</p>
                     )}
+                    <div className="flex items-center gap-2 mt-2 text-xs">
+                      <span className={cn("font-bold tabular-nums", stockColorClass(item.currentStock))}>
+                        {item.currentStock} un.
+                      </span>
+                      {item.listingCount > 1 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                          <Layers className="w-3 h-3" />
+                          {item.listingCount} anúncios
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {selected && (
-          <div className="mt-6 rounded-xl border border-border bg-card p-3 sm:p-4 w-full max-w-lg mx-auto sm:mx-0">
+          <div className="rounded-xl border border-border bg-card p-3 sm:p-4 w-full max-w-lg mx-auto sm:mx-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mb-1 -ml-2 h-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setSelected(null)}
+            >
+              <ChevronLeft className="w-4 h-4 mr-0.5" />
+              Voltar à lista
+            </Button>
             <h2 className="text-sm font-semibold text-foreground mb-3">Ajustar estoque mandatário</h2>
             <div className="flex gap-3 mb-4">
               {selected.thumbnail ? (
