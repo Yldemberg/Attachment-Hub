@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
   date_created     TIMESTAMPTZ,
   date_closed      TIMESTAMPTZ,
   items_json       JSONB,
+  mandate_sale_applied   BOOLEAN NOT NULL DEFAULT FALSE,
+  mandate_cancel_applied BOOLEAN NOT NULL DEFAULT FALSE,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(account_id, ml_order_id)

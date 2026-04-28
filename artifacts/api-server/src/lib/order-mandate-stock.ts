@@ -1,13 +1,24 @@
 import { getDb } from "./db";
-import { accountsTable, productsTable, skuMandateInventoryTable } from "@workspace/db/schema";
+import {
+  accountsTable,
+  ordersTable,
+  productsTable,
+  skuMandateInventoryTable,
+} from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { upsertSkuMandateQuantity } from "./sku-mandate";
-import { ml, MlItem, MlOrder, putMlItemStockForSellerSku, resolveStockPropagationSource } from "./mercadolivre";
+import {
+  fetchShipmentEligibleForSkuMandate,
+  ml,
+  MlItem,
+  MlOrder,
+  putMlItemStockForSellerSku,
+  resolveStockPropagationSource,
+} from "./mercadolivre";
 
 /**
- * Estados ML tratados como "venda que baixa estoque" (alinhado ao painel: `paid` / `confirmed`;
- * `partially_paid` compartilha a mesma família, sem rebater de novo em `partially_paid` → `paid`).
+ * Estados ML tratados como pagamento confirmado (`paid`, `confirmed`, `partially_paid`).
  */
 const PAID_LIKE = new Set(["paid", "confirmed", "partially_paid"]);
 
@@ -15,17 +26,32 @@ function isPaidLike(status: string | null | undefined): boolean {
   return status != null && PAID_LIKE.has(status);
 }
 
-function isCancelled(status: string | null | undefined): boolean {
-  return status === "cancelled";
-}
-
 export type MandateStockTransition = "decrement_sale" | "increment_cancel" | "none";
 
 /**
- * Controle idempotente: aplica no máximo um débito por ordem ao entrar em estado pago e
- * no máximo um crédito ao cancelar após pago. Evita webhooks duplicados e transições só entre estados
- * pago (ex.: `confirmed` → `paid`, `partially_paid` → `paid`) que duplicariam a baixa; evita somar
- * no cancelado sem venda paga.
+ * Decide a ação a partir do status atual da order e das flags já persistidas.
+ * Isso permite reprocessamento (sync) quando a primeira tentativa não tinha SKU/produto ainda,
+ * sem depender apenas do par (status_antigo, status_novo).
+ */
+export function resolveMandateStockAction(
+  status: string | null | undefined,
+  mandateSaleApplied: boolean,
+  mandateCancelApplied: boolean,
+): MandateStockTransition {
+  if (mandateSaleApplied && mandateCancelApplied) return "none";
+
+  /** Cancelamento pós-pago: já houve baixa mandatória. */
+  if (status === "cancelled" && mandateSaleApplied && !mandateCancelApplied) return "increment_cancel";
+
+  /** Venda nova reconhecida: ainda não marcamos baixa de mandate. */
+  if (status && isPaidLike(status) && !mandateSaleApplied) return "decrement_sale";
+
+  return "none";
+}
+
+/**
+ * Legado — idempotência por mudança de status (webhooks repetidos mesmo status paid→paid).
+ * Mantido para testes; o fluxo preferido usa `resolveMandateStockAction` + flags no pedido.
  */
 export function getMandateStockTransition(
   oldStatus: string | null | undefined,
@@ -33,9 +59,9 @@ export function getMandateStockTransition(
 ): MandateStockTransition {
   if (newStatus == null) return "none";
   if (oldStatus != null && oldStatus === newStatus) return "none";
-  if (isPaidLike(oldStatus) && isPaidLike(newStatus)) return "none";
+  if (oldStatus != null && isPaidLike(oldStatus) && isPaidLike(newStatus)) return "none";
   if (!isPaidLike(oldStatus) && isPaidLike(newStatus)) return "decrement_sale";
-  if (isPaidLike(oldStatus) && isCancelled(newStatus)) return "increment_cancel";
+  if (oldStatus != null && isPaidLike(oldStatus) && newStatus === "cancelled") return "increment_cancel";
   return "none";
 }
 
@@ -85,17 +111,40 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
 }
 
 /**
- * Atualiza `sku_mandate_inventory` e aplica a mesma quantidade em todos os anúncios não Full
- * com o mesmo SKU (contas do mesmo usuário). Só chamar com transição != `none`.
+ * Fluxo: GET /orders (já feito antes), política logistics Flex/CD pelo GET /shipments,
+ * SKU/variações/quantidade, leituras em sku_mandate_inventory, atualização da tabela e
+ * propagação para os demais anúncios do mesmo SKU (exceto o anúncio que originou venda/cancelamento).
+ *
+ * Persiste mandate_sale_applied / mandate_cancel_applied conforme resultado.
  */
-export async function applyMandateStockForOrder(
-  sellingAccountId: string,
-  orderItems: MlOrder["order_items"],
-  transition: MandateStockTransition,
-): Promise<void> {
+export async function applyMandateStockFromWebhookOrder(sellingAccountId: string, order: MlOrder): Promise<void> {
+  const db = getDb();
+  const mlOrderBig = BigInt(order.id);
+
+  const [row] = await db
+    .select({
+      mandateSaleApplied: ordersTable.mandateSaleApplied,
+      mandateCancelApplied: ordersTable.mandateCancelApplied,
+    })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.accountId, sellingAccountId), eq(ordersTable.mlOrderId, mlOrderBig)))
+    .limit(1);
+
+  const mandateSaleApplied = row?.mandateSaleApplied ?? false;
+  const mandateCancelApplied = row?.mandateCancelApplied ?? false;
+
+  const transition = resolveMandateStockAction(order.status, mandateSaleApplied, mandateCancelApplied);
   if (transition === "none") return;
 
-  const db = getDb();
+  const logisticOk = await fetchShipmentEligibleForSkuMandate(sellingAccountId, order.shipping?.id ?? null);
+  if (!logisticOk) {
+    logger.info(
+      { mlOrderId: order.id, accountId: sellingAccountId },
+      "Stock propagation: shipment not Flex/cross-docking or missing — skip mandate adjustments",
+    );
+    return;
+  }
+
   const [sellingAccount] = await db
     .select({ userId: accountsTable.userId })
     .from(accountsTable)
@@ -104,20 +153,27 @@ export async function applyMandateStockForOrder(
   if (!sellingAccount) return;
   const { userId } = sellingAccount;
 
-  for (const oi of orderItems) {
+  let mandateRowsUpdated = false;
+
+  for (const oi of order.order_items) {
     const mlItemId = oi.item.id;
 
     const [soldProduct] = await db
       .select({
         id: productsTable.id,
         sku: productsTable.sku,
-        isFull: productsTable.isFull,
       })
       .from(productsTable)
       .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, mlItemId)))
       .limit(1);
 
-    if (!soldProduct || soldProduct.isFull) continue;
+    if (!soldProduct) {
+      logger.warn(
+        { mlItemId, accountId: sellingAccountId, mlOrderId: order.id },
+        "Stock propagation: no local product row for order line — skip line",
+      );
+      continue;
+    }
 
     let resolved: Awaited<ReturnType<typeof resolveStockPropagationSource>>;
     try {
@@ -146,9 +202,7 @@ export async function applyMandateStockForOrder(
     const [mandateRow] = await db
       .select({ quantity: skuMandateInventoryTable.quantity })
       .from(skuMandateInventoryTable)
-      .where(
-        and(eq(skuMandateInventoryTable.userId, userId), eq(skuMandateInventoryTable.sku, effectiveSku)),
-      )
+      .where(and(eq(skuMandateInventoryTable.userId, userId), eq(skuMandateInventoryTable.sku, effectiveSku)))
       .limit(1);
 
     let mandateQty: number;
@@ -159,10 +213,11 @@ export async function applyMandateStockForOrder(
     }
 
     await upsertSkuMandateQuantity(userId, effectiveSku, mandateQty);
+    mandateRowsUpdated = true;
 
     logger.info(
-      { sku: effectiveSku, mlItemId, mandateQty, transition },
-      "Stock propagation: mandate updated; pushing to all listings for user",
+      { sku: effectiveSku, mlItemId, mandateQty, transition, qtySoldLine: oi.quantity },
+      "Stock propagation: mandate updated; pushing to sibling listings only",
     );
 
     const targets = await db
@@ -177,8 +232,15 @@ export async function applyMandateStockForOrder(
         ),
       );
 
+    const siblingsOnly = targets
+      .map((r) => r.product)
+      .filter(
+        (product) =>
+          !(product.mlItemId === mlItemId && product.accountId === sellingAccountId),
+      );
+
     await runPool(
-      targets.map((r) => r.product),
+      siblingsOnly,
       SIBLING_UPDATE_CONCURRENCY,
       async (target) => {
         const logCtx = {
@@ -204,15 +266,28 @@ export async function applyMandateStockForOrder(
           );
           logger.info(
             { mlItemId: target.mlItemId, accountId: target.accountId, sku: effectiveSku, mandateQty },
-            "Stock propagation: listing updated from mandate",
+            "Stock propagation: sibling listing updated from mandate",
           );
         } catch (err) {
           logger.warn(
             { err, ...logCtx },
-            "Stock propagation: failed to update listing from mandate after retries",
+            "Stock propagation: failed to update sibling listing from mandate after retries",
           );
         }
       },
     );
+  }
+
+  /** Marca flags só após atualizar pelo menos uma linha de SKU; senão permite novo sync quando houver produto. */
+  if (transition === "decrement_sale" && mandateRowsUpdated) {
+    await db
+      .update(ordersTable)
+      .set({ mandateSaleApplied: true })
+      .where(and(eq(ordersTable.accountId, sellingAccountId), eq(ordersTable.mlOrderId, mlOrderBig)));
+  } else if (transition === "increment_cancel" && mandateRowsUpdated) {
+    await db
+      .update(ordersTable)
+      .set({ mandateCancelApplied: true })
+      .where(and(eq(ordersTable.accountId, sellingAccountId), eq(ordersTable.mlOrderId, mlOrderBig)));
   }
 }

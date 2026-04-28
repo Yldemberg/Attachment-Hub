@@ -12,7 +12,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { applyMandateStockForOrder, getMandateStockTransition } from "../lib/order-mandate-stock";
+import { applyMandateStockFromWebhookOrder } from "../lib/order-mandate-stock";
 import {
   ml,
   fetchMlShipmentSaleLogisticType,
@@ -225,15 +225,6 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const order = await ml.get<MlOrder>(account.id, `/orders/${orderId}`);
         const itemsJson = await enrichOrderItemsJson(account.id, order);
 
-        const [existingOrder] = await db
-          .select({ status: ordersTable.status })
-          .from(ordersTable)
-          .where(
-            and(eq(ordersTable.accountId, account.id), eq(ordersTable.mlOrderId, BigInt(order.id))),
-          )
-          .limit(1);
-        const previousStatus = existingOrder?.status ?? null;
-
         await db
           .insert(ordersTable)
           .values({
@@ -271,10 +262,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           resourceId: order.id.toString(),
         });
 
-        const mandateTransition = getMandateStockTransition(previousStatus, order.status);
-        if (mandateTransition !== "none") {
-          await applyMandateStockForOrder(account.id, order.order_items, mandateTransition);
-        }
+        await applyMandateStockFromWebhookOrder(account.id, order);
       } else if (topic === "items") {
         const itemId = resource.split("/").pop();
         if (!itemId) return;

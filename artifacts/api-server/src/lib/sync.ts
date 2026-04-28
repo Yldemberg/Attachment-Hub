@@ -24,7 +24,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
-import { applyMandateStockForOrder, getMandateStockTransition } from "./order-mandate-stock";
+import { applyMandateStockFromWebhookOrder } from "./order-mandate-stock";
 
 const ALL_ML_STATUSES = ["active", "paused", "closed", "under_review"];
 
@@ -220,13 +220,6 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
     for (const order of result.results) {
       const itemsJson = await buildOrderItemsJson(accountId, order);
 
-      const [existingOrder] = await db
-        .select({ status: ordersTable.status })
-        .from(ordersTable)
-        .where(and(eq(ordersTable.accountId, accountId), eq(ordersTable.mlOrderId, BigInt(order.id))))
-        .limit(1);
-      const previousStatus = existingOrder?.status ?? null;
-
       await db
         .insert(ordersTable)
         .values({
@@ -253,10 +246,7 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
           },
         });
 
-      const mandateTransition = getMandateStockTransition(previousStatus, order.status);
-      if (mandateTransition !== "none") {
-        await applyMandateStockForOrder(accountId, order.order_items, mandateTransition);
-      }
+      await applyMandateStockFromWebhookOrder(accountId, order);
     }
 
     if (result.results.length < limit) break;

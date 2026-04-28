@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, bigint, decimal, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, bigint, decimal, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { accountsTable } from "./accounts";
@@ -19,6 +19,10 @@ export const ordersTable = pgTable("orders", {
   dateCreated: timestamp("date_created", { withTimezone: true }),
   dateClosed: timestamp("date_closed", { withTimezone: true }),
   itemsJson: jsonb("items_json"),
+  /** True quando a baixa no mandate para venda nova (paid) já foi aplicada com sucesso. */
+  mandateSaleApplied: boolean("mandate_sale_applied").default(false).notNull(),
+  /** True quando o estorno no mandate por cancelamento pós-pago já foi aplicado com sucesso. */
+  mandateCancelApplied: boolean("mandate_cancel_applied").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [

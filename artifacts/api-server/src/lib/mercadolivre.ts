@@ -449,6 +449,42 @@ export async function fetchMlShipmentSaleLogisticType(accountId: string, shippin
   }
 }
 
+/**
+ * Para estoque mandatário na venda, só Flex (Mercado Envios Flex / tags) ou Cross-docking;
+ * Fulfillment não participa da tabela sku_mandate_inventory.
+ */
+export function shipmentEligibleForSkuMandate(shipment: MlShipmentApi | null | undefined): boolean {
+  if (!shipment) return false;
+  const tags = Array.isArray(shipment.tags) ? shipment.tags : [];
+  const tRaw = shipment.logistic?.type;
+  const t = typeof tRaw === "string" ? tRaw.toLowerCase() : "";
+  if (t === "fulfillment") return false;
+  /** Flex típico: tag (`self_service_in`) ou tipo logistics. */
+  const flexLike = tags.includes("self_service_in") || t === "self_service";
+  /** Cross docking (Mercado também usa xd_drop_off). */
+  const crossDockLike = t === "cross_docking" || t === "xd_drop_off";
+  return flexLike || crossDockLike;
+}
+
+export async function fetchShipmentEligibleForSkuMandate(
+  accountId: string,
+  shippingId: number | bigint | null | undefined,
+): Promise<boolean> {
+  if (shippingId == null) return false;
+  try {
+    const sid = typeof shippingId === "bigint" ? Number(shippingId) : shippingId;
+    const shipment = await ml.getWithHeaders<MlShipmentApi>(
+      accountId,
+      `/shipments/${sid}`,
+      { "x-format-new": "true" },
+    );
+    return shipmentEligibleForSkuMandate(shipment);
+  } catch (err) {
+    logger.warn({ err, shippingId }, "ML fetch shipment for mandate eligibility failed");
+    return false;
+  }
+}
+
 const SKU_ATTR_ID = "SELLER_SKU";
 /** Names that ML uses in different locales/contexts for the seller SKU attribute. */
 const SKU_ATTR_NAME_RE = /\bSKU\b|SELLER[_ ]?SKU|SKU\s*do\s*vendedor|C[oó]digo\s*(SKU|do\s*vendedor)/i;
