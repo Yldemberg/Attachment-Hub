@@ -74,6 +74,7 @@ interface StockUpdateDialog {
   accountId: string;
   sku: string | null;
   title: string;
+  mlItemId?: string | null;
 }
 
 const ROWS_OPTIONS = [10, 20, 50] as const;
@@ -158,6 +159,14 @@ function ProductCard({
           <p className="text-foreground text-sm truncate font-medium" title={p.title ?? ""}>
             {p.title ?? p.id}
           </p>
+          {p.mlItemId ? (
+            <p
+              className="text-[11px] font-mono font-semibold text-foreground truncate mt-0.5 tabular-nums"
+              title={`ID do anúncio no Mercado Livre: ${p.mlItemId}`}
+            >
+              {p.mlItemId}
+            </p>
+          ) : null}
           <div className="flex items-center gap-2 mt-0.5 min-w-0 overflow-hidden">
             <span className="text-[10px] text-muted-foreground font-mono truncate shrink min-w-0">
               <span className="font-sans font-semibold not-italic">SKU:</span> {p.sku ?? "—"}
@@ -302,6 +311,7 @@ function SkeletonCard() {
       <div className="size-[4.5rem] rounded-lg bg-muted flex-shrink-0" />
       <div className="flex-1 space-y-2 py-0.5 min-w-0">
         <div className="h-3.5 bg-muted rounded w-2/3" />
+        <div className="h-2.5 bg-muted rounded w-2/5" />
         <div className="h-2.5 bg-muted rounded w-1/3" />
       </div>
       <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0 w-[120px]">
@@ -512,6 +522,7 @@ export default function Products() {
       accountId: p.accountId ?? "",
       sku: p.sku ?? null,
       title: p.title ?? p.id,
+      mlItemId: p.mlItemId ?? null,
     });
     setNewQuantity("");
     setStockScope("single");
@@ -731,6 +742,14 @@ export default function Products() {
               {stockDialog?.sku && (
                 <p className="text-muted-foreground text-[10px] font-mono">
                   SKU: {stockDialog.sku}
+                </p>
+              )}
+              {stockDialog?.mlItemId && (
+                <p
+                  className="text-foreground text-[10px] font-mono font-medium"
+                  title="ID do anúncio no Mercado Livre"
+                >
+                  {stockDialog.mlItemId}
                 </p>
               )}
             </div>
