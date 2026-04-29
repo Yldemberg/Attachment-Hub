@@ -1,14 +1,10 @@
 import { getDb } from "./db";
-import {
-  accountsTable,
-  ordersTable,
-  productsTable,
-  skuMandateInventoryTable,
-} from "@workspace/db/schema";
+import { accountsTable, ordersTable, productsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { upsertSkuMandateQuantity } from "./sku-mandate";
 import {
+  buildMlItemProductRowSnapshot,
   fetchShipmentEligibleForSkuMandate,
   ml,
   MlItem,
@@ -76,7 +72,7 @@ function sleepMs(ms: number): Promise<void> {
 /** PUT no ML + leitura + persistência: retenta com backoff (rede, 429, indisponibilidade). */
 async function withSiblingListingRetry(
   op: () => Promise<void>,
-  logCtx: { mlItemId: string; accountId: string; sku: string; mandateQty: number },
+  logCtx: { mlItemId: string; accountId: string; sku: string; sourceListingStock: number },
 ): Promise<void> {
   let last: unknown;
   for (let attempt = 0; attempt < SIBLING_PUT_RETRY_MAX; attempt++) {
@@ -143,8 +139,9 @@ async function logisticAllowsMandateForOrder(
 
 /**
  * Fluxo: GET /orders (já feito antes), política de logística pelo GET /shipments (só descarta Fulfillment),
- * SKU/variações/quantidade, leituras em sku_mandate_inventory, atualização da tabela e
- * propagação para os demais anúncios do mesmo SKU (exceto o anúncio que originou venda/cancelamento).
+ * Lê o estoque atual no ML do anúncio que originou a venda/cancelamento (`newStock`), espelha em
+ * sku_mandate_inventory e propaga esse mesmo valor aos demais anúncios não Full do mesmo SKU
+ * em todas as contas do usuário (exceto o par conta+anúncio que originou o evento).
  *
  * Persiste mandate_sale_applied / mandate_cancel_applied conforme resultado.
  */
@@ -228,27 +225,37 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
       continue;
     }
 
-    const { effectiveSku, newStock } = resolved;
+    const { effectiveSku, newStock: sourceListingStock, mlItem: originMlItem } = resolved;
 
-    const [mandateRow] = await db
-      .select({ quantity: skuMandateInventoryTable.quantity })
-      .from(skuMandateInventoryTable)
-      .where(and(eq(skuMandateInventoryTable.userId, userId), eq(skuMandateInventoryTable.sku, effectiveSku)))
-      .limit(1);
+    const { sku: refreshedSku, variationsJson } = await buildMlItemProductRowSnapshot(
+      sellingAccountId,
+      originMlItem,
+    );
 
-    let mandateQty: number;
-    if (transition === "decrement_sale") {
-      mandateQty = mandateRow ? Math.max(0, mandateRow.quantity - oi.quantity) : newStock;
-    } else {
-      mandateQty = mandateRow ? mandateRow.quantity + oi.quantity : newStock;
-    }
+    await db
+      .update(productsTable)
+      .set({
+        availableQuantity: originMlItem.available_quantity,
+        soldQuantity: originMlItem.sold_quantity,
+        sku: refreshedSku,
+        variationsJson,
+        lastSyncedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(productsTable.id, soldProduct.id));
 
-    await upsertSkuMandateQuantity(userId, effectiveSku, mandateQty);
+    await upsertSkuMandateQuantity(userId, effectiveSku, sourceListingStock);
     mandateRowsUpdated = true;
 
     logger.info(
-      { sku: effectiveSku, mlItemId, mandateQty, transition, qtySoldLine: oi.quantity },
-      "Stock propagation: mandate updated; pushing to sibling listings only",
+      {
+        sku: effectiveSku,
+        mlItemId,
+        sourceListingStock,
+        transition,
+        qtySoldLine: oi.quantity,
+      },
+      "Stock propagation: mandate mirrored from source listing; pushing to sibling listings",
     );
 
     const targets = await db
@@ -278,12 +285,17 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
           mlItemId: target.mlItemId,
           accountId: target.accountId,
           sku: effectiveSku,
-          mandateQty,
+          sourceListingStock,
         };
         try {
           await withSiblingListingRetry(
             async () => {
-              await putMlItemStockForSellerSku(target.accountId, target.mlItemId, effectiveSku, mandateQty);
+              await putMlItemStockForSellerSku(
+                target.accountId,
+                target.mlItemId,
+                effectiveSku,
+                sourceListingStock,
+              );
               const after = await ml.get<MlItem>(
                 target.accountId,
                 `/items/${encodeURIComponent(target.mlItemId)}`,
@@ -296,8 +308,13 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
             logCtx,
           );
           logger.info(
-            { mlItemId: target.mlItemId, accountId: target.accountId, sku: effectiveSku, mandateQty },
-            "Stock propagation: sibling listing updated from mandate",
+            {
+              mlItemId: target.mlItemId,
+              accountId: target.accountId,
+              sku: effectiveSku,
+              sourceListingStock,
+            },
+            "Stock propagation: sibling listing aligned to source listing stock",
           );
         } catch (err) {
           logger.warn(

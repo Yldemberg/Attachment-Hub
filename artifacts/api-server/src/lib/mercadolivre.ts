@@ -730,6 +730,51 @@ export async function resolveStockPropagationSource(
   return { effectiveSku, newStock, mlItem };
 }
 
+/** One row of `products.variations_json` (items webhook / sync). */
+export type MlProductVariationsJsonRow = {
+  id: number;
+  sku: string | null;
+  price: number;
+  available_quantity: number;
+  sold_quantity: number;
+  attributes: Array<{ name: string; value: string | undefined }>;
+};
+
+/**
+ * SKU representativo + `variations_json` com o mesmo mapeamento do webhook `topic === "items"`.
+ */
+export async function buildMlItemProductRowSnapshot(
+  accountId: string,
+  item: MlItem,
+): Promise<{ sku: string | null; variationsJson: MlProductVariationsJsonRow[] | null }> {
+  const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
+  let workItem: MlItem = item;
+  if (hasVariations) {
+    const detailed = await fetchMlItemVariations(accountId, item.id);
+    if (detailed.length > 0) {
+      const byId = new Map(detailed.map((d) => [d.id, d]));
+      workItem = {
+        ...item,
+        variations: item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id))),
+      };
+    }
+  } else {
+    workItem = await enrichMlItemForSellerSku(accountId, item);
+  }
+  const sku = getMlItemRepresentativeSku(workItem);
+  const variationsJson = hasVariations
+    ? workItem.variations!.map((v) => ({
+        id: v.id,
+        sku: getMlVariationSku(v),
+        price: v.price,
+        available_quantity: v.available_quantity,
+        sold_quantity: v.sold_quantity,
+        attributes: (v.attribute_combinations ?? []).map((a) => ({ name: a.name, value: a.value_name })),
+      }))
+    : null;
+  return { sku, variationsJson };
+}
+
 /**
  * Sets stock for a listing identified by seller SKU. Items with variations need a `variations` PUT
  * (root-only `available_quantity` does not reliably update each variant on ML).

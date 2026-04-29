@@ -19,14 +19,10 @@ import {
   MlItem,
   MlOrder,
   MlQuestion,
-  enrichMlItemForSellerSku,
-  fetchMlItemVariations,
+  buildMlItemProductRowSnapshot,
   fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
-  getMlItemRepresentativeSku,
   getMlOriginalListPrice,
-  getMlVariationSku,
-  mergeMlVariation,
 } from "../lib/mercadolivre";
 
 const router = Router();
@@ -278,33 +274,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const isFlex = Array.isArray(item.shipping?.tags) && item.shipping.tags!.includes("self_service_in");
         const logisticType = getMlEffectiveLogisticType(item);
 
-        const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
-        let workItem: MlItem = item;
-        if (hasVariations) {
-          const detailed = await fetchMlItemVariations(account.id, item.id);
-          if (detailed.length > 0) {
-            const byId = new Map(detailed.map((d) => [d.id, d]));
-            workItem = {
-              ...item,
-              variations: item.variations!.map((v) => mergeMlVariation(v, byId.get(v.id))),
-            };
-          }
-        } else {
-          // The individual fetch already returns attributes, but enrich as safety-net
-          // in case the endpoint returns a partial response without attributes.
-          workItem = await enrichMlItemForSellerSku(account.id, item);
-        }
-        const sku = getMlItemRepresentativeSku(workItem);
-        const variationsJson = hasVariations
-          ? workItem.variations!.map((v) => ({
-              id: v.id,
-              sku: getMlVariationSku(v),
-              price: v.price,
-              available_quantity: v.available_quantity,
-              sold_quantity: v.sold_quantity,
-              attributes: (v.attribute_combinations ?? []).map((a) => ({ name: a.name, value: a.value_name })),
-            }))
-          : null;
+        const { sku, variationsJson } = await buildMlItemProductRowSnapshot(account.id, item);
         const originalPrice = getMlOriginalListPrice(item);
         const pricesMap = await fetchMlItemPricesBatch(account.id, [item.id]);
         const itemPrices = pricesMap.get(item.id) ?? { amount: null, regularAmount: null };
