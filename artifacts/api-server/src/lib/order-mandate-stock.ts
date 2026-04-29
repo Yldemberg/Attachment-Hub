@@ -2,7 +2,6 @@ import { getDb } from "./db";
 import { accountsTable, ordersTable, productsTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { upsertSkuMandateQuantity } from "./sku-mandate";
 import {
   buildMlItemProductRowSnapshot,
   fetchShipmentEligibleForSkuMandate,
@@ -36,10 +35,10 @@ export function resolveMandateStockAction(
 ): MandateStockTransition {
   if (mandateSaleApplied && mandateCancelApplied) return "none";
 
-  /** Cancelamento pós-pago: já houve baixa mandatória. */
+  /** Cancelamento pós-pago: já propagamos estoque na venda; falta estorno entre anúncios. */
   if (status === "cancelled" && mandateSaleApplied && !mandateCancelApplied) return "increment_cancel";
 
-  /** Venda nova reconhecida: ainda não marcamos baixa de mandate. */
+  /** Venda paga reconhecida: ainda não propagamos estoque entre anúncios para este pedido. */
   if (status && isPaidLike(status) && !mandateSaleApplied) return "decrement_sale";
 
   return "none";
@@ -107,7 +106,7 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
 }
 
 /**
- * Decide se este pedido entra na lógica de mandate com base no GET /shipments (rejeita só Fulfillment).
+ * Decide se este pedido entra na propagação de estoque com base no GET /shipments (rejeita só Fulfillment).
  * Sem shipping_id ainda (webhook inicial), usa lista local: produto não Full → elegível.
  */
 async function logisticAllowsMandateForOrder(
@@ -139,11 +138,11 @@ async function logisticAllowsMandateForOrder(
 
 /**
  * Fluxo: GET /orders (já feito antes), política de logística pelo GET /shipments (só descarta Fulfillment),
- * Lê o estoque atual no ML do anúncio que originou a venda/cancelamento (`newStock`), espelha em
- * sku_mandate_inventory e propaga esse mesmo valor aos demais anúncios não Full do mesmo SKU
- * em todas as contas do usuário (exceto o par conta+anúncio que originou o evento).
+ * Lê o estoque no ML do anúncio que originou a venda/cancelamento e grava em `products` (origem + snapshot de variações),
+ * propaga o mesmo valor no ML e em `products` para os demais anúncios não Full do mesmo SKU nas contas do usuário.
+ * Não usa `sku_mandate_inventory`.
  *
- * Persiste mandate_sale_applied / mandate_cancel_applied conforme resultado.
+ * Persiste mandate_sale_applied / mandate_cancel_applied no pedido só como idempotência deste fluxo.
  */
 export async function applyMandateStockFromWebhookOrder(sellingAccountId: string, order: MlOrder): Promise<void> {
   const db = getDb();
@@ -168,7 +167,7 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
   if (!logisticOk) {
     logger.info(
       { mlOrderId: order.id, accountId: sellingAccountId },
-      "Stock propagation: logistics not eligible for mandate — skip",
+      "Stock propagation: logistics not eligible — skip",
     );
     return;
   }
@@ -181,7 +180,7 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
   if (!sellingAccount) return;
   const { userId } = sellingAccount;
 
-  let mandateRowsUpdated = false;
+  let productsPropagationApplied = false;
 
   for (const oi of order.order_items) {
     const mlItemId = oi.item.id;
@@ -244,8 +243,7 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
       })
       .where(eq(productsTable.id, soldProduct.id));
 
-    await upsertSkuMandateQuantity(userId, effectiveSku, sourceListingStock);
-    mandateRowsUpdated = true;
+    productsPropagationApplied = true;
 
     logger.info(
       {
@@ -255,7 +253,7 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
         transition,
         qtySoldLine: oi.quantity,
       },
-      "Stock propagation: mandate mirrored from source listing; pushing to sibling listings",
+      "Stock propagation: source listing persisted; pushing to sibling listings",
     );
 
     const targets = await db
@@ -319,20 +317,20 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
         } catch (err) {
           logger.warn(
             { err, ...logCtx },
-            "Stock propagation: failed to update sibling listing from mandate after retries",
+            "Stock propagation: failed to update sibling listing after retries",
           );
         }
       },
     );
   }
 
-  /** Marca flags só após atualizar pelo menos uma linha de SKU; senão permite novo sync quando houver produto. */
-  if (transition === "decrement_sale" && mandateRowsUpdated) {
+  /** Marca flags só após propagar pelo menos uma linha de pedido; senão permite novo processamento quando houver produto. */
+  if (transition === "decrement_sale" && productsPropagationApplied) {
     await db
       .update(ordersTable)
       .set({ mandateSaleApplied: true })
       .where(and(eq(ordersTable.accountId, sellingAccountId), eq(ordersTable.mlOrderId, mlOrderBig)));
-  } else if (transition === "increment_cancel" && mandateRowsUpdated) {
+  } else if (transition === "increment_cancel" && productsPropagationApplied) {
     await db
       .update(ordersTable)
       .set({ mandateCancelApplied: true })
