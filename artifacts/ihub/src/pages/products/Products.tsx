@@ -10,7 +10,7 @@ import {
   ListProductsListingFilter,
   NotificationType,
 } from "@workspace/api-client-react";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -677,49 +677,56 @@ export default function Products() {
           }
         }}
       >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-base">
-              Editar Estoque
-            </DialogTitle>
-            <DialogDescription className="text-left">
-              Atualiza somente este anúncio no Mercado Livre.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <p className="text-foreground text-xs truncate">
-                {stockDialog?.title}
-              </p>
-              {stockDialog?.sku && (
-                <p className="text-muted-foreground text-[10px] font-mono">
-                  SKU: {stockDialog.sku}
-                </p>
-              )}
-              {stockDialog?.mlItemId && (
-                <p
-                  className="text-foreground text-[10px] font-mono font-medium"
-                  title="ID do anúncio no Mercado Livre"
-                >
-                  {stockDialog.mlItemId}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-sm">Nova quantidade</Label>
-              <Input
-                type="number"
-                min={0}
-                value={newQuantity}
-                onChange={(e) => setNewQuantity(e.target.value)}
-                placeholder="0"
-              />
+        <DialogContent
+          className={cn(
+            "flex w-[min(100%,24rem)] max-w-sm flex-col gap-0 overflow-hidden p-0 shadow-lg",
+            "sm:rounded-lg",
+          )}
+        >
+          <div className="flex max-h-[min(90vh,420px)] flex-col overflow-y-auto px-6 pb-4 pt-6 pr-12">
+            <DialogHeader className="shrink-0 space-y-3 text-left">
+              <DialogTitle className="text-base">Editar Estoque</DialogTitle>
+              <DialogDescription>
+                Atualiza somente este anúncio no Mercado Livre.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 space-y-4">
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <p className="text-foreground text-xs leading-snug">{stockDialog?.title}</p>
+                {stockDialog?.sku && (
+                  <p className="text-muted-foreground mt-1.5 font-mono text-[10px]">
+                    SKU: {stockDialog.sku}
+                  </p>
+                )}
+                {stockDialog?.mlItemId && (
+                  <p
+                    className="text-foreground mt-1 font-mono text-[10px] font-medium"
+                    title="ID do anúncio no Mercado Livre"
+                  >
+                    {stockDialog.mlItemId}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="stock-qty-edit" className="text-sm">
+                  Nova quantidade
+                </Label>
+                <Input
+                  id="stock-qty-edit"
+                  type="number"
+                  min={0}
+                  value={newQuantity}
+                  onChange={(e) => setNewQuantity(e.target.value)}
+                  placeholder="0"
+                  className="w-full"
+                />
+              </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 border-t border-border bg-background px-6 py-4 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setStockDialog(null);
                 setNewQuantity("");
@@ -728,11 +735,12 @@ export default function Products() {
               Cancelar
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={handleStockUpdate}
               disabled={!newQuantity || updatingSingle}
             >
               {updatingSingle ? (
-                <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+                <RefreshCw className="mr-1 h-4 w-4 animate-spin" />
               ) : null}
               Atualizar
             </Button>
