@@ -51,6 +51,8 @@ import type {
   QuestionListResponse,
   SalesChartResponse,
   SearchInventoryParams,
+  SkuSyncRequest,
+  SkuSyncResponse,
   SyncAccount202,
   UnauthorizedResponse,
   UpdateProductListingStatus200,
@@ -1520,6 +1522,99 @@ export const useAdjustMandateInventory = <
   TContext
 > => {
   return useMutation(getAdjustMandateInventoryMutationOptions(options));
+};
+
+/**
+ * Lê o estoque atual no ML do anúncio fonte (o indicado por sourceProductId ou o primeiro ativo) e propaga o valor para todos os anúncios não-Full com o mesmo SKU nas contas do usuário. Anúncios Full são completamente ignorados.
+ * @summary Forçar re-sincronização de estoque por SKU
+ */
+export const getSyncSkuStockUrl = () => {
+  return `/api/inventory/sync-sku`;
+};
+
+export const syncSkuStock = async (
+  skuSyncRequest: SkuSyncRequest,
+  options?: RequestInit,
+): Promise<SkuSyncResponse> => {
+  return customFetch<SkuSyncResponse>(getSyncSkuStockUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(skuSyncRequest),
+  });
+};
+
+export const getSyncSkuStockMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncSkuStock>>,
+    TError,
+    { data: BodyType<SkuSyncRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncSkuStock>>,
+  TError,
+  { data: BodyType<SkuSyncRequest> },
+  TContext
+> => {
+  const mutationKey = ["syncSkuStock"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncSkuStock>>,
+    { data: BodyType<SkuSyncRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return syncSkuStock(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncSkuStockMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncSkuStock>>
+>;
+export type SyncSkuStockMutationBody = BodyType<SkuSyncRequest>;
+export type SyncSkuStockMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Forçar re-sincronização de estoque por SKU
+ */
+export const useSyncSkuStock = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncSkuStock>>,
+    TError,
+    { data: BodyType<SkuSyncRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncSkuStock>>,
+  TError,
+  { data: BodyType<SkuSyncRequest> },
+  TContext
+> => {
+  return useMutation(getSyncSkuStockMutationOptions(options));
 };
 
 /**

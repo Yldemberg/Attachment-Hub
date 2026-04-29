@@ -136,6 +136,103 @@ async function logisticAllowsMandateForOrder(
   return false;
 }
 
+export type PropagateStockResult = {
+  synced: number;
+  skipped: number;
+};
+
+/**
+ * Propaga o estoque `sourceListingStock` para todos os anúncios não-Full do `userId`
+ * com o mesmo `effectiveSku`, excluindo opcionalmente o anúncio de origem.
+ *
+ * Atualiza o ML (PUT /items) e o banco (`products.available_quantity`) para cada irmão.
+ * Retorna contagens de anúncios sincronizados e ignorados (falha).
+ */
+export async function propagateStockBySku(params: {
+  userId: string;
+  effectiveSku: string;
+  sourceListingStock: number;
+  excludeMlItemId?: string;
+  excludeAccountId?: string;
+}): Promise<PropagateStockResult> {
+  const { userId, effectiveSku, sourceListingStock, excludeMlItemId, excludeAccountId } = params;
+  const db = getDb();
+
+  const targets = await db
+    .select({ product: productsTable })
+    .from(productsTable)
+    .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
+    .where(
+      and(
+        eq(accountsTable.userId, userId),
+        eq(productsTable.sku, effectiveSku),
+        eq(productsTable.isFull, false),
+      ),
+    );
+
+  const siblings = targets
+    .map((r) => r.product)
+    .filter(
+      (product) =>
+        !(excludeMlItemId && product.mlItemId === excludeMlItemId && product.accountId === excludeAccountId),
+    );
+
+  let synced = 0;
+  let skipped = 0;
+
+  await runPool(
+    siblings,
+    SIBLING_UPDATE_CONCURRENCY,
+    async (target) => {
+      const logCtx = {
+        mlItemId: target.mlItemId,
+        accountId: target.accountId,
+        sku: effectiveSku,
+        sourceListingStock,
+      };
+      try {
+        await withSiblingListingRetry(
+          async () => {
+            await putMlItemStockForSellerSku(
+              target.accountId,
+              target.mlItemId,
+              effectiveSku,
+              sourceListingStock,
+            );
+            const after = await ml.get<MlItem>(
+              target.accountId,
+              `/items/${encodeURIComponent(target.mlItemId)}`,
+            );
+            await db
+              .update(productsTable)
+              .set({ availableQuantity: after.available_quantity })
+              .where(eq(productsTable.id, target.id));
+          },
+          logCtx,
+        );
+        logger.info(
+          {
+            mlItemId: target.mlItemId,
+            accountId: target.accountId,
+            sku: effectiveSku,
+            sourceListingStock,
+          },
+          "Stock propagation: sibling listing aligned to source listing stock",
+        );
+        synced++;
+      } catch (err) {
+        logger.warn(
+          { err, ...logCtx },
+          "Stock propagation: failed to update sibling listing after retries",
+        );
+        skipped++;
+      }
+    },
+  );
+
+  return { synced, skipped };
+}
+
 /**
  * Fluxo: GET /orders (já feito antes), política de logística pelo GET /shipments (só descarta Fulfillment),
  * Lê o estoque no ML do anúncio que originou a venda/cancelamento e grava em `products` (origem + snapshot de variações),
@@ -256,72 +353,13 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
       "Stock propagation: source listing persisted; pushing to sibling listings",
     );
 
-    const targets = await db
-      .select({ product: productsTable })
-      .from(productsTable)
-      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
-      .where(
-        and(
-          eq(accountsTable.userId, userId),
-          eq(productsTable.sku, effectiveSku),
-          eq(productsTable.isFull, false),
-        ),
-      );
-
-    const siblingsOnly = targets
-      .map((r) => r.product)
-      .filter(
-        (product) =>
-          !(product.mlItemId === mlItemId && product.accountId === sellingAccountId),
-      );
-
-    await runPool(
-      siblingsOnly,
-      SIBLING_UPDATE_CONCURRENCY,
-      async (target) => {
-        const logCtx = {
-          mlItemId: target.mlItemId,
-          accountId: target.accountId,
-          sku: effectiveSku,
-          sourceListingStock,
-        };
-        try {
-          await withSiblingListingRetry(
-            async () => {
-              await putMlItemStockForSellerSku(
-                target.accountId,
-                target.mlItemId,
-                effectiveSku,
-                sourceListingStock,
-              );
-              const after = await ml.get<MlItem>(
-                target.accountId,
-                `/items/${encodeURIComponent(target.mlItemId)}`,
-              );
-              await db
-                .update(productsTable)
-                .set({ availableQuantity: after.available_quantity })
-                .where(eq(productsTable.id, target.id));
-            },
-            logCtx,
-          );
-          logger.info(
-            {
-              mlItemId: target.mlItemId,
-              accountId: target.accountId,
-              sku: effectiveSku,
-              sourceListingStock,
-            },
-            "Stock propagation: sibling listing aligned to source listing stock",
-          );
-        } catch (err) {
-          logger.warn(
-            { err, ...logCtx },
-            "Stock propagation: failed to update sibling listing after retries",
-          );
-        }
-      },
-    );
+    await propagateStockBySku({
+      userId,
+      effectiveSku,
+      sourceListingStock,
+      excludeMlItemId: mlItemId,
+      excludeAccountId: sellingAccountId,
+    });
   }
 
   /** Marca flags só após propagar pelo menos uma linha de pedido; senão permite novo processamento quando houver produto. */

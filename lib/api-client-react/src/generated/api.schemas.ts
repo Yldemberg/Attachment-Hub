@@ -187,6 +187,23 @@ export interface MandateAdjustResponse {
   results: MandateAdjustResponseResultsItem[];
 }
 
+export interface SkuSyncRequest {
+  /** SKU a sincronizar */
+  sku: string;
+  /** ID interno do produto a ser usado como fonte de estoque (opcional) */
+  sourceProductId?: string | null;
+}
+
+export interface SkuSyncResponse {
+  /** Quantidade de anúncios sincronizados com sucesso (incluindo fonte) */
+  synced: number;
+  /** Quantidade de anúncios que falharam na sincronização */
+  skipped: number;
+  sku: string;
+  /** Estoque propagado para todos os anúncios irmãos */
+  newStock: number;
+}
+
 export interface OrderItem {
   item_id: string;
   title?: string;

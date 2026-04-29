@@ -4,6 +4,7 @@ import {
   useListAccounts,
   useUpdateProductStock,
   useUpdateProductListingStatus,
+  useSyncSkuStock,
   getListProductsQueryKey,
   getListNotificationsQueryKey,
   useListNotifications,
@@ -398,6 +399,49 @@ export default function Products() {
     accounts.map((a) => [a.id, a.mlNickname ?? null])
   );
 
+  const [syncingSkus, setSyncingSkus] = useState<Set<string>>(new Set());
+
+  const { mutate: syncSku } = useSyncSkuStock({
+    mutation: {
+      onMutate: (vars) => {
+        const sku = vars.data.sku;
+        setSyncingSkus((prev) => new Set([...prev, sku]));
+        toast({
+          title: "Sincronizando estoque…",
+          description: `Aguarde enquanto o estoque do SKU ${sku} é sincronizado entre os anúncios.`,
+        });
+      },
+      onSuccess: (data) => {
+        setSyncingSkus((prev) => {
+          const next = new Set(prev);
+          next.delete(data.sku);
+          return next;
+        });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        toast({
+          title: "Estoque sincronizado",
+          description: `SKU ${data.sku}: ${data.synced} anúncio(s) atualizado(s) para ${data.newStock} un.`,
+        });
+      },
+      onError: (err, vars) => {
+        const sku = vars.data.sku;
+        setSyncingSkus((prev) => {
+          const next = new Set(prev);
+          next.delete(sku);
+          return next;
+        });
+        const msg =
+          (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
+          "Não foi possível sincronizar o estoque.";
+        toast({
+          variant: "destructive",
+          title: "Erro ao sincronizar",
+          description: msg,
+        });
+      },
+    },
+  });
+
   const { mutate: updateSingleStock, isPending: updatingSingle } =
     useUpdateProductStock({
       mutation: {
@@ -601,21 +645,56 @@ export default function Products() {
           </div>
         ) : (
           <div className="space-y-2">
-            {products.map((p) => (
-              <ProductCard
-                key={p.id}
-                p={p}
-                onEdit={() => openStockDialog(p)}
-                onListingStatusChange={(next) => {
-                  if (p.status === next) return;
-                  updateListingStatus({ id: p.id, data: { status: next } });
-                }}
-                statusMutationPending={
-                  updatingListingStatus && listingStatusVariables?.id === p.id
+            {(() => {
+              const skuCountMap = new Map<string, number>();
+              for (const p of products) {
+                if (!p.isFull && p.sku) {
+                  skuCountMap.set(p.sku, (skuCountMap.get(p.sku) ?? 0) + 1);
                 }
-                accountNickname={p.accountId ? accountNicknameMap[p.accountId] : null}
-              />
-            ))}
+              }
+              const multiSkus = new Set(
+                [...skuCountMap.entries()].filter(([, c]) => c > 1).map(([s]) => s),
+              );
+              const shownSyncSkus = new Set<string>();
+
+              return products.map((p) => {
+                const showSync = !!(p.sku && !p.isFull && multiSkus.has(p.sku) && !shownSyncSkus.has(p.sku));
+                if (showSync) shownSyncSkus.add(p.sku!);
+                return (
+                  <div key={p.id}>
+                    {showSync && (
+                      <div className="flex items-center gap-2 mb-1 px-1">
+                        <span className="text-[10px] font-mono text-muted-foreground/60 truncate">
+                          SKU {p.sku}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={syncingSkus.has(p.sku!)}
+                          onClick={() => syncSku({ data: { sku: p.sku! } })}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border border-border text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title={`Sincronizar estoque de todos os anúncios com SKU ${p.sku}`}
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${syncingSkus.has(p.sku!) ? "animate-spin" : ""}`} />
+                          Sincronizar Estoque
+                        </button>
+                      </div>
+                    )}
+                    <ProductCard
+                      p={p}
+                      onEdit={() => openStockDialog(p)}
+                      onListingStatusChange={(next) => {
+                        if (p.status === next) return;
+                        updateListingStatus({ id: p.id, data: { status: next } });
+                      }}
+                      statusMutationPending={
+                        updatingListingStatus && listingStatusVariables?.id === p.id
+                      }
+                      accountNickname={p.accountId ? accountNicknameMap[p.accountId] : null}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 

@@ -461,6 +461,35 @@ export const AdjustMandateInventoryResponse = zod.object({
 });
 
 /**
+ * Lê o estoque atual no ML do anúncio fonte (o indicado por sourceProductId ou o primeiro ativo) e propaga o valor para todos os anúncios não-Full com o mesmo SKU nas contas do usuário. Anúncios Full são completamente ignorados.
+ * @summary Forçar re-sincronização de estoque por SKU
+ */
+export const SyncSkuStockBody = zod.object({
+  sku: zod.string().describe("SKU a sincronizar"),
+  sourceProductId: zod
+    .string()
+    .nullish()
+    .describe(
+      "ID interno do produto a ser usado como fonte de estoque (opcional)",
+    ),
+});
+
+export const SyncSkuStockResponse = zod.object({
+  synced: zod
+    .number()
+    .describe(
+      "Quantidade de anúncios sincronizados com sucesso (incluindo fonte)",
+    ),
+  skipped: zod
+    .number()
+    .describe("Quantidade de anúncios que falharam na sincronização"),
+  sku: zod.string(),
+  newStock: zod
+    .number()
+    .describe("Estoque propagado para todos os anúncios irmãos"),
+});
+
+/**
  * @summary List orders with filters and pagination
  */
 export const listOrdersQueryPageDefault = 1;

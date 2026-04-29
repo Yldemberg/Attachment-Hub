@@ -6,6 +6,7 @@ import { productsTable, accountsTable, skuMandateInventoryTable } from "@workspa
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
+import { propagateStockBySku } from "../lib/order-mandate-stock";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -265,6 +266,79 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "mandate adjust failed");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+/** POST /inventory/sync-sku — força re-sincronização imediata de todos os anúncios não-Full com o SKU. */
+router.post("/inventory/sync-sku", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const body = req.body as { sku?: string; sourceProductId?: string };
+    const sku = typeof body.sku === "string" ? body.sku.trim() : "";
+
+    if (!sku) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "sku é obrigatório" } });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhuma conta ativa" } });
+      return;
+    }
+
+    const products = await db
+      .select()
+      .from(productsTable)
+      .where(
+        and(
+          inArray(productsTable.accountId, accountIds),
+          eq(productsTable.sku, sku),
+          eq(productsTable.isFull, false),
+        ),
+      );
+
+    if (products.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
+      return;
+    }
+
+    let sourceProduct = products[0]!;
+    if (body.sourceProductId) {
+      const found = products.find((p) => p.id === body.sourceProductId);
+      if (!found) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "sourceProductId não encontrado entre os anúncios não Full com este SKU" } });
+        return;
+      }
+      sourceProduct = found;
+    } else {
+      const active = products.find((p) => p.status === "active");
+      if (active) sourceProduct = active;
+    }
+
+    const mlItem = await ml.get<MlItem>(
+      sourceProduct.accountId,
+      `/items/${encodeURIComponent(sourceProduct.mlItemId)}`,
+    );
+    const newStock = mlItem.available_quantity;
+
+    await db
+      .update(productsTable)
+      .set({ availableQuantity: newStock, lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(eq(productsTable.id, sourceProduct.id));
+
+    const { synced, skipped } = await propagateStockBySku({
+      userId: req.user!.id,
+      effectiveSku: sku,
+      sourceListingStock: newStock,
+      excludeMlItemId: sourceProduct.mlItemId,
+      excludeAccountId: sourceProduct.accountId,
+    });
+
+    res.json({ synced: synced + 1, skipped, sku, newStock });
+  } catch (err) {
+    req.log.error({ err }, "sync-sku failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

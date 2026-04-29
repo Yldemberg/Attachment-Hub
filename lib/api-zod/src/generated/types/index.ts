@@ -54,6 +54,8 @@ export * from "./questionStatus";
 export * from "./salesChartDataPoint";
 export * from "./salesChartResponse";
 export * from "./searchInventoryParams";
+export * from "./skuSyncRequest";
+export * from "./skuSyncResponse";
 export * from "./syncAccount202";
 export * from "./unauthorizedResponse";
 export * from "./updateProductListingStatus200";

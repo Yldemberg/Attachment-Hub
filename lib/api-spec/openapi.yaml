@@ -486,6 +486,37 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /inventory/sync-sku:
+    post:
+      operationId: syncSkuStock
+      tags: [inventory]
+      summary: Forçar re-sincronização de estoque por SKU
+      description: >-
+        Lê o estoque atual no ML do anúncio fonte (o indicado por sourceProductId ou o primeiro ativo)
+        e propaga o valor para todos os anúncios não-Full com o mesmo SKU nas contas do usuário.
+        Anúncios Full são completamente ignorados.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkuSyncRequest"
+      responses:
+        "200":
+          description: Resultado da sincronização
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkuSyncResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ---------------------------------------------------------------------------
   # Orders
   # ---------------------------------------------------------------------------
@@ -1203,6 +1234,34 @@ components:
                 nullable: true
             required: [productId, mlItemId, success]
       required: [sku, mandateQuantity, updated, failed, results]
+
+    SkuSyncRequest:
+      type: object
+      properties:
+        sku:
+          type: string
+          description: SKU a sincronizar
+        sourceProductId:
+          type: string
+          nullable: true
+          description: ID interno do produto a ser usado como fonte de estoque (opcional)
+      required: [sku]
+
+    SkuSyncResponse:
+      type: object
+      properties:
+        synced:
+          type: integer
+          description: Quantidade de anúncios sincronizados com sucesso (incluindo fonte)
+        skipped:
+          type: integer
+          description: Quantidade de anúncios que falharam na sincronização
+        sku:
+          type: string
+        newStock:
+          type: integer
+          description: Estoque propagado para todos os anúncios irmãos
+      required: [synced, skipped, sku, newStock]
 
     # --------------------------------------------------------------------------
     # Orders
