@@ -3,7 +3,6 @@ import {
   useListProducts,
   useListAccounts,
   useUpdateProductStock,
-  useUpdateStockBySku,
   useUpdateProductListingStatus,
   getListProductsQueryKey,
   getListNotificationsQueryKey,
@@ -38,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -67,11 +67,8 @@ interface Product {
   videoId?: string | null;
 }
 
-type StockScope = "single" | "account" | "all";
-
 interface StockUpdateDialog {
   productId: string;
-  accountId: string;
   sku: string | null;
   title: string;
   mlItemId?: string | null;
@@ -338,7 +335,6 @@ export default function Products() {
     null
   );
   const [newQuantity, setNewQuantity] = useState("");
-  const [stockScope, setStockScope] = useState<StockScope>("single");
 
   const params = {
     page,
@@ -432,31 +428,6 @@ export default function Products() {
       },
     });
 
-  const { mutate: updateSkuStock, isPending: updatingBySku } =
-    useUpdateStockBySku({
-      mutation: {
-        onSuccess: (result) => {
-          queryClient.invalidateQueries({
-            queryKey: getListProductsQueryKey({}),
-          });
-          setStockDialog(null);
-          setNewQuantity("");
-          const r = result as { updated?: number; skipped?: number };
-          toast({
-            title: "Estoque atualizado",
-            description: `${r.updated ?? 0} anúncio(s) atualizado(s)${r.skipped ? `, ${r.skipped} ignorado(s) (FULL)` : ""}.`,
-          });
-        },
-        onError: () => {
-          toast({
-            variant: "destructive",
-            title: "Erro ao atualizar",
-            description: "Não foi possível atualizar o estoque.",
-          });
-        },
-      },
-    });
-
   const {
     mutate: updateListingStatus,
     isPending: updatingListingStatus,
@@ -487,45 +458,23 @@ export default function Products() {
     },
   });
 
-  const isUpdating = updatingSingle || updatingBySku;
-
   const handleStockUpdate = () => {
     if (!stockDialog || !newQuantity) return;
     const qty = Number(newQuantity);
-
-    if (stockScope === "single") {
-      updateSingleStock({
-        id: stockDialog.productId,
-        data: { quantity: qty },
-      });
-    } else if (!stockDialog.sku) {
-      toast({
-        variant: "destructive",
-        title: "Erro",
-        description:
-          "Produto sem SKU — use o escopo 'somente este anúncio'.",
-      });
-    } else if (stockScope === "account") {
-      updateSkuStock({
-        sku: stockDialog.sku,
-        data: { quantity: qty },
-        params: { account_id: stockDialog.accountId },
-      });
-    } else {
-      updateSkuStock({ sku: stockDialog.sku, data: { quantity: qty } });
-    }
+    updateSingleStock({
+      id: stockDialog.productId,
+      data: { quantity: qty },
+    });
   };
 
   const openStockDialog = (p: Product) => {
     setStockDialog({
       productId: p.id,
-      accountId: p.accountId ?? "",
       sku: p.sku ?? null,
       title: p.title ?? p.id,
       mlItemId: p.mlItemId ?? null,
     });
     setNewQuantity("");
-    setStockScope("single");
   };
 
   const totalPages = pagination?.totalPages ?? 1;
@@ -733,6 +682,9 @@ export default function Products() {
             <DialogTitle className="text-base">
               Editar Estoque
             </DialogTitle>
+            <DialogDescription className="text-left">
+              Atualiza somente este anúncio no Mercado Livre.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -752,73 +704,6 @@ export default function Products() {
                   {stockDialog.mlItemId}
                 </p>
               )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">
-                Escopo da atualização
-              </Label>
-              <div className="space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="scope"
-                    value="single"
-                    checked={stockScope === "single"}
-                    onChange={() => setStockScope("single")}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <div>
-                    <p className="text-foreground text-xs font-medium">
-                      Somente este anúncio
-                    </p>
-                    <p className="text-muted-foreground text-[10px]">
-                      Atualiza apenas este item
-                    </p>
-                  </div>
-                </label>
-                {stockDialog?.sku && (
-                  <>
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="scope"
-                        value="account"
-                        checked={stockScope === "account"}
-                        onChange={() => setStockScope("account")}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <div>
-                        <p className="text-foreground text-xs font-medium">
-                          Mesma conta — SKU {stockDialog.sku}
-                        </p>
-                        <p className="text-muted-foreground text-[10px]">
-                          Todos os anúncios desta conta com o mesmo SKU
-                        </p>
-                      </div>
-                    </label>
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="scope"
-                        value="all"
-                        checked={stockScope === "all"}
-                        onChange={() => setStockScope("all")}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <div>
-                        <p className="text-foreground text-xs font-medium">
-                          Todas as contas — SKU {stockDialog.sku}
-                        </p>
-                        <p className="text-muted-foreground text-[10px]">
-                          Reflete em todos os anúncios de todas as contas com
-                          este SKU
-                        </p>
-                      </div>
-                    </label>
-                  </>
-                )}
-              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -844,9 +729,9 @@ export default function Products() {
             </Button>
             <Button
               onClick={handleStockUpdate}
-              disabled={!newQuantity || isUpdating}
+              disabled={!newQuantity || updatingSingle}
             >
-              {isUpdating ? (
+              {updatingSingle ? (
                 <RefreshCw className="w-4 h-4 animate-spin mr-1" />
               ) : null}
               Atualizar
