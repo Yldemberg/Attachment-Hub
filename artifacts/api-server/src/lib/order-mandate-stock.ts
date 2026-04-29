@@ -111,7 +111,38 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
 }
 
 /**
- * Fluxo: GET /orders (já feito antes), política logistics Flex/CD pelo GET /shipments,
+ * Decide se este pedido entra na lógica de mandate com base no GET /shipments (rejeita só Fulfillment).
+ * Sem shipping_id ainda (webhook inicial), usa lista local: produto não Full → elegível.
+ */
+async function logisticAllowsMandateForOrder(
+  sellingAccountId: string,
+  order: Pick<MlOrder, "id" | "shipping" | "order_items">,
+): Promise<boolean> {
+  const rawShipId = order.shipping?.id;
+  if (rawShipId != null) {
+    return fetchShipmentEligibleForSkuMandate(sellingAccountId, rawShipId as number | bigint);
+  }
+
+  logger.info(
+    { mlOrderId: order.id, accountId: sellingAccountId },
+    "Stock propagation: no shipping id yet — checking local listings for non Full",
+  );
+
+  const db = getDb();
+  for (const oi of order.order_items) {
+    const [soldProduct] = await db
+      .select({ isFull: productsTable.isFull })
+      .from(productsTable)
+      .where(and(eq(productsTable.accountId, sellingAccountId), eq(productsTable.mlItemId, oi.item.id)))
+      .limit(1);
+    if (soldProduct && !soldProduct.isFull) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Fluxo: GET /orders (já feito antes), política de logística pelo GET /shipments (só descarta Fulfillment),
  * SKU/variações/quantidade, leituras em sku_mandate_inventory, atualização da tabela e
  * propagação para os demais anúncios do mesmo SKU (exceto o anúncio que originou venda/cancelamento).
  *
@@ -136,11 +167,11 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
   const transition = resolveMandateStockAction(order.status, mandateSaleApplied, mandateCancelApplied);
   if (transition === "none") return;
 
-  const logisticOk = await fetchShipmentEligibleForSkuMandate(sellingAccountId, order.shipping?.id ?? null);
+  const logisticOk = await logisticAllowsMandateForOrder(sellingAccountId, order);
   if (!logisticOk) {
     logger.info(
       { mlOrderId: order.id, accountId: sellingAccountId },
-      "Stock propagation: shipment not Flex/cross-docking or missing — skip mandate adjustments",
+      "Stock propagation: logistics not eligible for mandate — skip",
     );
     return;
   }

@@ -450,20 +450,13 @@ export async function fetchMlShipmentSaleLogisticType(accountId: string, shippin
 }
 
 /**
- * Para estoque mandatário na venda, só Flex (Mercado Envios Flex / tags) ou Cross-docking;
- * Fulfillment não participa da tabela sku_mandate_inventory.
+ * Estoque mandatário: rejeita só envio Fulfillment (armazém ML). Demais modalidades (ME `drop_off`, Flex, CD, …) entram.
  */
 export function shipmentEligibleForSkuMandate(shipment: MlShipmentApi | null | undefined): boolean {
   if (!shipment) return false;
-  const tags = Array.isArray(shipment.tags) ? shipment.tags : [];
   const tRaw = shipment.logistic?.type;
-  const t = typeof tRaw === "string" ? tRaw.toLowerCase() : "";
-  if (t === "fulfillment") return false;
-  /** Flex típico: tag (`self_service_in`) ou tipo logistics. */
-  const flexLike = tags.includes("self_service_in") || t === "self_service";
-  /** Cross docking (Mercado também usa xd_drop_off). */
-  const crossDockLike = t === "cross_docking" || t === "xd_drop_off";
-  return flexLike || crossDockLike;
+  const t = typeof tRaw === "string" ? tRaw.trim().toLowerCase() : "";
+  return t !== "fulfillment";
 }
 
 export async function fetchShipmentEligibleForSkuMandate(
