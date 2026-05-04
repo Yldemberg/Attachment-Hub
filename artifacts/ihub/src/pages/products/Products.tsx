@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import {
   useListProducts,
   useListAccounts,
@@ -77,6 +77,52 @@ interface StockUpdateDialog {
 
 const ROWS_OPTIONS = [10, 20, 50] as const;
 type RowsOption = typeof ROWS_OPTIONS[number];
+
+const PRODUCTS_LIST_UI_KEY = "ihub-products-list-ui";
+
+type StoredProductsListUi = {
+  v: 1;
+  page: number;
+  limit: RowsOption;
+  search: string;
+  listingFilter: string;
+  accountId: string;
+  scrollTop: number;
+};
+
+function parseStoredProductsListUi(): Omit<StoredProductsListUi, "v"> | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PRODUCTS_LIST_UI_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<StoredProductsListUi>;
+    if (o.v !== 1) return null;
+    const page = typeof o.page === "number" && o.page >= 1 ? Math.floor(o.page) : 1;
+    const limitParsed = ROWS_OPTIONS.includes(o.limit as RowsOption)
+      ? (o.limit as RowsOption)
+      : (10 as RowsOption);
+    return {
+      page,
+      limit: limitParsed,
+      search: typeof o.search === "string" ? o.search : "",
+      listingFilter: typeof o.listingFilter === "string" ? o.listingFilter : "all",
+      accountId: typeof o.accountId === "string" ? o.accountId : "all",
+      scrollTop:
+        typeof o.scrollTop === "number" && Number.isFinite(o.scrollTop) ? Math.max(0, o.scrollTop) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredProductsListUi(data: Omit<StoredProductsListUi, "v">): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    sessionStorage.setItem(PRODUCTS_LIST_UI_KEY, JSON.stringify({ v: 1 as const, ...data }));
+  } catch {
+    /* ignore quota / privacy mode */
+  }
+}
 
 function stockTextColor(qty: number | null | undefined): string {
   if (qty == null || qty === 0) return "text-muted-foreground/60";
@@ -339,11 +385,28 @@ function SkeletonCard() {
 export default function Products() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
-  const [listingFilter, setListingFilter] = useState<string>("all");
-  const [accountId, setAccountId] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState<RowsOption>(10);
+
+  const [storedOnMount] = useState(() =>
+    typeof window !== "undefined" ? parseStoredProductsListUi() : null,
+  );
+  const listScrollElRef = useRef<HTMLDivElement>(null);
+  const listFiltersRef = useRef({
+    page: 1,
+    limit: 10 as RowsOption,
+    search: "",
+    listingFilter: "all",
+    accountId: "all",
+  });
+  const pendingScrollRestoreRef = useRef<number | null>(
+    storedOnMount != null ? storedOnMount.scrollTop : null,
+  );
+  const scrollTopSnapshotRef = useRef(0);
+
+  const [search, setSearch] = useState(() => storedOnMount?.search ?? "");
+  const [listingFilter, setListingFilter] = useState(() => storedOnMount?.listingFilter ?? "all");
+  const [accountId, setAccountId] = useState(() => storedOnMount?.accountId ?? "all");
+  const [page, setPage] = useState(() => storedOnMount?.page ?? 1);
+  const [limit, setLimit] = useState<RowsOption>(() => storedOnMount?.limit ?? 10);
   const [stockDialog, setStockDialog] = useState<StockUpdateDialog | null>(
     null
   );
@@ -399,6 +462,45 @@ export default function Products() {
       pagination?: { total: number; totalPages: number };
     } | null
   )?.pagination;
+
+  useEffect(() => {
+    const el = listScrollElRef.current;
+    if (!el) return;
+    scrollTopSnapshotRef.current = el.scrollTop;
+    const onScroll = () => {
+      scrollTopSnapshotRef.current = el.scrollTop;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    listFiltersRef.current = { page, limit, search, listingFilter, accountId };
+  }, [page, limit, search, listingFilter, accountId]);
+
+  useEffect(() => {
+    return () => {
+      const { page: p, limit: l, search: q, listingFilter: lf, accountId: acc } =
+        listFiltersRef.current;
+      writeStoredProductsListUi({
+        page: p,
+        limit: l,
+        search: q,
+        listingFilter: lf,
+        accountId: acc,
+        scrollTop: scrollTopSnapshotRef.current,
+      });
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isLoading) return;
+    if (pendingScrollRestoreRef.current === null) return;
+    const y = pendingScrollRestoreRef.current;
+    pendingScrollRestoreRef.current = null;
+    const el = listScrollElRef.current;
+    if (el) el.scrollTop = y;
+  }, [isLoading, products]);
 
   const { data: accountsData } = useListAccounts();
   const accounts = (
@@ -640,7 +742,7 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={listScrollElRef} className="flex-1 overflow-y-auto px-4 py-3">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 8 }).map((_, i) => (
