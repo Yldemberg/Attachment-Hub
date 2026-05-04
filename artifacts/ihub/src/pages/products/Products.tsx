@@ -98,8 +98,13 @@ function ProductCard({
   statusMutationPending: boolean;
   accountNickname?: string | null;
 }) {
+  /** Prefer live /prices; fallback to DB fields from sync (GET /items — same idea as ProductDetail). */
+  const salePrice = p.amount ?? p.price;
+  const listPrice = p.regularAmount ?? p.originalPrice;
   const isPromo =
-    p.regularAmount != null && p.amount != null && p.regularAmount > p.amount;
+    listPrice != null &&
+    salePrice != null &&
+    listPrice > salePrice;
 
   const isFull = p.logisticType === "fulfillment" || !!p.isFull;
   const isFlex = p.logisticType === "self_service" || !!p.isFlex;
@@ -179,8 +184,15 @@ function ProductCard({
             <span className={`text-sm font-bold tabular-nums ${stockColor}`}>
               {qty} <span className="text-[10px] text-muted-foreground font-medium">un.</span>
             </span>
-            <span className="text-amber-600 text-sm font-semibold truncate">
-              {formatCurrency(p.amount ?? p.price)}
+            <span className="flex flex-col items-end gap-0 min-w-0">
+              {isPromo && listPrice != null ? (
+                <span className="text-muted-foreground text-[10px] line-through leading-none">
+                  {formatCurrency(listPrice)}
+                </span>
+              ) : null}
+              <span className="text-amber-600 text-sm font-semibold truncate">
+                {formatCurrency(salePrice)}
+              </span>
             </span>
           </div>
 
@@ -249,10 +261,10 @@ function ProductCard({
             {qty > 0 && qty < 3 && <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />}
             {qty >= 3 && qty <= 7 && <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />}
           </div>
-          <p className="text-amber-600 text-sm font-semibold">{formatCurrency(p.amount ?? p.price)}</p>
-          {isPromo && (
-            <p className="text-muted-foreground text-[10px] line-through">{formatCurrency(p.regularAmount)}</p>
-          )}
+          <p className="text-amber-600 text-sm font-semibold">{formatCurrency(salePrice)}</p>
+          {isPromo && listPrice != null ? (
+            <p className="text-muted-foreground text-[10px] line-through">{formatCurrency(listPrice)}</p>
+          ) : null}
         </div>
       </Link>
 

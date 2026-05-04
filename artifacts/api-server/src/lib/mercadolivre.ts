@@ -321,9 +321,9 @@ export function resolveProductPricesFromMlPricesApi(
   const applicable = (data.prices ?? []).filter(mlPriceRowAppliesToMarketplace);
   if (applicable.length === 0) return null;
 
-  const promos = applicable.filter(
-    (row) => (row.type === "promotion" || row.type == null) && isMlPromotionPriceRow(row),
-  );
+  // Any price row with regular_amount > amount is a strike-through vs sale listing for
+  // this restriction context — not only rows labeled type "promotion" (ML may use other types).
+  const promos = applicable.filter((row) => isMlPromotionPriceRow(row));
 
   if (promos.length > 0) {
     const best = promos.reduce((a, b) => ((a.amount as number) <= (b.amount as number) ? a : b));
