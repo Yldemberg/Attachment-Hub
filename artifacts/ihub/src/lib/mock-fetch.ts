@@ -165,6 +165,16 @@ export function installMockFetch(): void {
           return byMlPrices || byDb;
         });
       }
+      filtered.sort((a, b) => {
+        const sa = (a.sku ?? "").trim();
+        const sb = (b.sku ?? "").trim();
+        const aNoSku = sa.length === 0;
+        const bNoSku = sb.length === 0;
+        if (aNoSku !== bNoSku) return aNoSku ? 1 : -1;
+        const bySku = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: "base" });
+        if (bySku !== 0) return bySku;
+        return (a.mlItemId ?? "").localeCompare(b.mlItemId ?? "", undefined, { numeric: true, sensitivity: "base" });
+      });
       return jsonResponse(paginate(filtered, page, limit));
     }
 

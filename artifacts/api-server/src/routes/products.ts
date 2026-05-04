@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, or, inArray, lt, sql, gt, isNotNull } from "drizzle-orm";
+import { eq, and, or, inArray, lt, sql, gt, isNotNull, asc } from "drizzle-orm";
 import {
   fetchMlItemPrices,
   ml,
@@ -190,7 +190,13 @@ router.get("/products", ...auth, async (req, res) => {
 
     const [countResult, rows] = await Promise.all([
       db.select({ count: sql<number>`cast(count(*) as int)` }).from(productsTable).where(where),
-      db.select().from(productsTable).where(where).limit(limitNum).offset(offset),
+      db
+        .select()
+        .from(productsTable)
+        .where(where)
+        .orderBy(asc(productsTable.sku), asc(productsTable.mlItemId))
+        .limit(limitNum)
+        .offset(offset),
     ]);
 
     const total = countResult[0]?.count ?? 0;
