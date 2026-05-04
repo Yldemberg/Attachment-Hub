@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
+
 interface ProductVariation {
   id: number;
   sku?: string | null;
@@ -96,7 +98,7 @@ export default function ProductDetail() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate("/products")}
+          onClick={() => navigate(buildProductsListReturnPath())}
           className="mt-4"
         >
           Voltar
@@ -112,7 +114,7 @@ export default function ProductDetail() {
     <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-4 max-w-2xl">
         <button
-          onClick={() => navigate("/products")}
+          onClick={() => navigate(buildProductsListReturnPath())}
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />

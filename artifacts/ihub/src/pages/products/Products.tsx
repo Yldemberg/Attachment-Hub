@@ -42,9 +42,17 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Link } from "wouter";
+import { Link, useSearchParams, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+import {
+  ROWS_OPTIONS,
+  type RowsOption,
+  writeStoredProductsListUi,
+  getInitialProductsListState,
+  serializeProductsListFilters,
+  areProductListQueriesEquivalent,
+} from "@/lib/products-list-persistence";
 
 interface Product {
   id: string;
@@ -73,55 +81,6 @@ interface StockUpdateDialog {
   sku: string | null;
   title: string;
   mlItemId?: string | null;
-}
-
-const ROWS_OPTIONS = [10, 20, 50] as const;
-type RowsOption = typeof ROWS_OPTIONS[number];
-
-const PRODUCTS_LIST_UI_KEY = "ihub-products-list-ui";
-
-type StoredProductsListUi = {
-  v: 1;
-  page: number;
-  limit: RowsOption;
-  search: string;
-  listingFilter: string;
-  accountId: string;
-  scrollTop: number;
-};
-
-function parseStoredProductsListUi(): Omit<StoredProductsListUi, "v"> | null {
-  if (typeof sessionStorage === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(PRODUCTS_LIST_UI_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as Partial<StoredProductsListUi>;
-    if (o.v !== 1) return null;
-    const page = typeof o.page === "number" && o.page >= 1 ? Math.floor(o.page) : 1;
-    const limitParsed = ROWS_OPTIONS.includes(o.limit as RowsOption)
-      ? (o.limit as RowsOption)
-      : (10 as RowsOption);
-    return {
-      page,
-      limit: limitParsed,
-      search: typeof o.search === "string" ? o.search : "",
-      listingFilter: typeof o.listingFilter === "string" ? o.listingFilter : "all",
-      accountId: typeof o.accountId === "string" ? o.accountId : "all",
-      scrollTop:
-        typeof o.scrollTop === "number" && Number.isFinite(o.scrollTop) ? Math.max(0, o.scrollTop) : 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredProductsListUi(data: Omit<StoredProductsListUi, "v">): void {
-  try {
-    if (typeof sessionStorage === "undefined") return;
-    sessionStorage.setItem(PRODUCTS_LIST_UI_KEY, JSON.stringify({ v: 1 as const, ...data }));
-  } catch {
-    /* ignore quota / privacy mode */
-  }
 }
 
 function stockTextColor(qty: number | null | undefined): string {
@@ -386,9 +345,7 @@ export default function Products() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [storedOnMount] = useState(() =>
-    typeof window !== "undefined" ? parseStoredProductsListUi() : null,
-  );
+  const [listBootstrap] = useState(() => getInitialProductsListState());
   const listScrollElRef = useRef<HTMLDivElement>(null);
   const listFiltersRef = useRef({
     page: 1,
@@ -398,15 +355,18 @@ export default function Products() {
     accountId: "all",
   });
   const pendingScrollRestoreRef = useRef<number | null>(
-    storedOnMount != null ? storedOnMount.scrollTop : null,
+    listBootstrap.pendingScrollRestore,
   );
   const scrollTopSnapshotRef = useRef(0);
 
-  const [search, setSearch] = useState(() => storedOnMount?.search ?? "");
-  const [listingFilter, setListingFilter] = useState(() => storedOnMount?.listingFilter ?? "all");
-  const [accountId, setAccountId] = useState(() => storedOnMount?.accountId ?? "all");
-  const [page, setPage] = useState(() => storedOnMount?.page ?? 1);
-  const [limit, setLimit] = useState<RowsOption>(() => storedOnMount?.limit ?? 10);
+  const [, setSearchParams] = useSearchParams();
+  const currentSearchStr = useSearch();
+
+  const [search, setSearch] = useState(() => listBootstrap.search);
+  const [listingFilter, setListingFilter] = useState(() => listBootstrap.listingFilter);
+  const [accountId, setAccountId] = useState(() => listBootstrap.accountId);
+  const [page, setPage] = useState(() => listBootstrap.page);
+  const [limit, setLimit] = useState<RowsOption>(() => listBootstrap.limit);
   const [stockDialog, setStockDialog] = useState<StockUpdateDialog | null>(
     null
   );
@@ -425,9 +385,26 @@ export default function Products() {
     ...(accountId !== "all" ? { account_id: accountId } : {}),
   };
 
-  const { data, isLoading } = useListProducts(params, {
+  const { data, isLoading, isFetching } = useListProducts(params, {
     query: { queryKey: getListProductsQueryKey(params), refetchInterval: 30000 },
   });
+
+  useEffect(() => {
+    const want = serializeProductsListFilters({
+      page,
+      limit,
+      search,
+      listingFilter,
+      accountId,
+    });
+    if (areProductListQueriesEquivalent(want, currentSearchStr)) return;
+    if (want) {
+      const sp = new URLSearchParams(want);
+      setSearchParams(Object.fromEntries(sp), { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [page, limit, search, listingFilter, accountId, currentSearchStr, setSearchParams]);
 
   const { data: notifData } = useListNotifications(
     { is_read: false, limit: 99 },
@@ -494,13 +471,20 @@ export default function Products() {
   }, []);
 
   useLayoutEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isFetching) return;
     if (pendingScrollRestoreRef.current === null) return;
     const y = pendingScrollRestoreRef.current;
     pendingScrollRestoreRef.current = null;
     const el = listScrollElRef.current;
-    if (el) el.scrollTop = y;
-  }, [isLoading, products]);
+    if (!el) return;
+    el.scrollTop = y;
+    requestAnimationFrame(() => {
+      el.scrollTop = y;
+      requestAnimationFrame(() => {
+        el.scrollTop = y;
+      });
+    });
+  }, [isLoading, isFetching, products]);
 
   const { data: accountsData } = useListAccounts();
   const accounts = (
