@@ -185,6 +185,19 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   default: { label: "Padrão", cls: "bg-slate-100 text-slate-600 border-slate-200" },
 };
 
+/** Status de envio vindo da API ML (`orders[].shipping.status` → `shipping_status`). */
+function shipmentFulfillmentBadges(status: string | null | undefined): { key: string; label: string; cls: string }[] {
+  const s = status?.trim().toLowerCase();
+  if (!s) return [];
+  if (s === "shipped") {
+    return [{ key: "in_transit", label: "Em trânsito", cls: "bg-sky-50 text-sky-800 border-sky-200" }];
+  }
+  if (s === "ready_to_ship") {
+    return [{ key: "label_done", label: "Etiqueta emitida", cls: "bg-violet-50 text-violet-800 border-violet-200" }];
+  }
+  return [];
+}
+
 function LogisticBadge({ type, prefix }: { type?: string | null; prefix?: string }) {
   if (!type) return null;
   const types = type.split(",").map((t) => t.trim()).filter(Boolean);
@@ -205,6 +218,7 @@ function LogisticBadge({ type, prefix }: { type?: string | null; prefix?: string
 }
 
 function OrderCard({ o }: { o: Order }) {
+  const shipBadges = shipmentFulfillmentBadges(o.shippingStatus);
   const items = (o.itemsJson as unknown as OrderItem[]) ?? [];
   const firstItem = items[0];
   const totalQty = items.reduce((s, i) => s + (i.quantity ?? 0), 0);
@@ -282,10 +296,18 @@ function OrderCard({ o }: { o: Order }) {
           </p>
         </div>
 
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex flex-col gap-1 items-end">
           <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${STATUS_COLORS[o.status ?? ""] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
             {STATUS_LABELS[o.status ?? ""] ?? o.status ?? "—"}
           </span>
+          {shipBadges.map((b) => (
+            <span
+              key={b.key}
+              className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${b.cls}`}
+            >
+              {b.label}
+            </span>
+          ))}
         </div>
       </div>
     </Link>
