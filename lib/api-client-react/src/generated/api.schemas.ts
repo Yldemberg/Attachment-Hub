@@ -458,11 +458,23 @@ export type SearchInventoryParams = {
 export type ListOrdersParams = {
   account_id?: string;
   status?: string;
+  /**
+   * Filtro exclusivo por fase logística (ML shipping). Não misturar conceito com `status` (pagamento).
+   */
+  shipment_phase?: ListOrdersShipmentPhase;
   date_from?: string;
   date_to?: string;
   page?: number;
   limit?: number;
 };
+
+export type ListOrdersShipmentPhase =
+  (typeof ListOrdersShipmentPhase)[keyof typeof ListOrdersShipmentPhase];
+
+export const ListOrdersShipmentPhase = {
+  label_issued: "label_issued",
+  in_transit: "in_transit",
+} as const;
 
 export type ListQuestionsParams = {
   account_id?: string;

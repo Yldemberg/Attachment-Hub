@@ -536,6 +536,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: shipment_phase
+          in: query
+          description: Filtro exclusivo por fase logística (ML shipping). Não misturar conceito com `status` (pagamento).
+          schema:
+            type: string
+            enum: [label_issued, in_transit]
         - name: date_from
           in: query
           schema:

@@ -5,10 +5,15 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { ListOrdersShipmentPhase } from "./listOrdersShipmentPhase";
 
 export type ListOrdersParams = {
   account_id?: string;
   status?: string;
+  /**
+   * Filtro exclusivo por fase logística (ML shipping). Não misturar conceito com `status` (pagamento).
+   */
+  shipment_phase?: ListOrdersShipmentPhase;
   date_from?: Date;
   date_to?: Date;
   page?: number;

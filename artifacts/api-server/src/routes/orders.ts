@@ -21,6 +21,24 @@ const orderReferenceLocalDateSp = sql`
 
 const orderSortInstant = sql`coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})`;
 
+/** Alinhado às pilulas de envio na UI (`shipmentFulfillmentBadges`). */
+const orderShipStNorm = sql`lower(trim(coalesce(${ordersTable.shippingStatus}, '')))`;
+const orderShipSsNorm = sql`lower(trim(coalesce(${ordersTable.shippingSubstatus}, '')))`;
+
+function shipmentPhaseWhere(phase: string) {
+  if (phase === "in_transit") {
+    return sql`${orderShipStNorm} = 'shipped'`;
+  }
+  if (phase === "label_issued") {
+    return sql`(
+      (${orderShipSsNorm} = 'printed' OR ${orderShipStNorm} = 'ready_to_ship')
+      AND ${orderShipSsNorm} <> 'ready_to_print'
+      AND ${orderShipStNorm} <> 'shipped'
+    )`;
+  }
+  return null;
+}
+
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
   const db = getDb();
   const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
@@ -35,7 +53,10 @@ async function getUserAccountIds(userId: string, filterAccountId?: string): Prom
 router.get("/orders", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const { account_id, status, date_from, date_to, page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { account_id, status, shipment_phase, date_from, date_to, page = "1", limit = "20" } = req.query as Record<
+      string,
+      string
+    >;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -48,6 +69,8 @@ router.get("/orders", ...auth, async (req, res) => {
 
     const conditions = [inArray(ordersTable.accountId, accountIds)];
     if (status) conditions.push(eq(ordersTable.status, status));
+    const phaseSql = shipment_phase ? shipmentPhaseWhere(shipment_phase.trim()) : null;
+    if (phaseSql) conditions.push(phaseSql);
     if (isIsoDateOnly(date_from)) {
       conditions.push(sql`${orderReferenceLocalDateSp} >= ${sql.raw(`'${date_from}'`)}::date`);
     }

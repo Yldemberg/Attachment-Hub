@@ -21,6 +21,37 @@ type Order = ApiOrder & {
   account?: { id: string; mlNickname?: string | null; mlUserId?: string | null } | null;
 };
 
+const SHIPMENT_PHASE_FILTERS = new Set(["label_issued", "in_transit"]);
+
+function orderListParams(
+  page: number,
+  rowsPerPage: number,
+  statusFilter: string,
+  accountId: string,
+  dateRange: { date_from?: string; date_to?: string },
+): {
+  page: number;
+  limit: number;
+  status?: string;
+  shipment_phase?: "label_issued" | "in_transit";
+  account_id?: string;
+  date_from?: string;
+  date_to?: string;
+} {
+  return {
+    page,
+    limit: rowsPerPage,
+    ...(SHIPMENT_PHASE_FILTERS.has(statusFilter)
+      ? { shipment_phase: statusFilter as "label_issued" | "in_transit" }
+      : statusFilter !== "all"
+        ? { status: statusFilter }
+        : {}),
+    ...(accountId !== "all" ? { account_id: accountId } : {}),
+    ...(dateRange.date_from ? { date_from: dateRange.date_from } : {}),
+    ...(dateRange.date_to ? { date_to: dateRange.date_to } : {}),
+  };
+}
+
 interface OrderItem {
   item_id: string;
   title: string;
@@ -337,14 +368,7 @@ export default function Orders() {
     [periodPreset, customDateFrom, customDateTo],
   );
 
-  const params = {
-    page,
-    limit: rowsPerPage,
-    ...(statusFilter !== "all" ? { status: statusFilter } : {}),
-    ...(accountId !== "all" ? { account_id: accountId } : {}),
-    ...(dateRange.date_from ? { date_from: dateRange.date_from } : {}),
-    ...(dateRange.date_to ? { date_to: dateRange.date_to } : {}),
-  };
+  const params = orderListParams(page, rowsPerPage, statusFilter, accountId, dateRange);
 
   const periodHasFilter =
     periodPreset !== "all" &&
@@ -454,7 +478,7 @@ export default function Orders() {
           )}
 
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-44 text-xs h-7">
+            <SelectTrigger className="min-w-[220px] max-w-[min(100%,280px)] text-xs h-7">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -463,6 +487,8 @@ export default function Orders() {
               <SelectItem value="paid">Pago</SelectItem>
               <SelectItem value="payment_required">Aguardando pagamento</SelectItem>
               <SelectItem value="cancelled">Cancelado</SelectItem>
+              <SelectItem value="label_issued">Etiqueta emitida</SelectItem>
+              <SelectItem value="in_transit">Em trânsito</SelectItem>
             </SelectContent>
           </Select>
 

@@ -498,6 +498,12 @@ export const listOrdersQueryLimitDefault = 20;
 export const ListOrdersQueryParams = zod.object({
   account_id: zod.coerce.string().optional(),
   status: zod.coerce.string().optional(),
+  shipment_phase: zod
+    .enum(["label_issued", "in_transit"])
+    .optional()
+    .describe(
+      "Filtro exclusivo por fase logística (ML shipping). Não misturar conceito com `status` (pagamento).",
+    ),
   date_from: zod.date().optional(),
   date_to: zod.date().optional(),
   page: zod.coerce.number().default(listOrdersQueryPageDefault),

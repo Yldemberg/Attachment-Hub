@@ -28,6 +28,7 @@ export * from "./inventorySearchResponse";
 export * from "./listAccounts200";
 export * from "./listNotificationsParams";
 export * from "./listOrdersParams";
+export * from "./listOrdersShipmentPhase";
 export * from "./listProductsListingFilter";
 export * from "./listProductsParams";
 export * from "./listQuestionsParams";
