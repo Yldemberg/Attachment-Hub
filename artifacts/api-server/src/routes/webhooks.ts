@@ -15,7 +15,6 @@ import { logger } from "../lib/logger";
 import { applyMandateStockFromWebhookOrder } from "../lib/order-mandate-stock";
 import {
   ml,
-  fetchMlShipmentSaleLogisticType,
   MlItem,
   MlOrder,
   MlQuestion,
@@ -24,6 +23,7 @@ import {
   getMlEffectiveLogisticType,
   getMlOriginalListPrice,
 } from "../lib/mercadolivre";
+import { buildMlOrderStoredPayload } from "../lib/ml-order-payload";
 
 const router = Router();
 
@@ -67,49 +67,6 @@ function verifyMlSignature(req: Request): boolean {
   const expected = crypto.createHmac("sha256", secret).update(template).digest("hex");
 
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(receivedHmac));
-}
-
-async function enrichOrderItemsJson(
-  accountId: string,
-  order: MlOrder,
-): Promise<Array<{
-  item_id: string;
-  title: string;
-  quantity: number;
-  price: number;
-  thumbnail: string | null;
-  sku: string | null;
-  /** Modalidades do anúncio (podem ser várias). */
-  logistic_type: string | null;
-  /** Envio concretizado na venda (shipment). */
-  sale_logistic_type: string | null;
-}>> {
-  const db = getDb();
-  const saleLogisticType = await fetchMlShipmentSaleLogisticType(accountId, order.shipping?.id);
-  return Promise.all(
-    order.order_items.map(async (oi) => {
-      const [product] = await db
-        .select({
-          thumbnail: productsTable.thumbnail,
-          sku: productsTable.sku,
-          logisticType: productsTable.logisticType,
-        })
-        .from(productsTable)
-        .where(and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, oi.item.id)))
-        .limit(1);
-
-      return {
-        item_id: oi.item.id,
-        title: oi.item.title,
-        quantity: oi.quantity,
-        price: oi.unit_price,
-        thumbnail: product?.thumbnail ?? null,
-        sku: product?.sku ?? null,
-        logistic_type: product?.logisticType ?? null,
-        sale_logistic_type: saleLogisticType,
-      };
-    }),
-  );
 }
 
 router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
@@ -219,7 +176,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (!orderId) return;
 
         const order = await ml.get<MlOrder>(account.id, `/orders/${orderId}`);
-        const itemsJson = await enrichOrderItemsJson(account.id, order);
+        const { itemsJson, shippingStatus, shippingSubstatus } = await buildMlOrderStoredPayload(account.id, order);
 
         await db
           .insert(ordersTable)
@@ -232,7 +189,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             buyerId: BigInt(order.buyer.id),
             buyerNickname: order.buyer.nickname,
             shippingId: order.shipping?.id ? BigInt(order.shipping.id) : null,
-            shippingStatus: order.shipping?.status ?? null,
+            shippingStatus,
+            shippingSubstatus,
             dateCreated: order.date_created ? new Date(order.date_created) : null,
             dateClosed: order.date_closed ? new Date(order.date_closed) : null,
             itemsJson,
@@ -241,7 +199,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             target: [ordersTable.accountId, ordersTable.mlOrderId],
             set: {
               status: order.status,
-              shippingStatus: order.shipping?.status ?? null,
+              shippingStatus,
+              shippingSubstatus,
               dateClosed: order.date_closed ? new Date(order.date_closed) : null,
               itemsJson,
             },

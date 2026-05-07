@@ -13,8 +13,8 @@ import {
   getMlOriginalListPrice,
   getMlVariationSku,
   mergeMlVariation,
-  fetchMlShipmentSaleLogisticType,
 } from "./mercadolivre";
+import { buildMlOrderStoredPayload } from "./ml-order-payload";
 import {
   productsTable,
   ordersTable,
@@ -162,50 +162,6 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
   }
 }
 
-async function buildOrderItemsJson(
-  accountId: string,
-  order: MlOrder,
-): Promise<Array<{
-  item_id: string;
-  title: string;
-  quantity: number;
-  price: number;
-  thumbnail: string | null;
-  sku: string | null;
-  /** Modalidades disponíveis no anúncio (podem ser várias). */
-  logistic_type: string | null;
-  /** Modalidade de envio desta venda (GET /shipments/:id). */
-  sale_logistic_type: string | null;
-}>> {
-  const db = getDb();
-  const saleLogisticType = await fetchMlShipmentSaleLogisticType(accountId, order.shipping?.id);
-
-  return Promise.all(
-    order.order_items.map(async (oi) => {
-      const [product] = await db
-        .select({
-          thumbnail: productsTable.thumbnail,
-          sku: productsTable.sku,
-          logisticType: productsTable.logisticType,
-        })
-        .from(productsTable)
-        .where(and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, oi.item.id)))
-        .limit(1);
-
-      return {
-        item_id: oi.item.id,
-        title: oi.item.title,
-        quantity: oi.quantity,
-        price: oi.unit_price,
-        thumbnail: product?.thumbnail ?? null,
-        sku: product?.sku ?? null,
-        logistic_type: product?.logisticType ?? null,
-        sale_logistic_type: saleLogisticType,
-      };
-    }),
-  );
-}
-
 async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
   const db = getDb();
   let offset = 0;
@@ -218,7 +174,7 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
     );
 
     for (const order of result.results) {
-      const itemsJson = await buildOrderItemsJson(accountId, order);
+      const { itemsJson, shippingStatus, shippingSubstatus } = await buildMlOrderStoredPayload(accountId, order);
 
       await db
         .insert(ordersTable)
@@ -231,7 +187,8 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
           buyerId: BigInt(order.buyer.id),
           buyerNickname: order.buyer.nickname,
           shippingId: order.shipping?.id ? BigInt(order.shipping.id) : null,
-          shippingStatus: order.shipping?.status ?? null,
+          shippingStatus,
+          shippingSubstatus,
           dateCreated: order.date_created ? new Date(order.date_created) : null,
           dateClosed: order.date_closed ? new Date(order.date_closed) : null,
           itemsJson,
@@ -240,7 +197,8 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
           target: [ordersTable.accountId, ordersTable.mlOrderId],
           set: {
             status: order.status,
-            shippingStatus: order.shipping?.status ?? null,
+            shippingStatus,
+            shippingSubstatus,
             dateClosed: order.date_closed ? new Date(order.date_closed) : null,
             itemsJson,
           },

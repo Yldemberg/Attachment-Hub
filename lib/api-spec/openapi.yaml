@@ -1318,6 +1318,9 @@ components:
         shippingStatus:
           type: string
           nullable: true
+        shippingSubstatus:
+          type: string
+          nullable: true
         dateCreated:
           type: string
           format: date-time

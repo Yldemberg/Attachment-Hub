@@ -406,6 +406,10 @@ export function getMlEffectiveLogisticType(item: MlItem): string | null {
 
 /** GET /shipments/:id (`x-format-new`) — formato usado pelo ML para o envio concretizado na venda. */
 export type MlShipmentApi = {
+  /** Ex.: pending, handling, ready_to_ship, shipped, delivered … */
+  status?: string | null;
+  /** Ex.: printed, ready_to_print, out_for_delivery … */
+  substatus?: string | null;
   logistic?: {
     direction?: string;
     mode?: string | null;
@@ -414,6 +418,47 @@ export type MlShipmentApi = {
   } | null;
   tags?: string[] | null;
 };
+
+export type MlShipmentOrderDetails = {
+  saleLogisticType: string | null;
+  status: string | null;
+  substatus: string | null;
+};
+
+function trimShipmentText(v: unknown): string | null {
+  if (v == null) return null;
+  const s = typeof v === "string" ? v.trim() : String(v).trim();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * Um único GET /shipments/:id — status/substatus vindos daqui costumam ser completos,
+ * ao contrário do objeto `shipping` embutido em GET /orders (muitas vezes só `{ id }`).
+ */
+export async function fetchMlShipmentOrderDetails(
+  accountId: string,
+  shippingId: number | bigint | null | undefined,
+): Promise<MlShipmentOrderDetails> {
+  if (shippingId == null) {
+    return { saleLogisticType: null, status: null, substatus: null };
+  }
+  try {
+    const sid = typeof shippingId === "bigint" ? Number(shippingId) : shippingId;
+    const shipment = await ml.getWithHeaders<MlShipmentApi>(
+      accountId,
+      `/shipments/${sid}`,
+      { "x-format-new": "true" },
+    );
+    return {
+      saleLogisticType: getMlSaleLogisticTypeFromShipment(shipment),
+      status: trimShipmentText(shipment.status),
+      substatus: trimShipmentText(shipment.substatus),
+    };
+  } catch (err) {
+    logger.warn({ err, shippingId }, "ML fetch shipment order details failed");
+    return { saleLogisticType: null, status: null, substatus: null };
+  }
+}
 
 /**
  * Modalidade de envio efetiva desta compra (shipment), em chaves compatíveis com badges de logística dos anúncios.
@@ -434,19 +479,8 @@ export function getMlSaleLogisticTypeFromShipment(shipment: MlShipmentApi | null
 
 /** Busca shipment da venda para saber Flex/Full/Padrão efetivos no checkout (não só o que o anúncio oferece). */
 export async function fetchMlShipmentSaleLogisticType(accountId: string, shippingId: number | bigint | null | undefined): Promise<string | null> {
-  if (shippingId == null) return null;
-  try {
-    const sid = typeof shippingId === "bigint" ? Number(shippingId) : shippingId;
-    const shipment = await ml.getWithHeaders<MlShipmentApi>(
-      accountId,
-      `/shipments/${sid}`,
-      { "x-format-new": "true" },
-    );
-    return getMlSaleLogisticTypeFromShipment(shipment);
-  } catch (err) {
-    logger.warn({ err, shippingId }, "ML fetch shipment for sale logistic type failed");
-    return null;
-  }
+  const details = await fetchMlShipmentOrderDetails(accountId, shippingId);
+  return details.saleLogisticType;
 }
 
 /**

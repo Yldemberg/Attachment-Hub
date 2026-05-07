@@ -225,6 +225,7 @@ export interface Order {
   buyerNickname?: string | null;
   shippingId?: number | null;
   shippingStatus?: string | null;
+  shippingSubstatus?: string | null;
   dateCreated?: string | null;
   dateClosed?: string | null;
   itemsJson?: OrderItem[] | null;

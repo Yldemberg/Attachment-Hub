@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   buyer_nickname   TEXT,
   shipping_id      BIGINT,
   shipping_status  TEXT,
+  shipping_substatus TEXT,
   date_created     TIMESTAMPTZ,
   date_closed      TIMESTAMPTZ,
   items_json       JSONB,

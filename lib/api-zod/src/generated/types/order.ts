@@ -19,6 +19,7 @@ export interface Order {
   buyerNickname?: string | null;
   shippingId?: number | null;
   shippingStatus?: string | null;
+  shippingSubstatus?: string | null;
   dateCreated?: Date | null;
   dateClosed?: Date | null;
   itemsJson?: OrderItem[] | null;

@@ -16,6 +16,8 @@ export const ordersTable = pgTable("orders", {
   buyerNickname: text("buyer_nickname"),
   shippingId: bigint("shipping_id", { mode: "bigint" }),
   shippingStatus: text("shipping_status"),
+  /** Substatus do envio (GET /shipments — ex. printed vs ready_to_print). */
+  shippingSubstatus: text("shipping_substatus"),
   dateCreated: timestamp("date_created", { withTimezone: true }),
   dateClosed: timestamp("date_closed", { withTimezone: true }),
   itemsJson: jsonb("items_json"),

@@ -185,14 +185,23 @@ const LOGISTIC_LABELS: Record<string, { label: string; cls: string }> = {
   default: { label: "Padrão", cls: "bg-slate-100 text-slate-600 border-slate-200" },
 };
 
-/** Status de envio vindo da API ML (`orders[].shipping.status` → `shipping_status`). */
-function shipmentFulfillmentBadges(status: string | null | undefined): { key: string; label: string; cls: string }[] {
-  const s = status?.trim().toLowerCase();
-  if (!s) return [];
-  if (s === "shipped") {
+/**
+ * Status de envio persistido após `GET /shipments/:id` na sync/webhook
+ * (`shipping_status` + `shipping_substatus`). O objeto `shipping` em `GET /orders` costuma vir incompleto.
+ */
+function shipmentFulfillmentBadges(
+  shippingStatus: string | null | undefined,
+  shippingSubstatus: string | null | undefined,
+): { key: string; label: string; cls: string }[] {
+  const st = shippingStatus?.trim().toLowerCase() ?? "";
+  const ss = shippingSubstatus?.trim().toLowerCase() ?? "";
+  if (st === "shipped") {
     return [{ key: "in_transit", label: "Em trânsito", cls: "bg-sky-50 text-sky-800 border-sky-200" }];
   }
-  if (s === "ready_to_ship") {
+  if (ss === "ready_to_print") {
+    return [];
+  }
+  if (ss === "printed" || st === "ready_to_ship") {
     return [{ key: "label_done", label: "Etiqueta emitida", cls: "bg-violet-50 text-violet-800 border-violet-200" }];
   }
   return [];
@@ -218,7 +227,7 @@ function LogisticBadge({ type, prefix }: { type?: string | null; prefix?: string
 }
 
 function OrderCard({ o }: { o: Order }) {
-  const shipBadges = shipmentFulfillmentBadges(o.shippingStatus);
+  const shipBadges = shipmentFulfillmentBadges(o.shippingStatus, o.shippingSubstatus);
   const items = (o.itemsJson as unknown as OrderItem[]) ?? [];
   const firstItem = items[0];
   const totalQty = items.reduce((s, i) => s + (i.quantity ?? 0), 0);

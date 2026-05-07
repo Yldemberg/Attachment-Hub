@@ -517,6 +517,7 @@ export const ListOrdersResponse = zod.object({
       buyerNickname: zod.string().nullish(),
       shippingId: zod.number().nullish(),
       shippingStatus: zod.string().nullish(),
+      shippingSubstatus: zod.string().nullish(),
       dateCreated: zod.coerce.date().nullish(),
       dateClosed: zod.coerce.date().nullish(),
       itemsJson: zod
@@ -569,6 +570,7 @@ export const GetOrderResponse = zod.object({
   buyerNickname: zod.string().nullish(),
   shippingId: zod.number().nullish(),
   shippingStatus: zod.string().nullish(),
+  shippingSubstatus: zod.string().nullish(),
   dateCreated: zod.coerce.date().nullish(),
   dateClosed: zod.coerce.date().nullish(),
   itemsJson: zod
