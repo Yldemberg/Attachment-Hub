@@ -130,18 +130,28 @@ router.get("/inventory/search", ...auth, async (req, res) => {
             );
     const mandateMap = Object.fromEntries(mandateRows.map((m) => [m.sku, m.quantity]));
 
-    const financialRows =
-      skus.length === 0
-        ? []
-        : await db
-            .select()
-            .from(inventorySkuFinancialsTable)
-            .where(
-              and(
-                eq(inventorySkuFinancialsTable.userId, req.user!.id),
-                inArray(inventorySkuFinancialsTable.sku, skus),
-              ),
-            );
+    /** Se a migração `007_inventory_sku_financials.sql` ainda não foi aplicada, não quebra a busca. */
+    let financialRows: (typeof inventorySkuFinancialsTable.$inferSelect)[] = [];
+    try {
+      financialRows =
+        skus.length === 0
+          ? []
+          : await db
+              .select()
+              .from(inventorySkuFinancialsTable)
+              .where(
+                and(
+                  eq(inventorySkuFinancialsTable.userId, req.user!.id),
+                  inArray(inventorySkuFinancialsTable.sku, skus),
+                ),
+              );
+    } catch (err) {
+      req.log.warn(
+        { err },
+        "inventory_sku_financials indisponível — aplique scripts/migrations/007_inventory_sku_financials.sql",
+      );
+      financialRows = [];
+    }
     const financialMap = Object.fromEntries(
       financialRows.map((f) => [
         f.sku,
