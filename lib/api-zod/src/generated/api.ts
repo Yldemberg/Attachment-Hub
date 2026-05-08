@@ -429,8 +429,43 @@ export const SearchInventoryResponse = zod.object({
       listingCount: zod
         .number()
         .describe("Quantidade de anúncios não Full com este SKU"),
+      taxPercent: zod
+        .number()
+        .nullish()
+        .describe("Percentual de imposto (0–100) salvo pelo usuário"),
+      purchasePrice: zod
+        .number()
+        .nullish()
+        .describe("Preço de compra de referência (BRL)"),
     }),
   ),
+});
+
+/**
+ * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+ * @summary Salvar imposto e preço de compra por SKU
+ */
+export const PatchInventorySkuFinancialsParams = zod.object({
+  sku: zod.coerce.string().describe("SKU (URL-encoded se necessário)"),
+});
+
+export const PatchInventorySkuFinancialsBody = zod
+  .object({
+    taxPercent: zod
+      .number()
+      .nullish()
+      .describe("Percentual de imposto (0–100); null remove o valor"),
+    purchasePrice: zod
+      .number()
+      .nullish()
+      .describe("Preço de compra em BRL; null remove o valor"),
+  })
+  .describe("Pelo menos uma propriedade deve ser enviada.");
+
+export const PatchInventorySkuFinancialsResponse = zod.object({
+  sku: zod.string(),
+  taxPercent: zod.number().nullish(),
+  purchasePrice: zod.number().nullish(),
 });
 
 /**

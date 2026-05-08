@@ -64,6 +64,8 @@ let _mockNotifications: DemoNotification[] = DEMO_NOTIFICATIONS.map((n) => ({ ..
 let _mockProducts: DemoProduct[] = DEMO_PRODUCTS.map((p) => ({ ...p }));
 /** Estoque mandatário demo por SKU */
 let _mockMandateQty: Record<string, number> = {};
+/** Imposto / preço de compra demo por SKU */
+let _mockSkuFinancials: Record<string, { taxPercent: number | null; purchasePrice: number | null }> = {};
 
 const _originalFetch = globalThis.fetch;
 
@@ -402,6 +404,8 @@ export function installMockFetch(): void {
         return {
           sku,
           mandateQuantity: _mockMandateQty[sku] ?? null,
+          taxPercent: _mockSkuFinancials[sku]?.taxPercent ?? null,
+          purchasePrice: _mockSkuFinancials[sku]?.purchasePrice ?? null,
           thumbnail: rep.thumbnail ?? null,
           titleShort,
           variationLabel: null as string | null,
@@ -458,6 +462,38 @@ export function installMockFetch(): void {
         return { ...p, availableQuantity: mandateQty };
       });
       return jsonResponse({ sku, mandateQuantity: mandateQty, updated, failed, results });
+    }
+
+    if (path.match(/^\/inventory\/sku\/([^/]+)\/financials$/) && method === "PATCH") {
+      const skuEnc = path.split("/")[3];
+      let sku = skuEnc;
+      try {
+        sku = decodeURIComponent(skuEnc);
+      } catch {
+        sku = skuEnc;
+      }
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      const prev = _mockSkuFinancials[sku] ?? { taxPercent: null as number | null, purchasePrice: null as number | null };
+      let taxPercent = prev.taxPercent;
+      let purchasePrice = prev.purchasePrice;
+      if ("taxPercent" in body) {
+        taxPercent = body.taxPercent === null ? null : typeof body.taxPercent === "number" ? body.taxPercent : taxPercent;
+      }
+      if ("purchasePrice" in body) {
+        purchasePrice =
+          body.purchasePrice === null
+            ? null
+            : typeof body.purchasePrice === "number"
+              ? body.purchasePrice
+              : purchasePrice;
+      }
+      _mockSkuFinancials[sku] = { taxPercent, purchasePrice };
+      return jsonResponse({ sku, taxPercent, purchasePrice });
     }
 
     if (path === "/healthz") {

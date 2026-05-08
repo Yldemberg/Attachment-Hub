@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useSearchInventory,
   useAdjustMandateInventory,
+  usePatchInventorySkuFinancials,
   getSearchInventoryQueryKey,
 } from "@workspace/api-client-react";
 import type { InventorySearchItem, MandateAdjustRequestOperation } from "@workspace/api-client-react";
@@ -220,6 +221,89 @@ export default function GeneralInventory() {
     },
   });
 
+  const { mutate: patchFinancials, isPending: savingFinancials } = usePatchInventorySkuFinancials({
+    mutation: {
+      onSuccess: (data) => {
+        toast({
+          title: "Custos salvos",
+          description: `SKU ${data.sku}: dados atualizados para relatórios.`,
+        });
+        queryClient.invalidateQueries({ queryKey: getSearchInventoryQueryKey(searchParams) });
+        setSelected((s) =>
+          s && s.sku === data.sku
+            ? {
+                ...s,
+                taxPercent: data.taxPercent ?? null,
+                purchasePrice: data.purchasePrice ?? null,
+              }
+            : s,
+        );
+      },
+      onError: (err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Falha ao salvar custos";
+        toast({ variant: "destructive", title: "Erro", description: msg });
+      },
+    },
+  });
+
+  const [taxInput, setTaxInput] = useState("");
+  const [priceInput, setPriceInput] = useState("");
+
+  useEffect(() => {
+    if (!selected) {
+      setTaxInput("");
+      setPriceInput("");
+      return;
+    }
+    setTaxInput(selected.taxPercent != null && selected.taxPercent !== undefined ? String(selected.taxPercent) : "");
+    setPriceInput(
+      selected.purchasePrice != null && selected.purchasePrice !== undefined ? String(selected.purchasePrice) : "",
+    );
+  }, [selected]);
+
+  const saveFinancials = () => {
+    if (!selected) return;
+    const taxTrim = taxInput.trim();
+    const priceTrim = priceInput.trim();
+
+    let taxPercent: number | null | undefined = undefined;
+    if (taxTrim === "") {
+      taxPercent = null;
+    } else {
+      const n = Number(taxTrim.replace(",", "."));
+      if (!Number.isFinite(n) || n < 0 || n > 100) {
+        toast({
+          variant: "destructive",
+          title: "Imposto inválido",
+          description: "Use um percentual entre 0 e 100.",
+        });
+        return;
+      }
+      taxPercent = n;
+    }
+
+    let purchasePrice: number | null | undefined = undefined;
+    if (priceTrim === "") {
+      purchasePrice = null;
+    } else {
+      const n = Number(priceTrim.replace(",", "."));
+      if (!Number.isFinite(n) || n < 0) {
+        toast({
+          variant: "destructive",
+          title: "Preço inválido",
+          description: "Informe um valor numérico maior ou igual a zero.",
+        });
+        return;
+      }
+      purchasePrice = Math.round(n * 100) / 100;
+    }
+
+    patchFinancials({
+      sku: encodeURIComponent(selected.sku),
+      data: { taxPercent, purchasePrice },
+    });
+  };
+
   const flushSearchNow = (raw: string) => {
     const q = raw.trim();
     if (debounceRef.current) {
@@ -412,6 +496,59 @@ export default function GeneralInventory() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3 mb-4">
+              <p className="text-xs font-semibold text-foreground">Custos (relatórios)</p>
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Percentual de imposto e preço de compra de referência são salvos na sua conta para uso futuro em relatórios.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="inv-tax" className="text-xs">
+                    Imposto (%)
+                  </Label>
+                  <Input
+                    id="inv-tax"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="any"
+                    inputMode="decimal"
+                    placeholder="Ex.: 18"
+                    value={taxInput}
+                    onChange={(e) => setTaxInput(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="inv-price" className="text-xs">
+                    Preço de compra (R$)
+                  </Label>
+                  <Input
+                    id="inv-price"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="Ex.: 150,00"
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={saveFinancials}
+                disabled={savingFinancials}
+              >
+                {savingFinancials ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span className={cn(savingFinancials && "ml-2")}>Salvar custos</span>
+              </Button>
             </div>
 
             <RadioGroup

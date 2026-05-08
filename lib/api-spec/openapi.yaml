@@ -456,6 +456,43 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /inventory/sku/{sku}/financials:
+    patch:
+      operationId: patchInventorySkuFinancials
+      tags: [inventory]
+      summary: Salvar imposto e preço de compra por SKU
+      description: >-
+        Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário.
+        Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+          description: SKU (URL-encoded se necessário)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySkuFinancialsPatchRequest"
+      responses:
+        "200":
+          description: Valores salvos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySkuFinancialsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /inventory/mandate-adjust:
     post:
       operationId: adjustMandateInventory
@@ -1242,12 +1279,46 @@ components:
         listingCount:
           type: integer
           description: Quantidade de anúncios não Full com este SKU
+        taxPercent:
+          type: number
+          nullable: true
+          description: Percentual de imposto (0–100) salvo pelo usuário
+        purchasePrice:
+          type: number
+          nullable: true
+          description: Preço de compra de referência (BRL)
       required:
         - sku
         - titleShort
         - currentStock
         - representativeProductId
         - listingCount
+
+    InventorySkuFinancialsPatchRequest:
+      type: object
+      properties:
+        taxPercent:
+          type: number
+          nullable: true
+          description: Percentual de imposto (0–100); null remove o valor
+        purchasePrice:
+          type: number
+          nullable: true
+          description: Preço de compra em BRL; null remove o valor
+      description: Pelo menos uma propriedade deve ser enviada.
+
+    InventorySkuFinancialsResponse:
+      type: object
+      properties:
+        sku:
+          type: string
+        taxPercent:
+          type: number
+          nullable: true
+        purchasePrice:
+          type: number
+          nullable: true
+      required: [sku]
 
     InventorySearchResponse:
       type: object

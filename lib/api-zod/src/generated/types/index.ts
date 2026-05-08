@@ -27,6 +27,8 @@ export * from "./handleStripeWebhook200";
 export * from "./healthStatus";
 export * from "./inventorySearchItem";
 export * from "./inventorySearchResponse";
+export * from "./inventorySkuFinancialsPatchRequest";
+export * from "./inventorySkuFinancialsResponse";
 export * from "./listAccounts200";
 export * from "./listNotificationsParams";
 export * from "./listOrdersParams";

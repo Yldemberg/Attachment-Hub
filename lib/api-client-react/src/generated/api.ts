@@ -32,6 +32,8 @@ import type {
   HandleStripeWebhook200,
   HealthStatus,
   InventorySearchResponse,
+  InventorySkuFinancialsPatchRequest,
+  InventorySkuFinancialsResponse,
   ListAccounts200,
   ListNotificationsParams,
   ListOrdersParams,
@@ -1432,6 +1434,104 @@ export function useSearchInventory<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+ * @summary Salvar imposto e preço de compra por SKU
+ */
+export const getPatchInventorySkuFinancialsUrl = (sku: string) => {
+  return `/api/inventory/sku/${sku}/financials`;
+};
+
+export const patchInventorySkuFinancials = async (
+  sku: string,
+  inventorySkuFinancialsPatchRequest: InventorySkuFinancialsPatchRequest,
+  options?: RequestInit,
+): Promise<InventorySkuFinancialsResponse> => {
+  return customFetch<InventorySkuFinancialsResponse>(
+    getPatchInventorySkuFinancialsUrl(sku),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(inventorySkuFinancialsPatchRequest),
+    },
+  );
+};
+
+export const getPatchInventorySkuFinancialsMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchInventorySkuFinancials>>,
+    TError,
+    { sku: string; data: BodyType<InventorySkuFinancialsPatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof patchInventorySkuFinancials>>,
+  TError,
+  { sku: string; data: BodyType<InventorySkuFinancialsPatchRequest> },
+  TContext
+> => {
+  const mutationKey = ["patchInventorySkuFinancials"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof patchInventorySkuFinancials>>,
+    { sku: string; data: BodyType<InventorySkuFinancialsPatchRequest> }
+  > = (props) => {
+    const { sku, data } = props ?? {};
+
+    return patchInventorySkuFinancials(sku, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PatchInventorySkuFinancialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof patchInventorySkuFinancials>>
+>;
+export type PatchInventorySkuFinancialsMutationBody =
+  BodyType<InventorySkuFinancialsPatchRequest>;
+export type PatchInventorySkuFinancialsMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Salvar imposto e preço de compra por SKU
+ */
+export const usePatchInventorySkuFinancials = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchInventorySkuFinancials>>,
+    TError,
+    { sku: string; data: BodyType<InventorySkuFinancialsPatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof patchInventorySkuFinancials>>,
+  TError,
+  { sku: string; data: BodyType<InventorySkuFinancialsPatchRequest> },
+  TContext
+> => {
+  return useMutation(getPatchInventorySkuFinancialsMutationOptions(options));
+};
 
 /**
  * Atualiza sku_mandate_inventory e aplica a quantidade em todos os anúncios não Full com o mesmo SKU nas contas do usuário.

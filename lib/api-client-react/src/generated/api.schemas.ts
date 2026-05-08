@@ -150,6 +150,26 @@ export interface InventorySearchItem {
   representativeProductId: string;
   /** Quantidade de anúncios não Full com este SKU */
   listingCount: number;
+  /** Percentual de imposto (0–100) salvo pelo usuário */
+  taxPercent?: number | null;
+  /** Preço de compra de referência (BRL) */
+  purchasePrice?: number | null;
+}
+
+/**
+ * Pelo menos uma propriedade deve ser enviada.
+ */
+export interface InventorySkuFinancialsPatchRequest {
+  /** Percentual de imposto (0–100); null remove o valor */
+  taxPercent?: number | null;
+  /** Preço de compra em BRL; null remove o valor */
+  purchasePrice?: number | null;
+}
+
+export interface InventorySkuFinancialsResponse {
+  sku: string;
+  taxPercent?: number | null;
+  purchasePrice?: number | null;
 }
 
 export interface InventorySearchResponse {

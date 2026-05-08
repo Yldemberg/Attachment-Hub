@@ -19,4 +19,8 @@ export interface InventorySearchItem {
   representativeProductId: string;
   /** Quantidade de anúncios não Full com este SKU */
   listingCount: number;
+  /** Percentual de imposto (0–100) salvo pelo usuário */
+  taxPercent?: number | null;
+  /** Preço de compra de referência (BRL) */
+  purchasePrice?: number | null;
 }

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
-import { productsTable, accountsTable, skuMandateInventoryTable } from "@workspace/db/schema";
+import { productsTable, accountsTable, skuMandateInventoryTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
@@ -130,17 +130,42 @@ router.get("/inventory/search", ...auth, async (req, res) => {
             );
     const mandateMap = Object.fromEntries(mandateRows.map((m) => [m.sku, m.quantity]));
 
+    const financialRows =
+      skus.length === 0
+        ? []
+        : await db
+            .select()
+            .from(inventorySkuFinancialsTable)
+            .where(
+              and(
+                eq(inventorySkuFinancialsTable.userId, req.user!.id),
+                inArray(inventorySkuFinancialsTable.sku, skus),
+              ),
+            );
+    const financialMap = Object.fromEntries(
+      financialRows.map((f) => [
+        f.sku,
+        {
+          taxPercent: f.taxPercent != null ? Number(f.taxPercent) : null,
+          purchasePrice: f.purchasePrice != null ? Number(f.purchasePrice) : null,
+        },
+      ]),
+    );
+
     const qLower = q.trim().toLowerCase();
     const data = skus.map((sku) => {
       const list = bySku.get(sku)!;
       const exactSku = list.find((r) => r.sku?.toLowerCase() === qLower);
       const rep = exactSku ?? list[0];
       const mandateQty = mandateMap[sku];
+      const fin = financialMap[sku];
       const titleShort = shortTitle(rep.title);
       const varLabel = variationLabelFromProduct(rep.variationsJson, sku, titleShort);
       return {
         sku,
         mandateQuantity: mandateQty ?? null,
+        taxPercent: fin?.taxPercent ?? null,
+        purchasePrice: fin?.purchasePrice ?? null,
         thumbnail: rep.thumbnail ?? null,
         titleShort,
         variationLabel: varLabel,
@@ -154,6 +179,122 @@ router.get("/inventory/search", ...auth, async (req, res) => {
     res.json({ data });
   } catch (err) {
     req.log.error({ err }, "inventory search failed");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+/** PATCH /inventory/sku/:sku/financials — imposto (%) e preço de compra por SKU (persistência para relatórios). */
+router.patch("/inventory/sku/:sku/financials", ...auth, async (req, res) => {
+  try {
+    const rawSku = typeof req.params.sku === "string" ? req.params.sku : "";
+    let sku = rawSku;
+    try {
+      sku = decodeURIComponent(rawSku);
+    } catch {
+      sku = rawSku;
+    }
+    sku = sku.trim();
+    if (!sku) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "sku é obrigatório" } });
+      return;
+    }
+
+    const body = req.body as Partial<{ taxPercent: number | null; purchasePrice: number | null }>;
+    if (body.taxPercent !== undefined && body.taxPercent !== null) {
+      if (typeof body.taxPercent !== "number" || !Number.isFinite(body.taxPercent)) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "taxPercent deve ser número ou null" } });
+        return;
+      }
+      if (body.taxPercent < 0 || body.taxPercent > 100) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "taxPercent deve estar entre 0 e 100" } });
+        return;
+      }
+    }
+    if (body.purchasePrice !== undefined && body.purchasePrice !== null) {
+      if (typeof body.purchasePrice !== "number" || !Number.isFinite(body.purchasePrice)) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "purchasePrice deve ser número ou null" } });
+        return;
+      }
+      if (body.purchasePrice < 0) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "purchasePrice deve ser >= 0" } });
+        return;
+      }
+    }
+
+    if (body.taxPercent === undefined && body.purchasePrice === undefined) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe taxPercent e/ou purchasePrice" } });
+      return;
+    }
+
+    const db = getDb();
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhuma conta ativa" } });
+      return;
+    }
+
+    const [allowed] = await db
+      .select({ id: productsTable.id })
+      .from(productsTable)
+      .where(
+        and(
+          inArray(productsTable.accountId, accountIds),
+          eq(productsTable.sku, sku),
+          eq(productsTable.isFull, false),
+        ),
+      )
+      .limit(1);
+
+    if (!allowed) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(inventorySkuFinancialsTable)
+      .where(
+        and(
+          eq(inventorySkuFinancialsTable.userId, req.user!.id),
+          eq(inventorySkuFinancialsTable.sku, sku),
+        ),
+      )
+      .limit(1);
+
+    let taxPercent = existing?.taxPercent != null ? Number(existing.taxPercent) : null;
+    let purchasePrice = existing?.purchasePrice != null ? Number(existing.purchasePrice) : null;
+
+    if (body.taxPercent !== undefined) {
+      taxPercent = body.taxPercent;
+    }
+    if (body.purchasePrice !== undefined) {
+      purchasePrice = body.purchasePrice;
+    }
+
+    await db
+      .insert(inventorySkuFinancialsTable)
+      .values({
+        userId: req.user!.id,
+        sku,
+        taxPercent: taxPercent !== null ? String(taxPercent) : null,
+        purchasePrice: purchasePrice !== null ? String(purchasePrice) : null,
+      })
+      .onConflictDoUpdate({
+        target: [inventorySkuFinancialsTable.userId, inventorySkuFinancialsTable.sku],
+        set: {
+          taxPercent: taxPercent !== null ? String(taxPercent) : null,
+          purchasePrice: purchasePrice !== null ? String(purchasePrice) : null,
+          updatedAt: new Date(),
+        },
+      });
+
+    res.json({
+      sku,
+      taxPercent,
+      purchasePrice,
+    });
+  } catch (err) {
+    req.log.error({ err }, "inventory sku financials patch failed");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });
