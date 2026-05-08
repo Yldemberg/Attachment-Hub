@@ -440,10 +440,12 @@ paths:
       parameters:
         - name: query
           in: query
-          required: true
+          required: false
           schema:
             type: string
-          description: Texto ou código de barras / SKU
+          description: >-
+            Texto ou código de barras / SKU. Se omitido ou vazio, retorna todos os SKUs
+            de anúncios não Full (lista para o inventário geral).
       responses:
         "200":
           description: Resultados agrupados por SKU

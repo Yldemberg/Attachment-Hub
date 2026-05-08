@@ -498,7 +498,7 @@ export type SearchInventoryParams = {
   /**
    * Texto ou código de barras / SKU
    */
-  query: string;
+  query?: string;
 };
 
 export type ListOrdersParams = {

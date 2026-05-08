@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useSearchInventory,
   useAdjustMandateInventory,
@@ -157,10 +157,13 @@ function BarcodeScanDialog({
 
 const SEARCH_DEBOUNCE_MS = 320;
 
+const ALL_SKUS_PARAMS = {} as const;
+
 export default function GeneralInventory() {
   const [input, setInput] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState<InventorySearchItem | null>(null);
+  const [skuPickerOpen, setSkuPickerOpen] = useState(false);
   const [operation, setOperation] = useState<Operation>("set");
   const [amountStr, setAmountStr] = useState("1");
   const [scanOpen, setScanOpen] = useState(false);
@@ -192,6 +195,26 @@ export default function GeneralInventory() {
       enabled: debouncedQuery.length > 0,
     },
   });
+
+  const allSkusQuery = useSearchInventory(ALL_SKUS_PARAMS, {
+    query: {
+      queryKey: getSearchInventoryQueryKey(ALL_SKUS_PARAMS),
+      staleTime: 60_000,
+      enabled: skuPickerOpen,
+    },
+  });
+
+  const filteredPickerSkus = useMemo(() => {
+    const items = allSkusQuery.data?.data ?? [];
+    const needle = input.trim().toLowerCase();
+    if (!needle) return items;
+    return items.filter(
+      (it) =>
+        it.sku.toLowerCase().includes(needle) ||
+        it.titleShort.toLowerCase().includes(needle) ||
+        (it.variationLabel?.toLowerCase().includes(needle) ?? false),
+    );
+  }, [allSkusQuery.data, input]);
 
   const { mutate: adjust, isPending: adjusting } = useAdjustMandateInventory({
     mutation: {
@@ -364,18 +387,94 @@ export default function GeneralInventory() {
             SKU, descrição, código de barras ou MLB
           </Label>
           <div className="flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-center min-[480px]:gap-2">
-            <Input
-              id="inv-search"
-              ref={searchInputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") runSearch();
+            <div
+              className="relative w-full min-[480px]:flex-1 min-[480px]:min-w-0"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setSkuPickerOpen(false);
+                }
               }}
-              placeholder="Ex.: K12MeCMe ou título do produto"
-              className="h-10 text-sm w-full min-[480px]:flex-1 min-[480px]:min-w-0"
-              autoComplete="off"
-            />
+            >
+              <Input
+                id="inv-search"
+                ref={searchInputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onFocus={() => setSkuPickerOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") runSearch();
+                  if (e.key === "Escape") setSkuPickerOpen(false);
+                }}
+                placeholder="Ex.: K12MeCMe ou título do produto"
+                className="h-10 text-sm w-full"
+                autoComplete="off"
+                aria-expanded={skuPickerOpen}
+                aria-haspopup="listbox"
+                role="combobox"
+              />
+              {skuPickerOpen && (
+                <div
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+                  role="listbox"
+                  aria-label="SKUs disponíveis"
+                >
+                  {allSkusQuery.isLoading && (
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      Carregando SKUs…
+                    </div>
+                  )}
+                  {allSkusQuery.isError && (
+                    <p className="px-3 py-2 text-sm text-destructive">Não foi possível carregar a lista de SKUs.</p>
+                  )}
+                  {!allSkusQuery.isLoading &&
+                    !allSkusQuery.isError &&
+                    filteredPickerSkus.length === 0 && (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum SKU encontrado.</p>
+                    )}
+                  {!allSkusQuery.isLoading &&
+                    !allSkusQuery.isError &&
+                    filteredPickerSkus.map((item) => (
+                      <button
+                        key={item.sku}
+                        type="button"
+                        role="option"
+                        className="flex w-full gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setInput(item.sku);
+                          flushSearchNow(item.sku);
+                          setSelected(item);
+                          setSkuPickerOpen(false);
+                        }}
+                      >
+                        {item.thumbnail ? (
+                          <img
+                            src={item.thumbnail}
+                            alt=""
+                            className="size-9 shrink-0 rounded-md border border-border bg-muted object-cover"
+                          />
+                        ) : (
+                          <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted">
+                            <Package className="h-4 w-4 text-muted-foreground/50" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-[10px] text-muted-foreground">{item.sku}</p>
+                          <p className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
+                            {item.titleShort}
+                          </p>
+                          {item.variationLabel && (
+                            <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
+                              {item.variationLabel}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2 w-full min-[480px]:w-auto min-[480px]:shrink-0">
               <Button
                 type="button"
@@ -401,7 +500,8 @@ export default function GeneralInventory() {
           </div>
           {!selected && (
             <p className="text-[10px] text-muted-foreground leading-snug">
-              Resultados aparecem enquanto você digita. Leitor USB: foco no campo e escaneie (Enter força busca imediata).
+              Toque no campo de busca para abrir a lista de SKUs (filtre digitando). Resultados detalhados aparecem
+              enquanto você digita. Leitor USB: foco no campo e escaneie (Enter força busca imediata).
             </p>
           )}
         </div>

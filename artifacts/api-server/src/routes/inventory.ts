@@ -68,11 +68,8 @@ function shortTitle(title: string | null | undefined, max = 72): string {
 router.get("/inventory/search", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const { query: q } = req.query as Record<string, string>;
-    if (!q || !q.trim()) {
-      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Parâmetro query é obrigatório" } });
-      return;
-    }
+    const qRaw = typeof req.query.query === "string" ? req.query.query : "";
+    const q = qRaw.trim();
 
     const accountIds = await getUserAccountIds(req.user!.id);
     if (accountIds.length === 0) {
@@ -80,39 +77,83 @@ router.get("/inventory/search", ...auth, async (req, res) => {
       return;
     }
 
-    const tokens = q
-      .trim()
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-
-    const conditions = [
+    const baseScope = [
       inArray(productsTable.accountId, accountIds),
       eq(productsTable.isFull, false),
       isNotNull(productsTable.sku),
     ];
 
-    for (const token of tokens) {
-      const pat = `%${escapeIlikePattern(token)}%`;
-      conditions.push(
-        sql`(
+    type Row = (typeof productsTable.$inferSelect);
+    let bySku: Map<string, Row[]>;
+    let listingCountOverride: Map<string, number> | null = null;
+
+    if (!q) {
+      const whereBase = and(...baseScope);
+      const agg = await db
+        .select({
+          sku: productsTable.sku,
+          repId: sql<string>`min(${productsTable.id})::text`,
+          listingCount: sql<number>`cast(count(*) as int)`,
+        })
+        .from(productsTable)
+        .where(whereBase)
+        .groupBy(productsTable.sku);
+
+      if (agg.length === 0) {
+        res.json({ data: [] });
+        return;
+      }
+
+      const repIds = [...new Set(agg.map((a) => a.repId))];
+      const reps = await db.select().from(productsTable).where(inArray(productsTable.id, repIds));
+      const repById = new Map(reps.map((r) => [String(r.id), r]));
+
+      bySku = new Map();
+      listingCountOverride = new Map();
+      for (const row of agg) {
+        const sku = row.sku!;
+        const rep = repById.get(row.repId);
+        if (!rep) {
+          req.log.warn({ sku, repId: row.repId }, "inventory list-all: linha representativa ausente");
+          continue;
+        }
+        bySku.set(sku, [rep]);
+        listingCountOverride.set(sku, row.listingCount);
+      }
+
+      if (bySku.size === 0) {
+        res.json({ data: [] });
+        return;
+      }
+    } else {
+      const tokens = q
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const conditions = [...baseScope];
+      for (const token of tokens) {
+        const pat = `%${escapeIlikePattern(token)}%`;
+        conditions.push(
+          sql`(
             coalesce(${productsTable.title}, '') ILIKE ${pat} ESCAPE '\\'
             OR coalesce(${productsTable.sku}, '') ILIKE ${pat} ESCAPE '\\'
             OR ${productsTable.mlItemId} ILIKE ${pat} ESCAPE '\\'
             OR coalesce(${productsTable.variationsJson}::text, '') ILIKE ${pat} ESCAPE '\\'
           )`,
-      );
-    }
+        );
+      }
 
-    const where = and(...conditions);
-    const rows = await db.select().from(productsTable).where(where).limit(120);
+      const where = and(...conditions);
+      const rows = await db.select().from(productsTable).where(where).limit(120);
 
-    const bySku = new Map<string, typeof rows>();
-    for (const row of rows) {
-      const sku = row.sku!;
-      const list = bySku.get(sku) ?? [];
-      list.push(row);
-      bySku.set(sku, list);
+      bySku = new Map();
+      for (const row of rows) {
+        const sku = row.sku!;
+        const list = bySku.get(sku) ?? [];
+        list.push(row);
+        bySku.set(sku, list);
+      }
     }
 
     const skus = [...bySku.keys()];
@@ -162,10 +203,10 @@ router.get("/inventory/search", ...auth, async (req, res) => {
       ]),
     );
 
-    const qLower = q.trim().toLowerCase();
+    const qLower = q.toLowerCase();
     const data = skus.map((sku) => {
       const list = bySku.get(sku)!;
-      const exactSku = list.find((r) => r.sku?.toLowerCase() === qLower);
+      const exactSku = q ? list.find((r) => r.sku?.toLowerCase() === qLower) : undefined;
       const rep = exactSku ?? list[0];
       const mandateQty = mandateMap[sku];
       const fin = financialMap[sku];
@@ -181,7 +222,7 @@ router.get("/inventory/search", ...auth, async (req, res) => {
         variationLabel: varLabel,
         currentStock: rep.availableQuantity,
         representativeProductId: rep.id,
-        listingCount: list.length,
+        listingCount: listingCountOverride?.get(sku) ?? list.length,
       };
     });
 

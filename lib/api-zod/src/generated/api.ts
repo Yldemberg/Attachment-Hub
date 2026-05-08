@@ -405,7 +405,7 @@ export const UpdateStockBySkuResponse = zod.object({
  * @summary Buscar SKUs para inventário geral
  */
 export const SearchInventoryQueryParams = zod.object({
-  query: zod.coerce.string().describe("Texto ou código de barras \/ SKU"),
+  query: zod.coerce.string().optional().describe("Texto ou código de barras \/ SKU"),
 });
 
 export const SearchInventoryResponse = zod.object({

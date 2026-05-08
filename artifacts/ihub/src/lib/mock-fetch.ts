@@ -368,26 +368,25 @@ export function installMockFetch(): void {
 
     if (path === "/inventory/search" && method === "GET") {
       const q = params.get("query")?.trim() ?? "";
-      if (!q) {
-        return jsonResponse({ error: { code: "BAD_REQUEST", message: "Parâmetro query é obrigatório" } }, 400);
-      }
-      const tokens = q
-        .toLowerCase()
-        .split(/\s+/)
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
       let filtered = _mockProducts.filter((p) => !p.isFull && !!p.sku);
-      filtered = filtered.filter((p) => {
-        const hay = [
-          p.title ?? "",
-          p.sku ?? "",
-          p.mlItemId ?? "",
-          JSON.stringify((p as Record<string, unknown>).variationsJson ?? ""),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return tokens.every((t) => hay.includes(t));
-      });
+      if (q) {
+        const tokens = q
+          .toLowerCase()
+          .split(/\s+/)
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+        filtered = filtered.filter((p) => {
+          const hay = [
+            p.title ?? "",
+            p.sku ?? "",
+            p.mlItemId ?? "",
+            JSON.stringify((p as Record<string, unknown>).variationsJson ?? ""),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return tokens.every((t) => hay.includes(t));
+        });
+      }
       const bySku = new Map<string, DemoProduct[]>();
       for (const p of filtered) {
         const sku = p.sku as string;
