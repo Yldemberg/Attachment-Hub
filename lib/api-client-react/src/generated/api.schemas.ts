@@ -376,10 +376,12 @@ export interface SalesReportRow {
   referenceDate: string;
   mlOrderId?: number | null;
   accountNickname?: string | null;
-  totalAmount?: number | null;
-  currencyId?: string | null;
-  buyerNickname?: string | null;
-  status?: string | null;
+  orderTotal?: number | null;
+  productPurchaseTotal: number;
+  marketplaceFeesTotal: number;
+  shippingTotal: number;
+  taxTotal: number;
+  profit: number;
 }
 
 export interface SalesReportResponse {

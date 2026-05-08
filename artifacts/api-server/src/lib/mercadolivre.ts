@@ -718,6 +718,11 @@ export type MlOrder = {
     quantity: number;
     unit_price: number;
   }>;
+  /** Presente em GET /orders/:id — taxas e frete por pagamento. */
+  payments?: Array<{
+    marketplace_fee?: number | null;
+    shipping_cost?: number | null;
+  }>;
 };
 
 /**

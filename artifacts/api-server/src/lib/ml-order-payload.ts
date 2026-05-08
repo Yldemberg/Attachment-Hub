@@ -4,6 +4,35 @@ import { productsTable } from "@workspace/db/schema";
 import type { MlOrder } from "./mercadolivre";
 import { fetchMlShipmentOrderDetails } from "./mercadolivre";
 
+export type OrderReportFinancials = {
+  /** Soma unit_price × quantity dos itens (base para imposto estimado e lucro). */
+  itemsSubtotal: number;
+  /** Soma de marketplace_fee dos pagamentos. */
+  marketplaceFeesTotal: number;
+  /** Soma de shipping_cost dos pagamentos. */
+  shippingTotal: number;
+};
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+export function computeOrderReportFinancials(order: MlOrder): OrderReportFinancials {
+  const itemsSubtotal = order.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0);
+  const payments = order.payments ?? [];
+  let marketplaceFeesTotal = 0;
+  let shippingTotal = 0;
+  for (const p of payments) {
+    marketplaceFeesTotal += Number(p.marketplace_fee ?? 0);
+    shippingTotal += Number(p.shipping_cost ?? 0);
+  }
+  return {
+    itemsSubtotal: roundMoney(itemsSubtotal),
+    marketplaceFeesTotal: roundMoney(marketplaceFeesTotal),
+    shippingTotal: roundMoney(shippingTotal),
+  };
+}
+
 export type StoredMlOrderItemsJsonRow = {
   item_id: string;
   title: string;
@@ -28,6 +57,7 @@ export async function buildMlOrderStoredPayload(
   itemsJson: StoredMlOrderItemsJsonRow[];
   shippingStatus: string | null;
   shippingSubstatus: string | null;
+  reportFinancials: OrderReportFinancials;
 }> {
   const db = getDb();
   const shipDetails = await fetchMlShipmentOrderDetails(accountId, order.shipping?.id);
@@ -61,5 +91,7 @@ export async function buildMlOrderStoredPayload(
     }),
   );
 
-  return { itemsJson, shippingStatus, shippingSubstatus };
+  const reportFinancials = computeOrderReportFinancials(order);
+
+  return { itemsJson, shippingStatus, shippingSubstatus, reportFinancials };
 }

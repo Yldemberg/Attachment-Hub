@@ -861,8 +861,10 @@ paths:
       tags: [dashboard]
       summary: Relatório de vendas por período
       description: >-
-        Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo)
-        está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+        Lista pedidos pagos/confirmados no período (data de referência America/Sao_Paulo).
+        Cada linha traz: total do pedido, preço de compra dos produtos (inventário), taxas e frete do ML
+        (gravados ao sincronizar o pedido), imposto estimado (% por SKU) e lucro
+        (subtotal dos itens − taxas − imposto − preço de compra). JSON, CSV, XLSX ou PDF.
       security:
         - bearerAuth: []
       parameters:
@@ -1710,19 +1712,32 @@ components:
         accountNickname:
           type: string
           nullable: true
-        totalAmount:
+        orderTotal:
           type: number
           nullable: true
-        currencyId:
-          type: string
-          nullable: true
-        buyerNickname:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
-      required: [referenceDate]
+          description: Total do pedido no ML (total_amount).
+        productPurchaseTotal:
+          type: number
+          description: Soma do preço de compra salvo no inventário × quantidade, por SKU.
+        marketplaceFeesTotal:
+          type: number
+          description: Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido).
+        shippingTotal:
+          type: number
+          description: Soma de shipping_cost nos pagamentos.
+        taxTotal:
+          type: number
+          description: Imposto estimado (% por SKU sobre o subtotal de cada linha).
+        profit:
+          type: number
+          description: Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos.
+      required:
+        - referenceDate
+        - productPurchaseTotal
+        - marketplaceFeesTotal
+        - shippingTotal
+        - taxTotal
+        - profit
 
     SalesReportResponse:
       type: object

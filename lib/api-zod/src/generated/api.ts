@@ -953,8 +953,8 @@ export const GetSalesReportQueryParams = zod.object({
 
 export const GetSalesReportResponse = zod.object({
   period: zod.object({
-    dateFrom: zod.coerce.date(),
-    dateTo: zod.coerce.date(),
+    dateFrom: zod.string(),
+    dateTo: zod.string(),
   }),
   summary: zod.object({
     orderCount: zod.number(),
@@ -962,13 +962,15 @@ export const GetSalesReportResponse = zod.object({
   }),
   rows: zod.array(
     zod.object({
-      referenceDate: zod.coerce.date(),
+      referenceDate: zod.string(),
       mlOrderId: zod.number().nullish(),
       accountNickname: zod.string().nullish(),
-      totalAmount: zod.number().nullish(),
-      currencyId: zod.string().nullish(),
-      buyerNickname: zod.string().nullish(),
-      status: zod.string().nullish(),
+      orderTotal: zod.number().nullish(),
+      productPurchaseTotal: zod.number(),
+      marketplaceFeesTotal: zod.number(),
+      shippingTotal: zod.number(),
+      taxTotal: zod.number(),
+      profit: zod.number(),
     }),
   ),
 });

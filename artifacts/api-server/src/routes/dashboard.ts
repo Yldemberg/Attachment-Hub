@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
-import { ordersTable, questionsTable, productsTable, accountsTable } from "@workspace/db/schema";
+import { ordersTable, questionsTable, productsTable, accountsTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
 import { eq, and, inArray, lt, sql, desc } from "drizzle-orm";
 import { getUserAccountIds } from "../lib/account-scope";
 import {
@@ -13,12 +13,10 @@ import {
   isPaidOrderThisCalendarMonthSp,
   orderSortInstant,
 } from "../lib/ml-order-report";
-import {
-  buildSalesReportCsv,
-  buildSalesReportPdf,
-  buildSalesReportXlsx,
-  type SalesReportExportRow,
-} from "../lib/sales-report-export";
+import { buildSalesReportCsv, buildSalesReportPdf, buildSalesReportXlsx } from "../lib/sales-report-export";
+import type { SalesReportExportRow } from "../lib/sales-report-export";
+import { buildSalesReportExportRow, type SalesReportDbDetailRow } from "../lib/sales-report-row-build";
+import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -269,16 +267,15 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
         .from(ordersTable)
         .where(periodWhere),
       accountIds.length === 0
-        ? Promise.resolve([] as { referenceDate: string; mlOrderId: bigint | null; totalAmount: string | null; currencyId: string | null; buyerNickname: string | null; status: string | null; accountNickname: string | null }[])
+        ? Promise.resolve([] as SalesReportDbDetailRow[])
         : db
             .select({
               referenceDate: refYmd,
               mlOrderId: ordersTable.mlOrderId,
               totalAmount: ordersTable.totalAmount,
-              currencyId: ordersTable.currencyId,
-              buyerNickname: ordersTable.buyerNickname,
-              status: ordersTable.status,
               accountNickname: accountsTable.mlNickname,
+              itemsJson: ordersTable.itemsJson,
+              reportFinancials: ordersTable.reportFinancials,
             })
             .from(ordersTable)
             .innerJoin(accountsTable, eq(ordersTable.accountId, accountsTable.id))
@@ -291,24 +288,57 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       revenue: Number(summaryRow[0]?.revenue ?? 0),
     };
 
-    const exportRows: SalesReportExportRow[] = detailRows.map((r) => ({
-      referenceDate: r.referenceDate,
-      mlOrderId: r.mlOrderId !== null ? String(r.mlOrderId) : "",
-      accountNickname: r.accountNickname,
-      totalAmount: r.totalAmount !== null ? Number(r.totalAmount) : null,
-      currencyId: r.currencyId,
-      buyerNickname: r.buyerNickname,
-      status: r.status,
-    }));
+    const allSkus = new Set<string>();
+    for (const r of detailRows) {
+      const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
+        ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
+        : [];
+      for (const it of items) {
+        if (it.sku) allSkus.add(it.sku);
+      }
+    }
 
-    const jsonRows = detailRows.map((r) => ({
-      referenceDate: r.referenceDate,
-      mlOrderId: r.mlOrderId !== null ? Number(r.mlOrderId) : null,
-      accountNickname: r.accountNickname,
-      totalAmount: r.totalAmount !== null ? Number(r.totalAmount) : null,
-      currencyId: r.currencyId,
-      buyerNickname: r.buyerNickname,
-      status: r.status,
+    let finMap = new Map<string, { taxPercent: number | null; purchasePrice: number | null }>();
+    if (allSkus.size > 0) {
+      try {
+        const skuList = [...allSkus];
+        const finRows = await db
+          .select()
+          .from(inventorySkuFinancialsTable)
+          .where(
+            and(
+              eq(inventorySkuFinancialsTable.userId, req.user!.id),
+              inArray(inventorySkuFinancialsTable.sku, skuList),
+            ),
+          );
+        finMap = new Map(
+          finRows.map((row) => [
+            row.sku,
+            {
+              taxPercent: row.taxPercent != null ? Number(row.taxPercent) : null,
+              purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : null,
+            },
+          ]),
+        );
+      } catch (err) {
+        req.log.warn({ err }, "inventory_sku_financials indisponível no relatório de vendas");
+      }
+    }
+
+    const exportRows: SalesReportExportRow[] = detailRows.map((r) =>
+      buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap),
+    );
+
+    const jsonRows = exportRows.map((e) => ({
+      referenceDate: e.referenceDate,
+      mlOrderId: e.mlOrderId ? Number(e.mlOrderId) : null,
+      accountNickname: e.accountNickname,
+      orderTotal: e.orderTotal,
+      productPurchaseTotal: e.productPurchaseTotal,
+      marketplaceFeesTotal: e.marketplaceFeesTotal,
+      shippingTotal: e.shippingTotal,
+      taxTotal: e.taxTotal,
+      profit: e.profit,
     }));
 
     const periodPayload = { dateFrom: date_from, dateTo: date_to };

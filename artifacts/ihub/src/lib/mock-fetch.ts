@@ -133,18 +133,35 @@ export function installMockFetch(): void {
           return { ref, o };
         })
         .filter((x) => x.ref >= dateFrom && x.ref <= dateTo)
-        .map((x) => ({
-          referenceDate: x.ref,
-          mlOrderId: Number(x.o.mlOrderId),
-          accountNickname: x.o.account?.mlNickname ?? null,
-          totalAmount: x.o.totalAmount as number,
-          currencyId: x.o.currencyId ?? "BRL",
-          buyerNickname: null as string | null,
-          status: x.o.status,
-        }));
+        .map((x) => {
+          const o = x.o;
+          const items = (o.itemsJson as { price: number; quantity: number; sku?: string | null }[]) ?? [];
+          const lineSubtotal = Math.round(items.reduce((s, it) => s + it.price * it.quantity, 0) * 100) / 100;
+          const snap = (o as { reportFinancials?: { itemsSubtotal: number; marketplaceFeesTotal: number; shippingTotal: number } })
+            .reportFinancials;
+          const itemsSubtotal = snap?.itemsSubtotal ?? lineSubtotal;
+          const marketplaceFeesTotal =
+            snap?.marketplaceFeesTotal ?? Math.round(lineSubtotal * 0.12 * 100) / 100;
+          const shippingTotal = snap?.shippingTotal ?? 14.9;
+          const productPurchaseTotal = Math.round(lineSubtotal * 0.42 * 100) / 100;
+          const taxTotal = Math.round(lineSubtotal * 0.06 * 100) / 100;
+          const profit =
+            Math.round((itemsSubtotal - marketplaceFeesTotal - taxTotal - productPurchaseTotal) * 100) / 100;
+          return {
+            referenceDate: x.ref,
+            mlOrderId: Number(o.mlOrderId),
+            accountNickname: o.account?.mlNickname ?? null,
+            orderTotal: o.totalAmount as number,
+            productPurchaseTotal,
+            marketplaceFeesTotal,
+            shippingTotal,
+            taxTotal,
+            profit,
+          };
+        });
       const summary = {
         orderCount: rows.length,
-        revenue: rows.reduce((s, r) => s + (r.totalAmount ?? 0), 0),
+        revenue: rows.reduce((s, r) => s + (r.orderTotal ?? 0), 0),
       };
       if (format === "json") {
         return jsonResponse({
@@ -154,10 +171,11 @@ export function installMockFetch(): void {
         });
       }
       if (format === "csv") {
-        const header = "Data,Pedido ML,Conta,Valor,Moeda,Comprador,Status";
+        const header =
+          "Data,Número do Pedido,Conta,Total da Compra,Preço de Compra do Produto,Total de taxas do Mercado Livre,Frete,Imposto,Lucro";
         const lines = rows.map(
           (r) =>
-            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.totalAmount ?? ""},${r.currencyId ?? ""},,"${r.status ?? ""}"`,
+            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.orderTotal ?? ""},${r.productPurchaseTotal},${r.marketplaceFeesTotal},${r.shippingTotal},${r.taxTotal},${r.profit}`,
         );
         const body = "\uFEFF" + [header, ...lines].join("\n");
         return new Response(body, {

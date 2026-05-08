@@ -7,11 +7,13 @@
  */
 
 export interface SalesReportRow {
-  referenceDate: Date;
-  mlOrderId?: bigint | null;
+  referenceDate: string;
+  mlOrderId?: number | null;
   accountNickname?: string | null;
-  totalAmount?: number | null;
-  currencyId?: string | null;
-  buyerNickname?: string | null;
-  status?: string | null;
+  orderTotal?: number | null;
+  productPurchaseTotal: number;
+  marketplaceFeesTotal: number;
+  shippingTotal: number;
+  taxTotal: number;
+  profit: number;
 }

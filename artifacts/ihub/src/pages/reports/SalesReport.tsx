@@ -254,12 +254,6 @@ export default function SalesReport() {
     }
   };
 
-  const statusLabel = (s?: string | null) => {
-    if (s === "paid") return "Pago";
-    if (s === "confirmed") return "Confirmado";
-    return s ?? "—";
-  };
-
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -270,8 +264,9 @@ export default function SalesReport() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Relatório de vendas</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Pedidos pagos e confirmados por data de referência (horário de Brasília). Gere a prévia na tela ou
-              exporte em CSV, Excel ou PDF.
+              Pedidos pagos e confirmados por data de referência (horário de Brasília). Colunas: totais do pedido, custos
+              cadastrados no inventário, taxas e frete vindos do Mercado Livre (após sincronizar pedidos) e lucro estimado:
+              subtotal dos itens − taxas − imposto − preço de compra.
             </p>
           </div>
         </div>
@@ -385,36 +380,58 @@ export default function SalesReport() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border overflow-hidden">
+            <div className="rounded-lg border border-border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">Data</TableHead>
-                    <TableHead className="text-xs">Pedido ML</TableHead>
-                    <TableHead className="text-xs">Conta</TableHead>
-                    <TableHead className="text-xs text-right">Valor</TableHead>
-                    <TableHead className="text-xs">Comprador</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Data</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Nº pedido</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap min-w-[100px]">Conta</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Total compra</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">P. compra</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Taxas ML</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Frete</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Imposto</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Lucro</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {report.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                         Nenhuma venda neste período.
                       </TableCell>
                     </TableRow>
                   ) : (
                     report.rows.map((r, i) => (
                       <TableRow key={`${r.mlOrderId}-${r.referenceDate}-${i}`}>
-                        <TableCell className="text-xs font-mono">{formatIsoDatePtBr(r.referenceDate)}</TableCell>
-                        <TableCell className="text-xs font-mono">{r.mlOrderId ?? "—"}</TableCell>
-                        <TableCell className="text-xs max-w-[140px] truncate">{r.accountNickname ?? "—"}</TableCell>
-                        <TableCell className="text-xs text-right tabular-nums">
-                          {r.totalAmount != null ? formatCurrency(r.totalAmount) : "—"}
+                        <TableCell className="text-xs font-mono whitespace-nowrap">
+                          {formatIsoDatePtBr(r.referenceDate)}
                         </TableCell>
-                        <TableCell className="text-xs max-w-[160px] truncate">{r.buyerNickname ?? "—"}</TableCell>
-                        <TableCell className="text-xs">{statusLabel(r.status)}</TableCell>
+                        <TableCell className="text-xs font-mono whitespace-nowrap">{r.mlOrderId ?? "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[140px] truncate">{r.accountNickname ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {r.orderTotal != null ? formatCurrency(r.orderTotal) : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {formatCurrency(r.productPurchaseTotal)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {formatCurrency(r.marketplaceFeesTotal)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {formatCurrency(r.shippingTotal)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {formatCurrency(r.taxTotal)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-xs text-right tabular-nums font-medium whitespace-nowrap ${
+                            r.profit < 0 ? "text-red-600" : "text-emerald-700"
+                          }`}
+                        >
+                          {formatCurrency(r.profit)}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}

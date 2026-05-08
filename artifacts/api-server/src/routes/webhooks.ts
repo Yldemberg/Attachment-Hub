@@ -176,7 +176,8 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         if (!orderId) return;
 
         const order = await ml.get<MlOrder>(account.id, `/orders/${orderId}`);
-        const { itemsJson, shippingStatus, shippingSubstatus } = await buildMlOrderStoredPayload(account.id, order);
+        const { itemsJson, shippingStatus, shippingSubstatus, reportFinancials } =
+          await buildMlOrderStoredPayload(account.id, order);
 
         await db
           .insert(ordersTable)
@@ -194,6 +195,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             dateCreated: order.date_created ? new Date(order.date_created) : null,
             dateClosed: order.date_closed ? new Date(order.date_closed) : null,
             itemsJson,
+            reportFinancials,
           })
           .onConflictDoUpdate({
             target: [ordersTable.accountId, ordersTable.mlOrderId],
@@ -203,6 +205,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               shippingSubstatus,
               dateClosed: order.date_closed ? new Date(order.date_closed) : null,
               itemsJson,
+              reportFinancials,
             },
           });
 

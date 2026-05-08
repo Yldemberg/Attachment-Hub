@@ -21,6 +21,8 @@ export const ordersTable = pgTable("orders", {
   dateCreated: timestamp("date_created", { withTimezone: true }),
   dateClosed: timestamp("date_closed", { withTimezone: true }),
   itemsJson: jsonb("items_json"),
+  /** Subtotal itens, taxas ML e frete (última sync/webhook). Ver `OrderReportFinancials`. */
+  reportFinancials: jsonb("report_financials"),
   /** True quando a baixa no mandate para venda nova (paid) já foi aplicada com sucesso. */
   mandateSaleApplied: boolean("mandate_sale_applied").default(false).notNull(),
   /** True quando o estorno no mandate por cancelamento pós-pago já foi aplicado com sucesso. */

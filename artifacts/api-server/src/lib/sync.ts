@@ -174,7 +174,8 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
     );
 
     for (const order of result.results) {
-      const { itemsJson, shippingStatus, shippingSubstatus } = await buildMlOrderStoredPayload(accountId, order);
+      const { itemsJson, shippingStatus, shippingSubstatus, reportFinancials } =
+        await buildMlOrderStoredPayload(accountId, order);
 
       await db
         .insert(ordersTable)
@@ -192,6 +193,7 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
           dateCreated: order.date_created ? new Date(order.date_created) : null,
           dateClosed: order.date_closed ? new Date(order.date_closed) : null,
           itemsJson,
+          reportFinancials,
         })
         .onConflictDoUpdate({
           target: [ordersTable.accountId, ordersTable.mlOrderId],
@@ -201,6 +203,7 @@ async function syncOrders(accountId: string, mlUserId: string): Promise<void> {
             shippingSubstatus,
             dateClosed: order.date_closed ? new Date(order.date_closed) : null,
             itemsJson,
+            reportFinancials,
           },
         });
 
