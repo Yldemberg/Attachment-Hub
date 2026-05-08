@@ -18,6 +18,7 @@ import Notifications from "@/pages/Notifications";
 import Integrations from "@/pages/Integrations";
 import Profile from "@/pages/Profile";
 import GeneralInventory from "@/pages/inventory/GeneralInventory";
+import SalesReport from "@/pages/reports/SalesReport";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,6 +77,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <GeneralInventory />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/sales">
+        <ProtectedRoute>
+          <AppLayout>
+            <SalesReport />
           </AppLayout>
         </ProtectedRoute>
       </Route>

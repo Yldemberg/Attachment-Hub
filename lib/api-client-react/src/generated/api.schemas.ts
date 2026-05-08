@@ -340,6 +340,32 @@ export interface SalesChartResponse {
   data: SalesChartDataPoint[];
 }
 
+export interface SalesReportPeriod {
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface SalesReportSummary {
+  orderCount: number;
+  revenue: number;
+}
+
+export interface SalesReportRow {
+  referenceDate: string;
+  mlOrderId?: number | null;
+  accountNickname?: string | null;
+  totalAmount?: number | null;
+  currencyId?: string | null;
+  buyerNickname?: string | null;
+  status?: string | null;
+}
+
+export interface SalesReportResponse {
+  period: SalesReportPeriod;
+  summary: SalesReportSummary;
+  rows: SalesReportRow[];
+}
+
 export interface MercadoLivreWebhookPayload {
   _id?: string;
   resource: string;
@@ -519,6 +545,26 @@ export const GetSalesChartPeriod = {
   "7d": "7d",
   "30d": "30d",
   "90d": "90d",
+} as const;
+
+export type GetSalesReportParams = {
+  date_from: string;
+  date_to: string;
+  account_id?: string;
+  /**
+   * Saída JSON (prévia) ou ficheiro para download
+   */
+  format?: GetSalesReportFormat;
+};
+
+export type GetSalesReportFormat =
+  (typeof GetSalesReportFormat)[keyof typeof GetSalesReportFormat];
+
+export const GetSalesReportFormat = {
+  json: "json",
+  csv: "csv",
+  xlsx: "xlsx",
+  pdf: "pdf",
 } as const;
 
 export type HandleMercadoLivreWebhook200 = {

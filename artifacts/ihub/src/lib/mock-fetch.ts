@@ -113,6 +113,61 @@ export function installMockFetch(): void {
       return jsonResponse(DEMO_SALES_CHART_30D);
     }
 
+    if (path === "/dashboard/sales-report") {
+      const dateFrom = params.get("date_from") ?? "";
+      const dateTo = params.get("date_to") ?? "";
+      const format = (params.get("format") ?? "json").toLowerCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        return jsonResponse(
+          { error: { code: "BAD_REQUEST", message: "date_from e date_to são obrigatórios (YYYY-MM-DD)" } },
+          400,
+        );
+      }
+      const paid = DEMO_ORDERS.filter((o) => o.status === "paid" || o.status === "confirmed");
+      const rows = paid
+        .map((o) => {
+          const created = typeof o.createdAt === "string" ? o.createdAt : String(o.createdAt);
+          const ref = created.slice(0, 10);
+          return { ref, o };
+        })
+        .filter((x) => x.ref >= dateFrom && x.ref <= dateTo)
+        .map((x) => ({
+          referenceDate: x.ref,
+          mlOrderId: Number(x.o.mlOrderId),
+          accountNickname: x.o.account?.mlNickname ?? null,
+          totalAmount: x.o.totalAmount as number,
+          currencyId: x.o.currencyId ?? "BRL",
+          buyerNickname: null as string | null,
+          status: x.o.status,
+        }));
+      const summary = {
+        orderCount: rows.length,
+        revenue: rows.reduce((s, r) => s + (r.totalAmount ?? 0), 0),
+      };
+      if (format === "json") {
+        return jsonResponse({
+          period: { dateFrom, dateTo },
+          summary,
+          rows,
+        });
+      }
+      if (format === "csv") {
+        const header = "Data,Pedido ML,Conta,Valor,Moeda,Comprador,Status";
+        const lines = rows.map(
+          (r) =>
+            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.totalAmount ?? ""},${r.currencyId ?? ""},,"${r.status ?? ""}"`,
+        );
+        const body = "\uFEFF" + [header, ...lines].join("\n");
+        return new Response(body, {
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename="relatorio-vendas_${dateFrom}_${dateTo}.csv"`,
+          },
+        });
+      }
+      return _originalFetch(input, init);
+    }
+
     if (path === "/products/low-stock") {
       const lowStock = _mockProducts.filter((p) => (p.availableQuantity ?? 0) < 5);
       return jsonResponse({ data: lowStock });

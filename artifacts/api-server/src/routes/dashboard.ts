@@ -3,46 +3,40 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { ordersTable, questionsTable, productsTable, accountsTable } from "@workspace/db/schema";
-import { eq, and, inArray, lt, sql } from "drizzle-orm";
+import { eq, and, inArray, lt, sql, desc } from "drizzle-orm";
+import { getUserAccountIds } from "../lib/account-scope";
+import {
+  PAID_ORDER_STATUSES,
+  ML_REPORT_TZ,
+  orderPaidLocalDateSp,
+  isPaidOrderTodaySp,
+  isPaidOrderThisCalendarMonthSp,
+  orderSortInstant,
+} from "../lib/ml-order-report";
+import {
+  buildSalesReportCsv,
+  buildSalesReportPdf,
+  buildSalesReportXlsx,
+  type SalesReportExportRow,
+} from "../lib/sales-report-export";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
-/** Status ML pós-pagamento (pagamento aprovado / pedido em preparação). */
-const PAID_ORDER_STATUSES = ["paid", "confirmed"] as const;
-
-/**
- * Fuso usado no painel do Mercado Livre para vendedores no Brasil.
- * Contagens por "dia" no Dashboard seguem o calendário deste fuso — não o TZ do servidor (muitas vezes UTC).
- */
-const ML_REPORT_TZ = "America/Sao_Paulo";
-
-/** Data civil (DATE) em ML_REPORT_TZ no instante do pagamento: fecha ML ou criação do pedido. */
-const orderPaidLocalDateSp = sql`
-  CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})) AS date)
-`;
-
-/** Pedido pago cuja data de referência cai no mesmo dia civil que "agora" no Brasil. */
-const isPaidOrderTodaySp = sql`
-  ${orderPaidLocalDateSp} = CAST(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, now()) AS date)
-`;
-
-/** Pedido pago no mês civil atual em ML_REPORT_TZ. */
-const isPaidOrderThisCalendarMonthSp = sql`
-  to_char(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, coalesce(${ordersTable.dateClosed}, ${ordersTable.dateCreated})), 'YYYY-MM')
-  = to_char(timezone(${sql.raw(`'${ML_REPORT_TZ}'`)}, now()), 'YYYY-MM')
-`;
-
-async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
-  const db = getDb();
-  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
-  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
-  const accounts = await db
-    .select({ id: accountsTable.id })
-    .from(accountsTable)
-    .where(and(...conditions));
-  return accounts.map((a) => a.id);
+function isIsoDateOnly(s: string | undefined): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
+
+/** Dias inclusivos entre duas datas só-em-YYYY-MM-DD (UTC date math). */
+function inclusiveDaySpan(dateFrom: string, dateTo: string): number {
+  const [yf, mf, df] = dateFrom.split("-").map(Number);
+  const [yt, mt, dt] = dateTo.split("-").map(Number);
+  const a = Date.UTC(yf, mf - 1, df);
+  const b = Date.UTC(yt, mt - 1, dt);
+  return Math.floor((b - a) / 86400000) + 1;
+}
+
+const MAX_REPORT_SPAN_DAYS = 366;
 
 router.get("/dashboard/summary", ...auth, async (req, res) => {
   try {
@@ -64,61 +58,61 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
       return;
     }
 
-    const [todaySalesRow, monthSalesRow, todayOrdersRow, monthOrdersRow, pendingOrdersRow, unansweredQRow, criticalStockRow] = await Promise.all([
-      db
-        .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
-        .from(ordersTable)
-        .where(and(
-          inArray(ordersTable.accountId, accountIds),
-          isPaidOrderTodaySp,
-          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
-        )),
-      db
-        .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
-        .from(ordersTable)
-        .where(and(
-          inArray(ordersTable.accountId, accountIds),
-          isPaidOrderThisCalendarMonthSp,
-          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
-        )),
-      db
-        .select({ count: sql<number>`cast(count(*) as int)` })
-        .from(ordersTable)
-        .where(and(
-          inArray(ordersTable.accountId, accountIds),
-          isPaidOrderTodaySp,
-          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
-        )),
-      db
-        .select({ count: sql<number>`cast(count(*) as int)` })
-        .from(ordersTable)
-        .where(and(
-          inArray(ordersTable.accountId, accountIds),
-          isPaidOrderThisCalendarMonthSp,
-          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
-        )),
-      db
-        .select({ count: sql<number>`cast(count(*) as int)` })
-        .from(ordersTable)
-        .where(and(
-          inArray(ordersTable.accountId, accountIds),
-          eq(ordersTable.status, "confirmed"),
-        )),
-      db
-        .select({ count: sql<number>`cast(count(*) as int)` })
-        .from(questionsTable)
-        .where(and(
-          inArray(questionsTable.accountId, accountIds),
-          eq(questionsTable.status, "unanswered"),
-        )),
-      db
-        .select({ count: sql<number>`cast(count(*) as int)` })
-        .from(productsTable)
-        .where(and(
-          inArray(productsTable.accountId, accountIds),
-          lt(productsTable.availableQuantity, 5),
-        )),
-    ]);
+    const [todaySalesRow, monthSalesRow, todayOrdersRow, monthOrdersRow, pendingOrdersRow, unansweredQRow, criticalStockRow] =
+      await Promise.all([
+        db
+          .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
+          .from(ordersTable)
+          .where(
+            and(
+              inArray(ordersTable.accountId, accountIds),
+              isPaidOrderTodaySp,
+              inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+            ),
+          ),
+        db
+          .select({ total: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)` })
+          .from(ordersTable)
+          .where(
+            and(
+              inArray(ordersTable.accountId, accountIds),
+              isPaidOrderThisCalendarMonthSp,
+              inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+            ),
+          ),
+        db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(ordersTable)
+          .where(
+            and(
+              inArray(ordersTable.accountId, accountIds),
+              isPaidOrderTodaySp,
+              inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+            ),
+          ),
+        db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(ordersTable)
+          .where(
+            and(
+              inArray(ordersTable.accountId, accountIds),
+              isPaidOrderThisCalendarMonthSp,
+              inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+            ),
+          ),
+        db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(ordersTable)
+          .where(and(inArray(ordersTable.accountId, accountIds), eq(ordersTable.status, "confirmed"))),
+        db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(questionsTable)
+          .where(and(inArray(questionsTable.accountId, accountIds), eq(questionsTable.status, "unanswered"))),
+        db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(productsTable)
+          .where(and(inArray(productsTable.accountId, accountIds), lt(productsTable.availableQuantity, 5))),
+      ]);
 
     res.json({
       salesToday: Number(todaySalesRow[0]?.total ?? 0),
@@ -166,12 +160,14 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
         orders: sql<number>`cast(count(*) as int)`,
       })
       .from(ordersTable)
-      .where(and(
-        inArray(ordersTable.accountId, accountIds),
-        sql`${orderPaidLocalDateSp} >= ${chartFromSp}`,
-        sql`${orderPaidLocalDateSp} <= ${todaySpDate}`,
-        inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
-      ))
+      .where(
+        and(
+          inArray(ordersTable.accountId, accountIds),
+          sql`${orderPaidLocalDateSp} >= ${chartFromSp}`,
+          sql`${orderPaidLocalDateSp} <= ${todaySpDate}`,
+          inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+        ),
+      )
       .groupBy(paidYmdSp)
       .orderBy(paidYmdSp);
 
@@ -211,6 +207,148 @@ router.get("/dashboard/sales-chart", ...auth, async (req, res) => {
     res.json({ period, data });
   } catch (err) {
     req.log.error({ err }, "Failed to get sales chart");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.get("/dashboard/sales-report", ...auth, async (req, res) => {
+  try {
+    const { account_id, date_from, date_to, format = "json" } = req.query as Record<string, string>;
+
+    if (!isIsoDateOnly(date_from) || !isIsoDateOnly(date_to)) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "date_from e date_to são obrigatórios (YYYY-MM-DD)" },
+      });
+      return;
+    }
+
+    if (date_from > date_to) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "date_from não pode ser posterior a date_to" },
+      });
+      return;
+    }
+
+    const span = inclusiveDaySpan(date_from, date_to);
+    if (span > MAX_REPORT_SPAN_DAYS) {
+      res.status(400).json({
+        error: {
+          code: "BAD_REQUEST",
+          message: `Intervalo máximo: ${MAX_REPORT_SPAN_DAYS} dias`,
+        },
+      });
+      return;
+    }
+
+    const fmt = format.toLowerCase();
+    if (!["json", "csv", "xlsx", "pdf"].includes(fmt)) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "format deve ser json, csv, xlsx ou pdf" },
+      });
+      return;
+    }
+
+    const db = getDb();
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
+
+    const periodWhere = and(
+      accountIds.length > 0 ? inArray(ordersTable.accountId, accountIds) : sql`false`,
+      inArray(ordersTable.status, [...PAID_ORDER_STATUSES]),
+      sql`${orderPaidLocalDateSp} >= ${sql.raw(`'${date_from}'`)}::date`,
+      sql`${orderPaidLocalDateSp} <= ${sql.raw(`'${date_to}'`)}::date`,
+    );
+
+    const refYmd = sql<string>`to_char(${orderPaidLocalDateSp}, 'YYYY-MM-DD')`;
+
+    const [summaryRow, detailRows] = await Promise.all([
+      db
+        .select({
+          orderCount: sql<number>`cast(count(*) as int)`,
+          revenue: sql<number>`coalesce(sum(cast(${ordersTable.totalAmount} as numeric)), 0)`,
+        })
+        .from(ordersTable)
+        .where(periodWhere),
+      accountIds.length === 0
+        ? Promise.resolve([] as { referenceDate: string; mlOrderId: bigint | null; totalAmount: string | null; currencyId: string | null; buyerNickname: string | null; status: string | null; accountNickname: string | null }[])
+        : db
+            .select({
+              referenceDate: refYmd,
+              mlOrderId: ordersTable.mlOrderId,
+              totalAmount: ordersTable.totalAmount,
+              currencyId: ordersTable.currencyId,
+              buyerNickname: ordersTable.buyerNickname,
+              status: ordersTable.status,
+              accountNickname: accountsTable.mlNickname,
+            })
+            .from(ordersTable)
+            .innerJoin(accountsTable, eq(ordersTable.accountId, accountsTable.id))
+            .where(periodWhere)
+            .orderBy(desc(orderSortInstant)),
+    ]);
+
+    const summary = {
+      orderCount: summaryRow[0]?.orderCount ?? 0,
+      revenue: Number(summaryRow[0]?.revenue ?? 0),
+    };
+
+    const exportRows: SalesReportExportRow[] = detailRows.map((r) => ({
+      referenceDate: r.referenceDate,
+      mlOrderId: r.mlOrderId !== null ? String(r.mlOrderId) : "",
+      accountNickname: r.accountNickname,
+      totalAmount: r.totalAmount !== null ? Number(r.totalAmount) : null,
+      currencyId: r.currencyId,
+      buyerNickname: r.buyerNickname,
+      status: r.status,
+    }));
+
+    const jsonRows = detailRows.map((r) => ({
+      referenceDate: r.referenceDate,
+      mlOrderId: r.mlOrderId !== null ? Number(r.mlOrderId) : null,
+      accountNickname: r.accountNickname,
+      totalAmount: r.totalAmount !== null ? Number(r.totalAmount) : null,
+      currencyId: r.currencyId,
+      buyerNickname: r.buyerNickname,
+      status: r.status,
+    }));
+
+    const periodPayload = { dateFrom: date_from, dateTo: date_to };
+
+    if (fmt === "json") {
+      res.json({
+        period: periodPayload,
+        summary,
+        rows: jsonRows,
+      });
+      return;
+    }
+
+    const safeBase = `relatorio-vendas_${date_from}_${date_to}`;
+
+    if (fmt === "csv") {
+      const body = buildSalesReportCsv(exportRows, summary);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeBase}.csv"`);
+      res.send(body);
+      return;
+    }
+
+    if (fmt === "xlsx") {
+      const buf = await buildSalesReportXlsx(date_from, date_to, exportRows, summary);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader("Content-Disposition", `attachment; filename="${safeBase}.xlsx"`);
+      res.send(buf);
+      return;
+    }
+
+    const pdfBuf = await buildSalesReportPdf(date_from, date_to, exportRows, summary);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeBase}.pdf"`);
+    res.send(pdfBuf);
+  } catch (err) {
+    req.log.error({ err }, "Failed to build sales report");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

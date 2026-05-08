@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
+import { getUserAccountIds } from "../lib/account-scope";
 import { ordersTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
@@ -37,17 +38,6 @@ function shipmentPhaseWhere(phase: string) {
     )`;
   }
   return null;
-}
-
-async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
-  const db = getDb();
-  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
-  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
-  const accounts = await db
-    .select({ id: accountsTable.id })
-    .from(accountsTable)
-    .where(and(...conditions));
-  return accounts.map((a) => a.id);
 }
 
 router.get("/orders", ...auth, async (req, res) => {

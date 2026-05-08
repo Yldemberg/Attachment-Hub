@@ -816,6 +816,64 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /dashboard/sales-report:
+    get:
+      operationId: getSalesReport
+      tags: [dashboard]
+      summary: Relatório de vendas por período
+      description: >-
+        Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo)
+        está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date_from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Saída JSON (prévia) ou ficheiro para download
+          schema:
+            type: string
+            enum: [json, csv, xlsx, pdf]
+            default: json
+      responses:
+        "200":
+          description: Relatório (JSON ou ficheiro binário)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReportResponse"
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ---------------------------------------------------------------------------
   # Webhooks
   # ---------------------------------------------------------------------------
@@ -1541,6 +1599,66 @@ components:
           items:
             $ref: "#/components/schemas/SalesChartDataPoint"
       required: [period, data]
+
+    SalesReportPeriod:
+      type: object
+      properties:
+        dateFrom:
+          type: string
+          format: date
+        dateTo:
+          type: string
+          format: date
+      required: [dateFrom, dateTo]
+
+    SalesReportSummary:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+        revenue:
+          type: number
+      required: [orderCount, revenue]
+
+    SalesReportRow:
+      type: object
+      properties:
+        referenceDate:
+          type: string
+          format: date
+        mlOrderId:
+          type: integer
+          format: int64
+          nullable: true
+        accountNickname:
+          type: string
+          nullable: true
+        totalAmount:
+          type: number
+          nullable: true
+        currencyId:
+          type: string
+          nullable: true
+        buyerNickname:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+      required: [referenceDate]
+
+    SalesReportResponse:
+      type: object
+      properties:
+        period:
+          $ref: "#/components/schemas/SalesReportPeriod"
+        summary:
+          $ref: "#/components/schemas/SalesReportSummary"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportRow"
+      required: [period, summary, rows]
 
     # --------------------------------------------------------------------------
     # Webhooks

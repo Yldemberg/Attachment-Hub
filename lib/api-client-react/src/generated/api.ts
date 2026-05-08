@@ -26,6 +26,7 @@ import type {
   GetLowStockProducts200,
   GetLowStockProductsParams,
   GetSalesChartParams,
+  GetSalesReportParams,
   HandleConnectCallbackParams,
   HandleMercadoLivreWebhook200,
   HandleStripeWebhook200,
@@ -50,6 +51,7 @@ import type {
   Question,
   QuestionListResponse,
   SalesChartResponse,
+  SalesReportResponse,
   SearchInventoryParams,
   SkuSyncRequest,
   SkuSyncResponse,
@@ -2534,6 +2536,103 @@ export function useGetSalesChart<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetSalesChartQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo) está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+ * @summary Relatório de vendas por período
+ */
+export const getGetSalesReportUrl = (params: GetSalesReportParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/sales-report?${stringifiedParams}`
+    : `/api/dashboard/sales-report`;
+};
+
+export const getSalesReport = async (
+  params: GetSalesReportParams,
+  options?: RequestInit,
+): Promise<SalesReportResponse | Blob> => {
+  return customFetch<SalesReportResponse | Blob>(getGetSalesReportUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSalesReportQueryKey = (params?: GetSalesReportParams) => {
+  return [`/api/dashboard/sales-report`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetSalesReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSalesReport>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: GetSalesReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSalesReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSalesReportQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSalesReport>>> = ({
+    signal,
+  }) => getSalesReport(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSalesReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSalesReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSalesReport>>
+>;
+export type GetSalesReportQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Relatório de vendas por período
+ */
+
+export function useGetSalesReport<
+  TData = Awaited<ReturnType<typeof getSalesReport>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: GetSalesReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSalesReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSalesReportQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

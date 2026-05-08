@@ -59,7 +59,7 @@ async function buildAll() {
       "@prisma/client",
       "@mikro-orm/*",
       "@grpc/*",
-      "@swc/*",
+      "@swc/core",
       "@aws-sdk/*",
       "@azure/*",
       "@opentelemetry/*",

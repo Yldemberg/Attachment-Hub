@@ -898,6 +898,44 @@ export const GetSalesChartResponse = zod.object({
 });
 
 /**
+ * Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo) está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+ * @summary Relatório de vendas por período
+ */
+export const getSalesReportQueryFormatDefault = `json`;
+
+export const GetSalesReportQueryParams = zod.object({
+  date_from: zod.date(),
+  date_to: zod.date(),
+  account_id: zod.coerce.string().optional(),
+  format: zod
+    .enum(["json", "csv", "xlsx", "pdf"])
+    .default(getSalesReportQueryFormatDefault)
+    .describe("Saída JSON (prévia) ou ficheiro para download"),
+});
+
+export const GetSalesReportResponse = zod.object({
+  period: zod.object({
+    dateFrom: zod.coerce.date(),
+    dateTo: zod.coerce.date(),
+  }),
+  summary: zod.object({
+    orderCount: zod.number(),
+    revenue: zod.number(),
+  }),
+  rows: zod.array(
+    zod.object({
+      referenceDate: zod.coerce.date(),
+      mlOrderId: zod.number().nullish(),
+      accountNickname: zod.string().nullish(),
+      totalAmount: zod.number().nullish(),
+      currencyId: zod.string().nullish(),
+      buyerNickname: zod.string().nullish(),
+      status: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
  * No JWT auth. Responds 200 immediately and processes async.
  * @summary Receive Mercado Livre webhook notifications
  */
