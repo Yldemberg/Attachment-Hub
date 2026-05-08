@@ -68,7 +68,13 @@ function shortTitle(title: string | null | undefined, max = 72): string {
 router.get("/inventory/search", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const qRaw = typeof req.query.query === "string" ? req.query.query : "";
+    const qParam = req.query.query;
+    const qRaw =
+      typeof qParam === "string"
+        ? qParam
+        : Array.isArray(qParam) && typeof qParam[0] === "string"
+          ? qParam[0]
+          : "";
     const q = qRaw.trim();
 
     const accountIds = await getUserAccountIds(req.user!.id);
@@ -83,47 +89,24 @@ router.get("/inventory/search", ...auth, async (req, res) => {
       isNotNull(productsTable.sku),
     ];
 
-    type Row = (typeof productsTable.$inferSelect);
+    type Row = typeof productsTable.$inferSelect;
     let bySku: Map<string, Row[]>;
-    let listingCountOverride: Map<string, number> | null = null;
 
     if (!q) {
-      const whereBase = and(...baseScope);
-      const agg = await db
-        .select({
-          sku: productsTable.sku,
-          repId: sql<string>`min(${productsTable.id})::text`,
-          listingCount: sql<number>`cast(count(*) as int)`,
-        })
-        .from(productsTable)
-        .where(whereBase)
-        .groupBy(productsTable.sku);
+      /** Lista completa de SKUs: uma consulta + agrupamento em memória (evita agregações SQL frágeis). */
+      const rows = await db.select().from(productsTable).where(and(...baseScope));
 
-      if (agg.length === 0) {
+      if (rows.length === 0) {
         res.json({ data: [] });
         return;
       }
-
-      const repIds = [...new Set(agg.map((a) => a.repId))];
-      const reps = await db.select().from(productsTable).where(inArray(productsTable.id, repIds));
-      const repById = new Map(reps.map((r) => [String(r.id), r]));
 
       bySku = new Map();
-      listingCountOverride = new Map();
-      for (const row of agg) {
+      for (const row of rows) {
         const sku = row.sku!;
-        const rep = repById.get(row.repId);
-        if (!rep) {
-          req.log.warn({ sku, repId: row.repId }, "inventory list-all: linha representativa ausente");
-          continue;
-        }
-        bySku.set(sku, [rep]);
-        listingCountOverride.set(sku, row.listingCount);
-      }
-
-      if (bySku.size === 0) {
-        res.json({ data: [] });
-        return;
+        const list = bySku.get(sku) ?? [];
+        list.push(row);
+        bySku.set(sku, list);
       }
     } else {
       const tokens = q
@@ -222,7 +205,7 @@ router.get("/inventory/search", ...auth, async (req, res) => {
         variationLabel: varLabel,
         currentStock: rep.availableQuantity,
         representativeProductId: rep.id,
-        listingCount: listingCountOverride?.get(sku) ?? list.length,
+        listingCount: list.length,
       };
     });
 

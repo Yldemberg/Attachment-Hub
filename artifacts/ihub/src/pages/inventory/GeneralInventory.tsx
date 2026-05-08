@@ -157,7 +157,7 @@ function BarcodeScanDialog({
 
 const SEARCH_DEBOUNCE_MS = 320;
 
-const ALL_SKUS_PARAMS = {} as const;
+const ALL_SKUS_PARAMS = { query: "" } as const;
 
 export default function GeneralInventory() {
   const [input, setInput] = useState("");
@@ -425,7 +425,12 @@ export default function GeneralInventory() {
                     </div>
                   )}
                   {allSkusQuery.isError && (
-                    <p className="px-3 py-2 text-sm text-destructive">Não foi possível carregar a lista de SKUs.</p>
+                    <div className="space-y-1 px-3 py-2">
+                      <p className="text-sm text-destructive">Não foi possível carregar a lista de SKUs.</p>
+                      {allSkusQuery.error instanceof Error && allSkusQuery.error.message ? (
+                        <p className="text-xs text-muted-foreground break-words">{allSkusQuery.error.message}</p>
+                      ) : null}
+                    </div>
                   )}
                   {!allSkusQuery.isLoading &&
                     !allSkusQuery.isError &&
