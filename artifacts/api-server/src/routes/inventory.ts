@@ -64,7 +64,22 @@ function shortTitle(title: string | null | undefined, max = 72): string {
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
-/** GET /inventory/search — anúncios não Full com SKU; agrupa por SKU para inventário mandatário. */
+type ProductRow = typeof productsTable.$inferSelect;
+
+/** Anúncio exibido na lista: combina com o termo; senão prioriza não Full; senão Full. */
+function pickRepresentativeProduct(list: ProductRow[], q: string, qLower: string): ProductRow {
+  if (q) {
+    const exact = list.find((r) => r.sku?.toLowerCase() === qLower);
+    if (exact) return exact;
+  }
+  const nonFull = list.filter((r) => !r.isFull);
+  const sortById = (rows: ProductRow[]) =>
+    rows.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (nonFull.length > 0) return sortById(nonFull)[0]!;
+  return sortById(list)[0]!;
+}
+
+/** GET /inventory/search — anúncios com SKU (Full e não Full); agrupa por SKU. */
 router.get("/inventory/search", ...auth, async (req, res) => {
   try {
     const db = getDb();
@@ -83,13 +98,9 @@ router.get("/inventory/search", ...auth, async (req, res) => {
       return;
     }
 
-    const baseScope = [
-      inArray(productsTable.accountId, accountIds),
-      eq(productsTable.isFull, false),
-      isNotNull(productsTable.sku),
-    ];
+    const baseScope = [inArray(productsTable.accountId, accountIds), isNotNull(productsTable.sku)];
 
-    type Row = typeof productsTable.$inferSelect;
+    type Row = ProductRow;
     let bySku: Map<string, Row[]>;
 
     if (!q) {
@@ -189,8 +200,8 @@ router.get("/inventory/search", ...auth, async (req, res) => {
     const qLower = q.toLowerCase();
     const data = skus.map((sku) => {
       const list = bySku.get(sku)!;
-      const exactSku = q ? list.find((r) => r.sku?.toLowerCase() === qLower) : undefined;
-      const rep = exactSku ?? list[0];
+      const rep = pickRepresentativeProduct(list, q, qLower);
+      const nonFullListingCount = list.filter((r) => !r.isFull).length;
       const mandateQty = mandateMap[sku];
       const fin = financialMap[sku];
       const titleShort = shortTitle(rep.title);
@@ -206,6 +217,7 @@ router.get("/inventory/search", ...auth, async (req, res) => {
         currentStock: rep.availableQuantity,
         representativeProductId: rep.id,
         listingCount: list.length,
+        nonFullListingCount,
       };
     });
 
@@ -270,17 +282,11 @@ router.patch("/inventory/sku/:sku/financials", ...auth, async (req, res) => {
     const [allowed] = await db
       .select({ id: productsTable.id })
       .from(productsTable)
-      .where(
-        and(
-          inArray(productsTable.accountId, accountIds),
-          eq(productsTable.sku, sku),
-          eq(productsTable.isFull, false),
-        ),
-      )
+      .where(and(inArray(productsTable.accountId, accountIds), eq(productsTable.sku, sku)))
       .limit(1);
 
     if (!allowed) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio com este SKU" } });
       return;
     }
 

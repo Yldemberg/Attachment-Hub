@@ -368,7 +368,7 @@ export function installMockFetch(): void {
 
     if (path === "/inventory/search" && method === "GET") {
       const q = params.get("query")?.trim() ?? "";
-      let filtered = _mockProducts.filter((p) => !p.isFull && !!p.sku);
+      let filtered = _mockProducts.filter((p) => !!p.sku);
       if (q) {
         const tokens = q
           .toLowerCase()
@@ -397,9 +397,10 @@ export function installMockFetch(): void {
       const skus = [...bySku.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"));
       const data = skus.map((sku) => {
         const list = bySku.get(sku)!;
-        const rep = list[0];
+        const rep = list.find((p) => !p.isFull) ?? list[0]!;
         const title = (rep.title ?? "").trim();
         const titleShort = title.length <= 72 ? title : `${title.slice(0, 71)}…`;
+        const nonFullListingCount = list.filter((p) => !p.isFull).length;
         return {
           sku,
           mandateQuantity: _mockMandateQty[sku] ?? null,
@@ -411,6 +412,7 @@ export function installMockFetch(): void {
           currentStock: rep.availableQuantity ?? 0,
           representativeProductId: rep.id,
           listingCount: list.length,
+          nonFullListingCount,
         };
       });
       return jsonResponse({ data });

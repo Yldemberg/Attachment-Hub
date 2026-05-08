@@ -428,7 +428,10 @@ export const SearchInventoryResponse = zod.object({
       representativeProductId: zod.string(),
       listingCount: zod
         .number()
-        .describe("Quantidade de anúncios não Full com este SKU"),
+        .describe("Quantidade total de anúncios (Full e não Full) com este SKU"),
+      nonFullListingCount: zod
+        .number()
+        .describe("Quantidade de anúncios não Full com este SKU (0 = só Full)"),
       taxPercent: zod
         .number()
         .nullish()
@@ -442,7 +445,7 @@ export const SearchInventoryResponse = zod.object({
 });
 
 /**
- * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+ * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Exige pelo menos um anúncio (Full ou não Full) com esse SKU. Campos omitidos mantêm o valor anterior.
  * @summary Salvar imposto e preço de compra por SKU
  */
 export const PatchInventorySkuFinancialsParams = zod.object({

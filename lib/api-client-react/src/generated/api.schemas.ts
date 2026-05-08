@@ -148,8 +148,10 @@ export interface InventorySearchItem {
   /** Estoque no anúncio representativo (banco) */
   currentStock: number;
   representativeProductId: string;
-  /** Quantidade de anúncios não Full com este SKU */
+  /** Quantidade total de anúncios (Full e não Full) com este SKU */
   listingCount: number;
+  /** Quantidade de anúncios não Full com este SKU (0 = só Full) */
+  nonFullListingCount: number;
   /** Percentual de imposto (0–100) salvo pelo usuário */
   taxPercent?: number | null;
   /** Preço de compra de referência (BRL) */

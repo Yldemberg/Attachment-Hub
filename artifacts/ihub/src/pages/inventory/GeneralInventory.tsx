@@ -372,6 +372,10 @@ export default function GeneralInventory() {
 
   const displayMandate = selected?.mandateQuantity;
   const displayCurrent = selected?.currentStock ?? 0;
+  const nonFullListingCount = selected
+    ? (selected.nonFullListingCount ?? selected.listingCount)
+    : 0;
+  const canMandateMirror = nonFullListingCount > 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
@@ -379,7 +383,8 @@ export default function GeneralInventory() {
         <div>
           <h1 className="text-base font-bold text-foreground">Inventário geral</h1>
           <p className="text-muted-foreground text-xs leading-snug">
-            Busque por SKU, descrição ou MLB. O estoque mandatário é espelhado em todos os anúncios não Full.
+            Busque por SKU, descrição ou MLB. Inclui anúncios Full e não Full. O estoque mandatário só pode ser
+            espelhado nos anúncios não Full.
           </p>
         </div>
         <div className="space-y-1.5">
@@ -469,6 +474,9 @@ export default function GeneralInventory() {
                           <p className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
                             {item.titleShort}
                           </p>
+                          {(item.nonFullListingCount ?? item.listingCount) === 0 ? (
+                            <p className="mt-0.5 text-[10px] font-medium text-sky-700">Somente Full</p>
+                          ) : null}
                           {item.variationLabel && (
                             <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
                               {item.variationLabel}
@@ -517,7 +525,7 @@ export default function GeneralInventory() {
           <p className="text-sm text-destructive">Não foi possível buscar. Tente novamente.</p>
         )}
         {debouncedQuery && !selected && searchQuery.data?.data?.length === 0 && !searchQuery.isFetching && (
-          <p className="text-sm text-muted-foreground">Nenhum anúncio não Full com SKU encontrado.</p>
+          <p className="text-sm text-muted-foreground">Nenhum anúncio com SKU encontrado.</p>
         )}
 
         {!selected && (
@@ -543,10 +551,15 @@ export default function GeneralInventory() {
                     {item.variationLabel && (
                       <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{item.variationLabel}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
                       <span className={cn("font-bold tabular-nums", stockColorClass(item.currentStock))}>
                         {item.currentStock} un.
                       </span>
+                      {(item.nonFullListingCount ?? item.listingCount) === 0 && (
+                        <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                          Somente Full
+                        </span>
+                      )}
                       {item.listingCount > 1 && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
                           <Layers className="w-3 h-3" />
@@ -573,7 +586,9 @@ export default function GeneralInventory() {
               <ChevronLeft className="w-4 h-4 mr-0.5" />
               Voltar à lista
             </Button>
-            <h2 className="text-sm font-semibold text-foreground mb-3">Ajustar estoque mandatário</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">
+              {canMandateMirror ? "Ajustar estoque mandatário" : "Detalhes do SKU"}
+            </h2>
             <div className="flex gap-3 mb-4">
               {selected.thumbnail ? (
                 <img src={selected.thumbnail} alt="" className="size-16 rounded-lg object-cover border border-border" />
@@ -589,6 +604,12 @@ export default function GeneralInventory() {
                   <p className="text-xs text-muted-foreground mt-1">{selected.variationLabel}</p>
                 )}
                 <div className="mt-2 text-xs space-y-0.5">
+                  {!canMandateMirror && (
+                    <p className="text-amber-800 dark:text-amber-200/90 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900 px-2 py-1.5 leading-snug mb-2">
+                      Este SKU está apenas em anúncios Full (Fulfillment). O ajuste mandatário e o espelhamento
+                      automático valem só para anúncios não Full; no Full o estoque é tratado pelo Mercado Envios.
+                    </p>
+                  )}
                   <p>
                     <span className="text-muted-foreground">Mandatário (DB): </span>
                     <span className="font-semibold tabular-nums">{displayMandate ?? "—"}</span>
@@ -656,6 +677,8 @@ export default function GeneralInventory() {
               </Button>
             </div>
 
+            {canMandateMirror && (
+              <>
             <RadioGroup
               value={operation}
               onValueChange={(v) => setOperation(v as Operation)}
@@ -700,6 +723,8 @@ export default function GeneralInventory() {
               {adjusting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               <span className={cn(adjusting && "ml-2")}>Aplicar e espelhar no Mercado Livre</span>
             </Button>
+              </>
+            )}
           </div>
         )}
       </div>

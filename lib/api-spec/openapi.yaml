@@ -433,7 +433,7 @@ paths:
       tags: [inventory]
       summary: Buscar SKUs para inventário geral
       description: >-
-        Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário).
+        Lista anúncios com SKU (Full e não Full), agrupados por SKU (título, variação, estoque mandatário).
         Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
       security:
         - bearerAuth: []
@@ -445,7 +445,7 @@ paths:
             type: string
           description: >-
             Texto ou código de barras / SKU. Se omitido ou vazio, retorna todos os SKUs
-            de anúncios não Full (lista para o inventário geral).
+            de anúncios da conta (Full e não Full).
       responses:
         "200":
           description: Resultados agrupados por SKU
@@ -465,7 +465,7 @@ paths:
       summary: Salvar imposto e preço de compra por SKU
       description: >-
         Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário.
-        Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+        Exige pelo menos um anúncio (Full ou não Full) com esse SKU. Campos omitidos mantêm o valor anterior.
       security:
         - bearerAuth: []
       parameters:
@@ -1280,7 +1280,10 @@ components:
           type: string
         listingCount:
           type: integer
-          description: Quantidade de anúncios não Full com este SKU
+          description: Quantidade total de anúncios (Full e não Full) com este SKU
+        nonFullListingCount:
+          type: integer
+          description: Quantidade de anúncios não Full com este SKU (0 = só Full)
         taxPercent:
           type: number
           nullable: true
@@ -1295,6 +1298,7 @@ components:
         - currentStock
         - representativeProductId
         - listingCount
+        - nonFullListingCount
 
     InventorySkuFinancialsPatchRequest:
       type: object
