@@ -31,7 +31,7 @@ pnpm workspace monorepo for iHub, a PWA that centralizes Mercado Livre marketpla
 
 Tables: `profiles`, `accounts`, `products`, `orders`, `questions`, `notifications`
 
-- **profiles** — user accounts; `password_hash` (bcrypt), plan, trial_ends_at, Stripe IDs
+- **profiles** — user accounts; `password_hash` (bcrypt), plan, `trial_ends_at` (optional; expiração por data **desativada** na API — sem 402), Stripe IDs
 - **accounts** — ML account integrations; OAuth tokens, sync status
 - **products** — ML listings; stock (available_quantity is most critical field), SKU
 - **orders** — ML orders; buyer info, items_json, shipping status
@@ -41,6 +41,16 @@ Tables: `profiles`, `accounts`, `products`, `orders`, `questions`, `notification
 Full Supabase SQL migration (RLS policies + triggers): `scripts/supabase-ihub-full-schema.sql`
 Incremental migrations: `scripts/migrations/` — must be applied in order on existing DBs
 - `001_notifications_account_id.sql` — adds `account_id UUID NULL FK → accounts` column to notifications (already applied)
+
+### Trial / `trial_ends_at`
+
+Novos cadastros e o upsert de `GET /auth/me` gravam `trial_ends_at = NULL`. O middleware **não** bloqueia por data (sem 402 por trial expirado).
+
+Para **perfis trial já existentes** que ainda tenham data futura no banco e você queira alinhar a UI (sem banner de contagem), rode uma vez no SQL:
+
+```sql
+UPDATE profiles SET trial_ends_at = NULL WHERE plan = 'trial';
+```
 
 ## Key Commands
 

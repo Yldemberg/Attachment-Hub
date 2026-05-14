@@ -48,7 +48,6 @@ router.post("/auth/register", async (req, res) => {
   try {
     const db = getDb();
     const passwordHash = await bcrypt.hash(password, 12);
-    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const existing = await db.select().from(profilesTable).where(eq(profilesTable.email, email)).limit(1);
 
@@ -62,7 +61,7 @@ router.post("/auth/register", async (req, res) => {
     } else {
       [profile] = await db
         .insert(profilesTable)
-        .values({ id: randomUUID(), email, passwordHash, plan: "trial", trialEndsAt })
+        .values({ id: randomUUID(), email, passwordHash, plan: "trial", trialEndsAt: null })
         .returning();
     }
 
@@ -122,7 +121,6 @@ router.post("/auth/logout", (req, res) => {
 router.get("/auth/me", requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const [profile] = await db
       .insert(profilesTable)
@@ -130,7 +128,7 @@ router.get("/auth/me", requireAuth, async (req, res) => {
         id: req.user!.id,
         email: req.user!.email ?? null,
         plan: "trial",
-        trialEndsAt,
+        trialEndsAt: null,
       })
       .onConflictDoUpdate({
         target: profilesTable.id,

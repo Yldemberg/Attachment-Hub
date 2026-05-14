@@ -22,17 +22,7 @@ export async function requireActivePlan(
       return;
     }
 
-    if (profile.plan === "trial" && profile.trialEndsAt) {
-      if (new Date() > profile.trialEndsAt) {
-        res.status(402).json({
-          error: {
-            code: "TRIAL_EXPIRED",
-            message: "Your trial has expired. Please upgrade to continue.",
-          },
-        });
-        return;
-      }
-    }
+    /** Trial expiry by `trial_ends_at` is disabled for now (no 402). */
 
     next();
   } catch (err) {
