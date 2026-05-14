@@ -19,4 +19,8 @@ export type ListProductsParams = {
   search?: string;
   page?: number;
   limit?: number;
+  /**
+   * Quando true (1/true/yes): retorna anúncios só do banco, sem chamadas ao Mercado Livre para preços ou catalog_listing; ignora o parâmetro search; permite limit até 5000. Uso recomendado para UI de seleção rápida (combobox).
+   */
+  picker?: boolean;
 };

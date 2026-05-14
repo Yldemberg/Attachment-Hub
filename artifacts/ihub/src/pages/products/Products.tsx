@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import {
   useListProducts,
   useListAccounts,
@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Clapperboard,
   X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,6 +82,28 @@ interface StockUpdateDialog {
   sku: string | null;
   title: string;
   mlItemId?: string | null;
+}
+
+const PICKER_LIST_LIMIT = 5000;
+
+type ProductWithVariations = Product & { variationsJson?: unknown };
+
+function listingMatchesPickerFilter(p: ProductWithVariations, searchRaw: string): boolean {
+  const tokens = searchRaw
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) return true;
+  const varText =
+    p.variationsJson != null ? JSON.stringify(p.variationsJson).toLowerCase() : "";
+  const fields = [
+    (p.title ?? "").toLowerCase(),
+    (p.sku ?? "").toLowerCase(),
+    (p.mlItemId ?? "").toLowerCase(),
+    varText,
+  ];
+  return tokens.every((tok) => fields.some((f) => f.includes(tok)));
 }
 
 function stockTextColor(qty: number | null | undefined): string {
@@ -371,6 +394,7 @@ export default function Products() {
     null
   );
   const [newQuantity, setNewQuantity] = useState("");
+  const [listingPickerOpen, setListingPickerOpen] = useState(false);
 
   const params = {
     page,
@@ -384,6 +408,35 @@ export default function Products() {
       : {}),
     ...(accountId !== "all" ? { account_id: accountId } : {}),
   };
+
+  const pickerListParams = useMemo(
+    () => ({
+      page: 1,
+      limit: PICKER_LIST_LIMIT,
+      picker: true,
+      ...(listingFilter !== "all"
+        ? {
+            listing_filter:
+              listingFilter as (typeof ListProductsListingFilter)[keyof typeof ListProductsListingFilter],
+          }
+        : {}),
+      ...(accountId !== "all" ? { account_id: accountId } : {}),
+    }),
+    [listingFilter, accountId],
+  );
+
+  const allListingsForPicker = useListProducts(pickerListParams, {
+    query: {
+      queryKey: getListProductsQueryKey(pickerListParams),
+      enabled: listingPickerOpen,
+      staleTime: 60_000,
+    },
+  });
+
+  const filteredPickerListings = useMemo(() => {
+    const items = (allListingsForPicker.data?.data ?? []) as ProductWithVariations[];
+    return items.filter((p) => listingMatchesPickerFilter(p, search));
+  }, [allListingsForPicker.data, search]);
 
   const { data, isLoading, isFetching } = useListProducts(params, {
     query: { queryKey: getListProductsQueryKey(params), refetchInterval: 30000 },
@@ -654,8 +707,15 @@ export default function Products() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <div
+            className="relative flex-1 min-w-[160px] max-w-xs"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setListingPickerOpen(false);
+              }
+            }}
+          >
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none z-[1]" />
             <input
               type="text"
               placeholder="MLB, SKU ou título — várias palavras em qualquer ordem"
@@ -664,21 +724,103 @@ export default function Products() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
+              onFocus={() => setListingPickerOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setListingPickerOpen(false);
+              }}
               className={`w-full bg-input border border-border text-xs rounded-lg pl-8 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary ${search ? "pr-9" : "pr-3"}`}
               aria-label="Buscar por MLB, SKU ou descrição"
+              aria-expanded={listingPickerOpen}
+              aria-haspopup="listbox"
+              role="combobox"
+              autoComplete="off"
             />
             {search ? (
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent z-[1]"
                 onClick={() => {
                   setSearch("");
                   setPage(1);
+                  setListingPickerOpen(false);
                 }}
                 aria-label="Limpar busca"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
+            ) : null}
+            {listingPickerOpen ? (
+              <div
+                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+                role="listbox"
+                aria-label="Anúncios disponíveis"
+              >
+                {allListingsForPicker.isLoading && (
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                    Carregando anúncios…
+                  </div>
+                )}
+                {allListingsForPicker.isError && (
+                  <div className="space-y-1 px-3 py-2">
+                    <p className="text-sm text-destructive">Não foi possível carregar a lista de anúncios.</p>
+                    {allListingsForPicker.error instanceof Error && allListingsForPicker.error.message ? (
+                      <p className="text-xs text-muted-foreground break-words">{allListingsForPicker.error.message}</p>
+                    ) : null}
+                  </div>
+                )}
+                {!allListingsForPicker.isLoading &&
+                  !allListingsForPicker.isError &&
+                  filteredPickerListings.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum anúncio encontrado.</p>
+                  )}
+                {!allListingsForPicker.isLoading &&
+                  !allListingsForPicker.isError &&
+                  filteredPickerListings.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="option"
+                      className="flex w-full gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (!p.mlItemId) return;
+                        setSearch(p.mlItemId);
+                        setPage(1);
+                        setListingPickerOpen(false);
+                      }}
+                    >
+                      {p.thumbnail ? (
+                        <img
+                          src={p.thumbnail}
+                          alt=""
+                          className="size-9 shrink-0 rounded-md border border-border bg-muted object-cover"
+                        />
+                      ) : (
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted">
+                          <Package className="h-4 w-4 text-muted-foreground/50" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-[10px] text-muted-foreground">{p.mlItemId}</p>
+                        <p className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
+                          {p.title ?? "—"}
+                        </p>
+                        {p.sku ? (
+                          <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground font-mono">SKU {p.sku}</p>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                {!allListingsForPicker.isLoading &&
+                  !allListingsForPicker.isError &&
+                  (allListingsForPicker.data?.pagination?.total ?? 0) > PICKER_LIST_LIMIT && (
+                    <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border leading-snug">
+                      Lista limitada a {PICKER_LIST_LIMIT} anúncios neste escopo. Digite para refinar ou ajuste os
+                      filtros.
+                    </p>
+                  )}
+              </div>
             ) : null}
           </div>
 

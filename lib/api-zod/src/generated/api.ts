@@ -132,6 +132,12 @@ export const ListProductsQueryParams = zod.object({
     ),
   page: zod.coerce.number().default(listProductsQueryPageDefault),
   limit: zod.coerce.number().default(listProductsQueryLimitDefault),
+  picker: zod.coerce
+    .boolean()
+    .optional()
+    .describe(
+      "Quando true (1\/true\/yes): retorna anúncios só do banco, sem chamadas ao Mercado Livre para preços ou catalog_listing; ignora o parâmetro search; permite limit até 5000. Uso recomendado para UI de seleção rápida (combobox).",
+    ),
 });
 
 export const ListProductsResponse = zod.object({
@@ -401,11 +407,16 @@ export const UpdateStockBySkuResponse = zod.object({
 });
 
 /**
- * Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
+ * Lista anúncios com SKU (Full e não Full), agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
  * @summary Buscar SKUs para inventário geral
  */
 export const SearchInventoryQueryParams = zod.object({
-  query: zod.coerce.string().optional().describe("Texto ou código de barras \/ SKU"),
+  query: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Texto ou código de barras \/ SKU. Se omitido ou vazio, retorna todos os SKUs de anúncios da conta (Full e não Full).",
+    ),
 });
 
 export const SearchInventoryResponse = zod.object({
@@ -428,7 +439,9 @@ export const SearchInventoryResponse = zod.object({
       representativeProductId: zod.string(),
       listingCount: zod
         .number()
-        .describe("Quantidade total de anúncios (Full e não Full) com este SKU"),
+        .describe(
+          "Quantidade total de anúncios (Full e não Full) com este SKU",
+        ),
       nonFullListingCount: zod
         .number()
         .describe("Quantidade de anúncios não Full com este SKU (0 = só Full)"),
@@ -936,7 +949,7 @@ export const GetSalesChartResponse = zod.object({
 });
 
 /**
- * Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo) está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+ * Lista pedidos pagos/confirmados no período (data de referência America/Sao_Paulo). Cada linha traz: total do pedido, preço de compra dos produtos (inventário), taxas e frete do ML (gravados ao sincronizar o pedido), imposto estimado (% por SKU) e lucro (subtotal dos itens − taxas − imposto − preço de compra). JSON, CSV, XLSX ou PDF.
  * @summary Relatório de vendas por período
  */
 export const getSalesReportQueryFormatDefault = `json`;
@@ -953,8 +966,8 @@ export const GetSalesReportQueryParams = zod.object({
 
 export const GetSalesReportResponse = zod.object({
   period: zod.object({
-    dateFrom: zod.string(),
-    dateTo: zod.string(),
+    dateFrom: zod.coerce.date(),
+    dateTo: zod.coerce.date(),
   }),
   summary: zod.object({
     orderCount: zod.number(),
@@ -962,15 +975,36 @@ export const GetSalesReportResponse = zod.object({
   }),
   rows: zod.array(
     zod.object({
-      referenceDate: zod.string(),
+      referenceDate: zod.coerce.date(),
       mlOrderId: zod.number().nullish(),
       accountNickname: zod.string().nullish(),
-      orderTotal: zod.number().nullish(),
-      productPurchaseTotal: zod.number(),
-      marketplaceFeesTotal: zod.number(),
-      shippingTotal: zod.number(),
-      taxTotal: zod.number(),
-      profit: zod.number(),
+      orderTotal: zod
+        .number()
+        .nullish()
+        .describe("Total do pedido no ML (total_amount)."),
+      productPurchaseTotal: zod
+        .number()
+        .describe(
+          "Soma do preço de compra salvo no inventário × quantidade, por SKU.",
+        ),
+      marketplaceFeesTotal: zod
+        .number()
+        .describe(
+          "Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido).",
+        ),
+      shippingTotal: zod
+        .number()
+        .describe("Soma de shipping_cost nos pagamentos."),
+      taxTotal: zod
+        .number()
+        .describe(
+          "Imposto estimado (% por SKU sobre o subtotal de cada linha).",
+        ),
+      profit: zod
+        .number()
+        .describe(
+          "Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos.",
+        ),
     }),
   ),
 });

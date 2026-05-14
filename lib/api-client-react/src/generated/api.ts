@@ -1339,10 +1339,10 @@ export const useUpdateStockBySku = <
 };
 
 /**
- * Lista anúncios não Full com SKU, agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
+ * Lista anúncios com SKU (Full e não Full), agrupados por SKU (título, variação, estoque mandatário). Busca por SKU, MLB, título ou texto em variações (mesma lógica de tokens que /products).
  * @summary Buscar SKUs para inventário geral
  */
-export const getSearchInventoryUrl = (params: SearchInventoryParams) => {
+export const getSearchInventoryUrl = (params?: SearchInventoryParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1359,7 +1359,7 @@ export const getSearchInventoryUrl = (params: SearchInventoryParams) => {
 };
 
 export const searchInventory = async (
-  params: SearchInventoryParams,
+  params?: SearchInventoryParams,
   options?: RequestInit,
 ): Promise<InventorySearchResponse> => {
   return customFetch<InventorySearchResponse>(getSearchInventoryUrl(params), {
@@ -1376,7 +1376,7 @@ export const getSearchInventoryQueryOptions = <
   TData = Awaited<ReturnType<typeof searchInventory>>,
   TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
 >(
-  params: SearchInventoryParams,
+  params?: SearchInventoryParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof searchInventory>>,
@@ -1416,7 +1416,7 @@ export function useSearchInventory<
   TData = Awaited<ReturnType<typeof searchInventory>>,
   TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
 >(
-  params: SearchInventoryParams,
+  params?: SearchInventoryParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof searchInventory>>,
@@ -1436,7 +1436,7 @@ export function useSearchInventory<
 }
 
 /**
- * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Apenas se existir pelo menos um anúncio não Full com esse SKU. Campos omitidos mantêm o valor anterior.
+ * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Exige pelo menos um anúncio (Full ou não Full) com esse SKU. Campos omitidos mantêm o valor anterior.
  * @summary Salvar imposto e preço de compra por SKU
  */
 export const getPatchInventorySkuFinancialsUrl = (sku: string) => {
@@ -2645,7 +2645,7 @@ export function useGetSalesChart<
 }
 
 /**
- * Lista pedidos com status pago (paid/confirmed) cuja data de referência (America/Sao_Paulo) está entre date_from e date_to. JSON para pré-visualização; csv, xlsx ou pdf para download.
+ * Lista pedidos pagos/confirmados no período (data de referência America/Sao_Paulo). Cada linha traz: total do pedido, preço de compra dos produtos (inventário), taxas e frete do ML (gravados ao sincronizar o pedido), imposto estimado (% por SKU) e lucro (subtotal dos itens − taxas − imposto − preço de compra). JSON, CSV, XLSX ou PDF.
  * @summary Relatório de vendas por período
  */
 export const getGetSalesReportUrl = (params: GetSalesReportParams) => {

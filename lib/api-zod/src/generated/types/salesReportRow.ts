@@ -7,13 +7,19 @@
  */
 
 export interface SalesReportRow {
-  referenceDate: string;
-  mlOrderId?: number | null;
+  referenceDate: Date;
+  mlOrderId?: bigint | null;
   accountNickname?: string | null;
+  /** Total do pedido no ML (total_amount). */
   orderTotal?: number | null;
+  /** Soma do preço de compra salvo no inventário × quantidade, por SKU. */
   productPurchaseTotal: number;
+  /** Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido). */
   marketplaceFeesTotal: number;
+  /** Soma de shipping_cost nos pagamentos. */
   shippingTotal: number;
+  /** Imposto estimado (% por SKU sobre o subtotal de cada linha). */
   taxTotal: number;
+  /** Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos. */
   profit: number;
 }

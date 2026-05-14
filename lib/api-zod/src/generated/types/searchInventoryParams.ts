@@ -8,7 +8,7 @@
 
 export type SearchInventoryParams = {
   /**
-   * Texto ou código de barras / SKU
+   * Texto ou código de barras / SKU. Se omitido ou vazio, retorna todos os SKUs de anúncios da conta (Full e não Full).
    */
   query?: string;
 };

@@ -376,11 +376,17 @@ export interface SalesReportRow {
   referenceDate: string;
   mlOrderId?: number | null;
   accountNickname?: string | null;
+  /** Total do pedido no ML (total_amount). */
   orderTotal?: number | null;
+  /** Soma do preço de compra salvo no inventário × quantidade, por SKU. */
   productPurchaseTotal: number;
+  /** Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido). */
   marketplaceFeesTotal: number;
+  /** Soma de shipping_cost nos pagamentos. */
   shippingTotal: number;
+  /** Imposto estimado (% por SKU sobre o subtotal de cada linha). */
   taxTotal: number;
+  /** Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos. */
   profit: number;
 }
 
@@ -446,6 +452,10 @@ export type ListProductsParams = {
   search?: string;
   page?: number;
   limit?: number;
+  /**
+   * Quando true (1/true/yes): retorna anúncios só do banco, sem chamadas ao Mercado Livre para preços ou catalog_listing; ignora o parâmetro search; permite limit até 5000. Uso recomendado para UI de seleção rápida (combobox).
+   */
+  picker?: boolean;
 };
 
 export type ListProductsListingFilter =
@@ -500,7 +510,7 @@ export type UpdateStockBySkuParams = {
 
 export type SearchInventoryParams = {
   /**
-   * Texto ou código de barras / SKU
+   * Texto ou código de barras / SKU. Se omitido ou vazio, retorna todos os SKUs de anúncios da conta (Full e não Full).
    */
   query?: string;
 };

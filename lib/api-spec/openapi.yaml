@@ -240,6 +240,14 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: picker
+          in: query
+          description: >-
+            Quando true (1/true/yes): retorna anúncios só do banco, sem chamadas ao Mercado Livre para preços
+            ou catalog_listing; ignora o parâmetro search; permite limit até 5000. Uso recomendado para UI de
+            seleção rápida (combobox).
+          schema:
+            type: boolean
       responses:
         "200":
           description: Paginated list of products

@@ -122,15 +122,28 @@ function escapeIlikePattern(token: string): string {
   return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+function isPickerMode(raw: string | string[] | undefined): boolean {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return v === "1" || v === "true" || v === "yes";
+}
+
 router.get("/products", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const { account_id, listing_filter, status, search, page = "1", limit = "20" } = req.query as Record<
-      string,
-      string
-    >;
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const q = req.query as Record<string, string | string[] | undefined>;
+    const first = (v: string | string[] | undefined): string | undefined =>
+      v == null ? undefined : Array.isArray(v) ? v[0] : v;
+    const account_id = first(q.account_id);
+    const listing_filter = first(q.listing_filter);
+    const status = first(q.status);
+    const search = first(q.search);
+    const page = first(q.page) ?? "1";
+    const limit = first(q.limit) ?? "20";
+    const picker = isPickerMode(q.picker);
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = picker
+      ? Math.min(5000, Math.max(1, parseInt(String(limit), 10) || 5000))
+      : Math.min(100, Math.max(1, parseInt(String(limit), 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
     const accountIds = await getUserAccountIds(req.user!.id, account_id);
@@ -167,8 +180,8 @@ router.get("/products", ...auth, async (req, res) => {
       );
     }
 
-    if (search && search.trim()) {
-      const tokens = search
+    if (!picker && search && String(search).trim()) {
+      const tokens = String(search)
         .trim()
         .split(/\s+/)
         .map((t) => t.trim())
@@ -206,6 +219,23 @@ router.get("/products", ...auth, async (req, res) => {
       .from(accountsTable)
       .where(inArray(accountsTable.id, accountIds));
     const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
+
+    if (picker) {
+      res.json({
+        data: rows.map((p) => ({
+          ...p,
+          price: p.price !== null ? Number(p.price) : null,
+          originalPrice: p.originalPrice !== null ? Number(p.originalPrice) : null,
+          amount: p.amount !== null ? Number(p.amount) : null,
+          regularAmount: p.regularAmount !== null ? Number(p.regularAmount) : null,
+          catalogListing: p.catalogListing,
+          videoId: null,
+          account: accountMap[p.accountId] ?? null,
+        })),
+        pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+      });
+      return;
+    }
 
     const priceEnriched = await enrichRowsWithMlItemPrices(rows, req.log);
     const enriched = await enrichRowsWithCatalogListing(priceEnriched, req.log);
