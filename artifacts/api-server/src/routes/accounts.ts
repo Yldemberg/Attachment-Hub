@@ -7,8 +7,6 @@ import { eq, and } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
 import { syncAccount } from "../lib/sync";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
-import { z } from "zod/v4";
-
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
@@ -18,12 +16,6 @@ function buildRedirectUri(req: import("express").Request): string {
   const proto = (req.headers["x-forwarded-proto"] as string | undefined ?? (req.secure ? "https" : "http")).split(",")[0].trim();
   return `${proto}://${host}/api/callback`;
 }
-
-const upsertMpCredentialsSchema = z.object({
-  mpClientId: z.string().trim().min(1, "mpClientId é obrigatório"),
-  mpClientSecret: z.string().trim().min(1, "mpClientSecret é obrigatório"),
-  mpAccessToken: z.string().trim().min(1, "mpAccessToken é obrigatório"),
-});
 
 function maskField(value: string | null | undefined): string | null {
   if (!value || value.length < 4) return null;
@@ -178,14 +170,21 @@ router.get("/accounts/:id", ...auth, async (req, res) => {
 });
 
 router.put("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
-  const parsed = upsertMpCredentialsSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const message = parsed.error.issues.map((i) => i.message).join("; ");
-    res.status(400).json({ error: { code: "VALIDATION_ERROR", message } });
+  const body = req.body as Record<string, unknown>;
+  const mpClientId = typeof body.mpClientId === "string" ? body.mpClientId.trim() : "";
+  const mpClientSecret = typeof body.mpClientSecret === "string" ? body.mpClientSecret.trim() : "";
+  const mpAccessToken = typeof body.mpAccessToken === "string" ? body.mpAccessToken.trim() : "";
+
+  const missing = [
+    !mpClientId && "mpClientId",
+    !mpClientSecret && "mpClientSecret",
+    !mpAccessToken && "mpAccessToken",
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `Campos obrigatórios: ${missing.join(", ")}` } });
     return;
   }
-
-  const { mpClientId, mpClientSecret, mpAccessToken } = parsed.data;
 
   try {
     const db = getDb();
