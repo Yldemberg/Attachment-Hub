@@ -24,6 +24,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -175,6 +176,13 @@ export default function SalesReport() {
       ? (rawData as SalesReportResponse)
       : null;
 
+  const totalPeriodProfit = useMemo(() => {
+    if (!report?.rows.length) return null;
+    const profits = report.rows.map((r) => r.profit).filter((p): p is number => p != null);
+    if (profits.length === 0) return null;
+    return Math.round(profits.reduce((sum, p) => sum + p, 0) * 100) / 100;
+  }, [report]);
+
   const handleGenerate = () => {
     if (!rangeValid) {
       toast({
@@ -265,8 +273,8 @@ export default function SalesReport() {
             <h1 className="text-xl font-bold text-foreground">Relatório de vendas</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
               Pedidos pagos e confirmados por data de referência (horário de Brasília). Colunas: totais do pedido, custos
-              cadastrados no inventário, taxas e frete vindos do Mercado Livre (após sincronizar pedidos), valor à receber
-              do Mercado Pago (`net_received_amount`) e lucro estimado: subtotal dos itens − taxas − imposto − preço de compra.
+              cadastrados no inventário, frete do Mercado Livre (após sincronizar pedidos), valor à receber
+              do Mercado Pago (`net_received_amount`) e lucro estimado (à receber − imposto − preço de compra).
             </p>
           </div>
         </div>
@@ -389,7 +397,6 @@ export default function SalesReport() {
                     <TableHead className="text-xs whitespace-nowrap min-w-[100px]">Conta</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Total compra</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">P. compra</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">Taxas ML</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Frete</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Imposto</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">À receber</TableHead>
@@ -399,7 +406,7 @@ export default function SalesReport() {
                 <TableBody>
                   {report.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                         Nenhuma venda neste período.
                       </TableCell>
                     </TableRow>
@@ -418,9 +425,6 @@ export default function SalesReport() {
                           {formatCurrency(r.productPurchaseTotal)}
                         </TableCell>
                         <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
-                          {formatCurrency(r.marketplaceFeesTotal)}
-                        </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
                           {formatCurrency(r.shippingTotal)}
                         </TableCell>
                         <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
@@ -431,15 +435,33 @@ export default function SalesReport() {
                         </TableCell>
                         <TableCell
                           className={`text-xs text-right tabular-nums font-medium whitespace-nowrap ${
-                            r.profit < 0 ? "text-red-600" : "text-emerald-700"
+                            r.profit != null && r.profit < 0 ? "text-red-600" : "text-emerald-700"
                           }`}
                         >
-                          {formatCurrency(r.profit)}
+                          {r.profit != null ? formatCurrency(r.profit) : "—"}
                         </TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
+                {report.rows.length > 0 && (
+                  <TableFooter>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableCell colSpan={8} className="text-xs font-semibold text-right">
+                        Total do Período
+                      </TableCell>
+                      <TableCell
+                        className={`text-xs text-right tabular-nums font-bold whitespace-nowrap ${
+                          totalPeriodProfit != null && totalPeriodProfit < 0
+                            ? "text-red-600"
+                            : "text-emerald-700"
+                        }`}
+                      >
+                        {totalPeriodProfit != null ? formatCurrency(totalPeriodProfit) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                )}
               </Table>
             </div>
           </div>

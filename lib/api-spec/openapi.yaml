@@ -1887,7 +1887,8 @@ components:
             (GET /v1/payments/{id}).
         profit:
           type: number
-          description: Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos.
+          nullable: true
+          description: À receber (net_received_amount) − imposto − preço de compra dos produtos.
       required:
         - referenceDate
         - productPurchaseTotal

@@ -37,8 +37,6 @@ export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: Sku
     ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
     : [];
   const snap = parseReportFinancialsDb(r.reportFinancials);
-  const fallbackSubtotal = itemsSubtotalFromStoredItems(items);
-  const itemsSubtotal = snap?.itemsSubtotal ?? fallbackSubtotal;
   const marketplaceFeesTotal = snap?.marketplaceFeesTotal ?? 0;
   const shippingTotal = snap?.shippingTotal ?? 0;
 
@@ -56,7 +54,11 @@ export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: Sku
   productPurchaseTotal = Math.round(productPurchaseTotal * 100) / 100;
   taxTotal = Math.round(taxTotal * 100) / 100;
 
-  const profit = Math.round((itemsSubtotal - marketplaceFeesTotal - taxTotal - productPurchaseTotal) * 100) / 100;
+  const netReceivedAmount = snap?.netReceivedAmount ?? null;
+  const profit =
+    netReceivedAmount != null
+      ? Math.round((netReceivedAmount - taxTotal - productPurchaseTotal) * 100) / 100
+      : null;
 
   return {
     referenceDate: r.referenceDate,
@@ -67,7 +69,7 @@ export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: Sku
     marketplaceFeesTotal,
     shippingTotal,
     taxTotal,
-    netReceivedAmount: snap?.netReceivedAmount ?? null,
+    netReceivedAmount,
     profit,
   };
 }

@@ -416,8 +416,8 @@ export interface SalesReportRow {
   taxTotal: number;
   /** Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago (GET /v1/payments/{id}). */
   netReceivedAmount?: number | null;
-  /** Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos. */
-  profit: number;
+  /** À receber (net_received_amount) − imposto − preço de compra dos produtos. */
+  profit: number | null;
 }
 
 export interface SalesReportResponse {

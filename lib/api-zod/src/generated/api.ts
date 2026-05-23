@@ -1097,8 +1097,9 @@ export const GetSalesReportResponse = zod.object({
         ),
       profit: zod
         .number()
+        .nullable()
         .describe(
-          "Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos.",
+          "À receber (net_received_amount) − imposto − preço de compra dos produtos.",
         ),
     }),
   ),

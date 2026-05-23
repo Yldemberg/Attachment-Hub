@@ -333,6 +333,11 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
         if (row.netReceivedAmount == null && r.accountId && r.mlOrderId != null) {
           row.netReceivedAmount = await resolveOrderNetReceivedAmount(r.accountId, r.mlOrderId);
         }
+        if (row.netReceivedAmount != null) {
+          row.profit = Math.round(
+            (row.netReceivedAmount - row.taxTotal - row.productPurchaseTotal) * 100,
+          ) / 100;
+        }
         return row;
       }),
     );

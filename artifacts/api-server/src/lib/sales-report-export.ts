@@ -18,10 +18,9 @@ export interface SalesReportExportRow {
   /** Soma de transaction_details.net_received_amount (Mercado Pago) por pagamento. */
   netReceivedAmount: number | null;
   /**
-   * Subtotal itens − taxas ML − imposto − preço de compra dos produtos.
-   * Subtotal itens = soma unit_price×qtd (mesmo base do relatório ML ao sincronizar).
+   * À receber − imposto − preço de compra (quando net_received_amount está disponível).
    */
-  profit: number;
+  profit: number | null;
 }
 
 export interface SalesReportSummary {
@@ -35,7 +34,6 @@ const CSV_HEADERS = [
   "Conta",
   "Total da Compra",
   "Preço de Compra do Produto",
-  "Total de taxas do Mercado Livre",
   "Frete",
   "Imposto",
   "À Receber",
@@ -65,7 +63,6 @@ export function buildSalesReportCsv(
         r.accountNickname ?? "",
         fmtMoney(r.orderTotal),
         fmtMoney(r.productPurchaseTotal),
-        fmtMoney(r.marketplaceFeesTotal),
         fmtMoney(r.shippingTotal),
         fmtMoney(r.taxTotal),
         fmtMoney(r.netReceivedAmount),
@@ -97,7 +94,6 @@ export async function buildSalesReportXlsx(
       r.accountNickname,
       r.orderTotal,
       r.productPurchaseTotal,
-      r.marketplaceFeesTotal,
       r.shippingTotal,
       r.taxTotal,
       r.netReceivedAmount,
@@ -131,7 +127,7 @@ export function buildSalesReportPdf(
     doc.moveDown(0.5);
     doc.fontSize(6.5);
     doc.text(
-      "Data       Pedido        Conta                 Tot.Compra Pr.Compra TaxasML   Frete   Imposto A.Receber Lucro",
+      "Data       Pedido        Conta                 Tot.Compra Pr.Compra Frete   Imposto A.Receber Lucro",
     );
     doc.moveDown(0.15);
 
@@ -146,7 +142,6 @@ export function buildSalesReportPdf(
         (r.accountNickname ?? "").slice(0, 18).padEnd(18),
         fmtMoney(r.orderTotal).padStart(10),
         fmtMoney(r.productPurchaseTotal).padStart(10),
-        fmtMoney(r.marketplaceFeesTotal).padStart(9),
         fmtMoney(r.shippingTotal).padStart(7),
         fmtMoney(r.taxTotal).padStart(8),
         fmtMoney(r.netReceivedAmount).padStart(10),
