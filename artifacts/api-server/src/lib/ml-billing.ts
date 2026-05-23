@@ -4,12 +4,37 @@ import { logger } from "./logger";
 const ML_REPORT_TZ = "America/Sao_Paulo";
 const PERIOD_HISTORY_MONTHS = 12;
 
-const FULL_SHIPPING_TYPES = new Set(["INBOUND_COLLECT", "WITHDRAWAL", "INBOUND_PENALTY"]);
-const FULL_STORAGE_TYPES = new Set(["WAREHOUSING", "AGING", "OVERAGE", "SPACE_PURCHASE", "SPACE_CANCELLATION"]);
+const FULL_SHIPPING_TYPES = new Set([
+  "INBOUND_COLLECT",
+  "WITHDRAWAL",
+  "INBOUND_PENALTY",
+  "OUTBOUND",
+]);
+const FULL_STORAGE_TYPES = new Set([
+  "WAREHOUSING",
+  "AGING",
+  "OVERAGE",
+  "SPACE_PURCHASE",
+  "SPACE_CANCELLATION",
+]);
+
+const FULL_SUMMARY_CHARGE_TYPES = new Set([
+  "CFCB",
+  "CFAL",
+  "CFAM",
+  "CFWH",
+  "CFST",
+  "CFAG",
+  "CFWD",
+]);
 
 const ADS_DETAIL_SUB_TYPES = new Set(["PADS"]);
 const ADS_TEXT_RE =
   /product ads|product_ads|campanhas publicit|an[uú]ncios de produto|publicidade|product ads/i;
+const FULL_STORAGE_TEXT_RE =
+  /almacenamiento|armazenamento|warehousing|aging|overage|espac|storage|prolongado/i;
+const FULL_SHIPPING_TEXT_RE =
+  /colecta|coleta|retiro|withdrawal|incumplimiento|inbound|envio full|envío full|fulfillment/i;
 
 type MlBillingPeriodRow = {
   key?: string;
@@ -40,6 +65,7 @@ type MlChargeInfo = {
   detail_sub_type?: string;
   concept_type?: string;
   transaction_detail?: string;
+  creation_date_time?: string;
 };
 
 type MlFullBillingRow = {
@@ -116,6 +142,48 @@ function calendarRangeForPeriodKey(periodKey: string): { dateFrom: string; dateT
   return { dateFrom, dateTo };
 }
 
+function rangesOverlap(aFrom: string, aTo: string, bFrom: string, bTo: string): boolean {
+  return aFrom <= bTo && bFrom <= aTo;
+}
+
+function isWithinCalendarRange(
+  creationDateTime: string | undefined | null,
+  dateFrom: string,
+  dateTo: string,
+): boolean {
+  if (!creationDateTime) return true;
+  const day = creationDateTime.slice(0, 10);
+  return day >= dateFrom && day <= dateTo;
+}
+
+function resolveMlPeriodKeysForCalendarMonth(
+  rows: MlBillingPeriodRow[],
+  calendarKey: string,
+): string[] {
+  const calendar = calendarRangeForPeriodKey(calendarKey);
+  const keys = new Set<string>([calendarKey]);
+
+  for (const row of rows) {
+    if (!row.key) continue;
+    const key = normalizePeriodKey(row.key);
+    if (key === calendarKey) {
+      keys.add(key);
+      continue;
+    }
+    const from = row.period?.date_from;
+    const to = row.period?.date_to;
+    if (from && to && rangesOverlap(calendar.dateFrom, calendar.dateTo, from, to)) {
+      keys.add(key);
+    }
+  }
+
+  return [...keys].sort((a, b) => {
+    if (a === calendarKey) return -1;
+    if (b === calendarKey) return 1;
+    return b.localeCompare(a);
+  });
+}
+
 function buildCalendarMonthOptions(count = PERIOD_HISTORY_MONTHS): MlBillingPeriodOption[] {
   const [y, m] = todayYmdSp().split("-").map(Number);
   const options: MlBillingPeriodOption[] = [];
@@ -145,6 +213,40 @@ function isAdsDetail(info: MlChargeInfo): boolean {
   return ADS_DETAIL_SUB_TYPES.has(sub) || ADS_TEXT_RE.test(desc);
 }
 
+function isFullSummaryCharge(charge: MlBillingCharge): boolean {
+  const type = (charge.type ?? "").toUpperCase();
+  const label = (charge.label ?? "").toLowerCase();
+  if (FULL_SUMMARY_CHARGE_TYPES.has(type)) return true;
+  if (/full|fulfillment/.test(label) && !ADS_TEXT_RE.test(label)) return true;
+  if (FULL_STORAGE_TEXT_RE.test(label) || FULL_SHIPPING_TEXT_RE.test(label)) return true;
+  return false;
+}
+
+function classifyFullAmount(row: MlFullBillingRow): { shipping: number; storage: number } {
+  const info = row.charge_info;
+  if (info?.detail_type === "BONUS") return { shipping: 0, storage: 0 };
+
+  const amount = Math.abs(Number(info?.detail_amount ?? row.fulfillment_info?.amount ?? 0));
+  if (!Number.isFinite(amount) || amount === 0) return { shipping: 0, storage: 0 };
+
+  const fType = (row.fulfillment_info?.type ?? "").toUpperCase();
+  if (FULL_STORAGE_TYPES.has(fType)) return { shipping: 0, storage: amount };
+  if (FULL_SHIPPING_TYPES.has(fType)) return { shipping: amount, storage: 0 };
+
+  const desc = (info?.transaction_detail ?? "").toLowerCase();
+  const sub = (info?.detail_sub_type ?? "").toUpperCase();
+  if (FULL_STORAGE_TEXT_RE.test(desc)) {
+    return { shipping: 0, storage: amount };
+  }
+  if ((info?.concept_type ?? "").toUpperCase() === "FULFILLMENT") {
+    return { shipping: amount, storage: 0 };
+  }
+  if (fType) return { shipping: amount, storage: 0 };
+  if (FULL_SHIPPING_TEXT_RE.test(desc)) return { shipping: amount, storage: 0 };
+
+  return { shipping: 0, storage: 0 };
+}
+
 function sumProductAdsFromSummary(data: MlBillingSummaryResponse): number {
   const charges = data.bill_includes?.charges ?? [];
   let total = 0;
@@ -152,6 +254,22 @@ function sumProductAdsFromSummary(data: MlBillingSummaryResponse): number {
     if (isAdsCharge(c)) total += Number(c.amount ?? 0);
   }
   return roundMoney(total);
+}
+
+function sumFullFromSummary(data: MlBillingSummaryResponse): { fullShipping: number; fullStorage: number } {
+  let fullShipping = 0;
+  let fullStorage = 0;
+  for (const charge of data.bill_includes?.charges ?? []) {
+    if (!isFullSummaryCharge(charge)) continue;
+    const amount = Math.abs(Number(charge.amount ?? 0));
+    const label = (charge.label ?? "").toLowerCase();
+    if (FULL_STORAGE_TEXT_RE.test(label)) {
+      fullStorage += amount;
+    } else {
+      fullShipping += amount;
+    }
+  }
+  return { fullShipping: roundMoney(fullShipping), fullStorage: roundMoney(fullStorage) };
 }
 
 function mapPeriodRow(row: MlBillingPeriodRow): MlBillingPeriodOption | null {
@@ -237,9 +355,60 @@ async function paginateBilling<T>(
   return all;
 }
 
+function aggregateFullRows(
+  rows: MlFullBillingRow[],
+  calendar: { dateFrom: string; dateTo: string },
+  applyCalendarFilter = true,
+): { fullShipping: number; fullStorage: number } {
+  let fullShipping = 0;
+  let fullStorage = 0;
+  for (const row of rows) {
+    if (
+      applyCalendarFilter &&
+      !isWithinCalendarRange(row.charge_info?.creation_date_time, calendar.dateFrom, calendar.dateTo)
+    ) {
+      continue;
+    }
+    const split = classifyFullAmount(row);
+    fullShipping += split.shipping;
+    fullStorage += split.storage;
+  }
+
+  if (applyCalendarFilter && fullShipping === 0 && fullStorage === 0 && rows.length > 0) {
+    return aggregateFullRows(rows, calendar, false);
+  }
+
+  return { fullShipping: roundMoney(fullShipping), fullStorage: roundMoney(fullStorage) };
+}
+
+async function fetchFullFromDetailsEndpoint(
+  accountId: string,
+  periodKey: string,
+  calendar: { dateFrom: string; dateTo: string },
+): Promise<{ fullShipping: number; fullStorage: number }> {
+  const rows = await paginateBilling<MlFullBillingRow>(accountId, (fromId) =>
+    `/billing/integration/periods/key/${encodeURIComponent(periodKey)}/group/ML/full/details?document_type=BILL&limit=1000&from_id=${fromId}`,
+  );
+  return aggregateFullRows(rows, calendar);
+}
+
+async function fetchFullFromGeneralDetails(
+  accountId: string,
+  periodKey: string,
+  calendar: { dateFrom: string; dateTo: string },
+): Promise<{ fullShipping: number; fullStorage: number }> {
+  const rows = await paginateBilling<MlFullBillingRow>(accountId, (fromId) =>
+    `/billing/integration/periods/key/${encodeURIComponent(periodKey)}/group/ML/details?document_type=BILL&limit=1000&from_id=${fromId}`,
+  );
+  const fulfillmentRows = rows.filter(
+    (row) => (row.charge_info?.concept_type ?? "").toUpperCase() === "FULFILLMENT",
+  );
+  return aggregateFullRows(fulfillmentRows, calendar);
+}
+
 async function aggregateProductAdsFromMlDetails(accountId: string, periodKey: string): Promise<number> {
   const rows = await paginateBilling<{ charge_info?: MlChargeInfo }>(accountId, (fromId) =>
-    `/billing/integration/periods/key/${encodeURIComponent(periodKey)}/group/ML/details?group=ML&document_type=BILL&limit=1000&from_id=${fromId}`,
+    `/billing/integration/periods/key/${encodeURIComponent(periodKey)}/group/ML/details?document_type=BILL&limit=1000&from_id=${fromId}`,
   );
   let total = 0;
   for (const row of rows) {
@@ -253,31 +422,46 @@ async function aggregateProductAdsFromMlDetails(accountId: string, periodKey: st
 
 async function fetchFullFulfillmentTotals(
   accountId: string,
-  periodKey: string,
+  periodKeys: string[],
+  calendar: { dateFrom: string; dateTo: string },
 ): Promise<{ fullShipping: number; fullStorage: number }> {
   let fullShipping = 0;
   let fullStorage = 0;
 
-  const rows = await paginateBilling<MlFullBillingRow>(accountId, (fromId) =>
-    `/billing/integration/periods/key/${encodeURIComponent(periodKey)}/group/ML/full/details?group=ML&document_type=BILL&limit=1000&from_id=${fromId}`,
-  );
+  for (const periodKey of periodKeys) {
+    if (fullShipping > 0 || fullStorage > 0) break;
 
-  for (const row of rows) {
-    const info = row.charge_info;
-    if (info?.detail_type === "BONUS") continue;
-    const amount = Number(info?.detail_amount ?? row.fulfillment_info?.amount ?? 0);
-    if (!Number.isFinite(amount) || amount === 0) continue;
-    const fType = (row.fulfillment_info?.type ?? "").toUpperCase();
-    if (FULL_STORAGE_TYPES.has(fType)) {
-      fullStorage += amount;
-    } else if (FULL_SHIPPING_TYPES.has(fType) || fType) {
-      fullShipping += amount;
-    } else if ((info?.concept_type ?? "").toUpperCase() === "FULFILLMENT") {
-      fullShipping += amount;
+    try {
+      const fromFull = await fetchFullFromDetailsEndpoint(accountId, periodKey, calendar);
+      fullShipping = fromFull.fullShipping;
+      fullStorage = fromFull.fullStorage;
+    } catch (err) {
+      logger.warn({ err, accountId, periodKey }, "ML full/details fetch failed");
+    }
+
+    if (fullShipping === 0 && fullStorage === 0) {
+      try {
+        const fromGeneral = await fetchFullFromGeneralDetails(accountId, periodKey, calendar);
+        fullShipping = fromGeneral.fullShipping;
+        fullStorage = fromGeneral.fullStorage;
+      } catch (err) {
+        logger.warn({ err, accountId, periodKey }, "ML general details full fetch failed");
+      }
+    }
+
+    if (fullShipping === 0 && fullStorage === 0) {
+      try {
+        const summary = await fetchBillingSummary(accountId, periodKey);
+        const fromSummary = sumFullFromSummary(summary);
+        fullShipping = fromSummary.fullShipping;
+        fullStorage = fromSummary.fullStorage;
+      } catch (err) {
+        logger.warn({ err, accountId, periodKey }, "ML billing summary full fetch failed");
+      }
     }
   }
 
-  return { fullShipping: roundMoney(fullShipping), fullStorage: roundMoney(fullStorage) };
+  return { fullShipping, fullStorage };
 }
 
 function mergeAvailablePeriods(lists: MlBillingPeriodOption[][]): MlBillingPeriodOption[] {
@@ -320,39 +504,57 @@ async function buildAvailablePeriodsForAccount(accountId: string): Promise<MlBil
 
 async function resolveExtraCostsForPeriod(
   accountId: string,
-  periodKey: string,
+  calendarKey: string,
+  billingRows: MlBillingPeriodRow[],
 ): Promise<MlExtraCostsBreakdown | null> {
-  const selectedPeriodKey = normalizePeriodKey(periodKey);
+  const selectedPeriodKey = normalizePeriodKey(calendarKey);
   const calendar = calendarRangeForPeriodKey(selectedPeriodKey);
+  const mlPeriodKeys = resolveMlPeriodKeysForCalendarMonth(billingRows, selectedPeriodKey);
 
   let productAds = 0;
   let resolvedKey = selectedPeriodKey;
   let gotSummary = false;
 
-  try {
-    const summary = await fetchBillingSummary(accountId, selectedPeriodKey);
-    gotSummary = true;
-    productAds = sumProductAdsFromSummary(summary);
-    resolvedKey = summary.period?.key ?? selectedPeriodKey;
-  } catch (err) {
-    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML billing summary fetch failed");
+  for (const periodKey of mlPeriodKeys) {
     try {
-      productAds = await aggregateProductAdsFromMlDetails(accountId, selectedPeriodKey);
-      gotSummary = productAds > 0;
-    } catch (detailsErr) {
-      logger.warn({ err: detailsErr, accountId, periodKey: selectedPeriodKey }, "ML billing details ads fetch failed");
+      const summary = await fetchBillingSummary(accountId, periodKey);
+      gotSummary = true;
+      productAds = sumProductAdsFromSummary(summary);
+      resolvedKey = summary.period?.key ?? periodKey;
+      if (productAds > 0) break;
+    } catch (err) {
+      logger.warn({ err, accountId, periodKey }, "ML billing summary fetch failed");
+    }
+  }
+
+  if (productAds === 0) {
+    for (const periodKey of mlPeriodKeys) {
+      try {
+        productAds = await aggregateProductAdsFromMlDetails(accountId, periodKey);
+        if (productAds > 0) {
+          gotSummary = true;
+          resolvedKey = periodKey;
+          break;
+        }
+      } catch (detailsErr) {
+        logger.warn({ err: detailsErr, accountId, periodKey }, "ML billing details ads fetch failed");
+      }
     }
   }
 
   let fullShipping = 0;
   let fullStorage = 0;
   try {
-    const fullTotals = await fetchFullFulfillmentTotals(accountId, selectedPeriodKey);
+    const fullTotals = await fetchFullFulfillmentTotals(
+      accountId,
+      mlPeriodKeys,
+      calendar,
+    );
     fullShipping = fullTotals.fullShipping;
     fullStorage = fullTotals.fullStorage;
     if (fullShipping > 0 || fullStorage > 0) gotSummary = true;
   } catch (err) {
-    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML full billing details fetch failed");
+    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML full billing fetch failed");
   }
 
   if (productAds === 0) {
@@ -390,7 +592,11 @@ export async function fetchMlExtraCostsForAccount(
   periodKey?: string | null,
 ): Promise<MlExtraCostsBreakdown> {
   const selectedPeriodKey = normalizePeriodKey(periodKey);
-  const availablePeriods = await buildAvailablePeriodsForAccount(accountId);
+  const billingRows = await fetchBillingPeriodRows(accountId);
+  const availablePeriods = mergeAvailablePeriods([
+    billingRows.map(mapPeriodRow).filter((p): p is MlBillingPeriodOption => p != null),
+    buildCalendarMonthOptions(),
+  ]);
 
   const empty: MlExtraCostsBreakdown = {
     periodKey: selectedPeriodKey,
@@ -408,7 +614,7 @@ export async function fetchMlExtraCostsForAccount(
   };
 
   try {
-    const result = await resolveExtraCostsForPeriod(accountId, selectedPeriodKey);
+    const result = await resolveExtraCostsForPeriod(accountId, selectedPeriodKey, billingRows);
     if (result) {
       return { ...result, availablePeriods };
     }
