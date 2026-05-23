@@ -9,4 +9,5 @@
 export interface MpCredentialsStatus {
   hasMpCredentials: boolean;
   mpClientIdMasked?: string | null;
+  mpClientSecretMasked?: string | null;
 }

@@ -1210,6 +1210,10 @@ components:
           type: string
           nullable: true
           description: Últimos 4 chars do Client ID (ou null se não configurado)
+        mpClientSecretMasked:
+          type: string
+          nullable: true
+          description: Últimos 4 chars do Client Secret (ou null se não configurado)
         createdAt:
           type: string
           format: date-time
@@ -1238,6 +1242,9 @@ components:
         hasMpCredentials:
           type: boolean
         mpClientIdMasked:
+          type: string
+          nullable: true
+        mpClientSecretMasked:
           type: string
           nullable: true
       required: [hasMpCredentials]

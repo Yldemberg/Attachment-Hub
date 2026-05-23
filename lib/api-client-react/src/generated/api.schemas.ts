@@ -58,6 +58,8 @@ export interface Account {
   hasMpCredentials: boolean;
   /** Últimos 4 chars do Client ID (ou null se não configurado) */
   mpClientIdMasked?: string | null;
+  /** Últimos 4 chars do Client Secret (ou null se não configurado) */
+  mpClientSecretMasked?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +76,7 @@ export interface UpsertMpCredentialsRequest {
 export interface MpCredentialsStatus {
   hasMpCredentials: boolean;
   mpClientIdMasked?: string | null;
+  mpClientSecretMasked?: string | null;
 }
 
 export interface AccountSummary {

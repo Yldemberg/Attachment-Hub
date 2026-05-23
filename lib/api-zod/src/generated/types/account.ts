@@ -18,6 +18,8 @@ export interface Account {
   hasMpCredentials: boolean;
   /** Últimos 4 chars do Client ID (ou null se não configurado) */
   mpClientIdMasked?: string | null;
+  /** Últimos 4 chars do Client Secret (ou null se não configurado) */
+  mpClientSecretMasked?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

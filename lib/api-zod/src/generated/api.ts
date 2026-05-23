@@ -53,6 +53,12 @@ export const ListAccountsResponse = zod.object({
         .string()
         .nullish()
         .describe("Últimos 4 chars do Client ID (ou null se não configurado)"),
+      mpClientSecretMasked: zod
+        .string()
+        .nullish()
+        .describe(
+          "Últimos 4 chars do Client Secret (ou null se não configurado)",
+        ),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -100,6 +106,10 @@ export const GetAccountResponse = zod.object({
     .string()
     .nullish()
     .describe("Últimos 4 chars do Client ID (ou null se não configurado)"),
+  mpClientSecretMasked: zod
+    .string()
+    .nullish()
+    .describe("Últimos 4 chars do Client Secret (ou null se não configurado)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -129,6 +139,7 @@ export const UpsertMpCredentialsBody = zod.object({
 export const UpsertMpCredentialsResponse = zod.object({
   hasMpCredentials: zod.boolean(),
   mpClientIdMasked: zod.string().nullish(),
+  mpClientSecretMasked: zod.string().nullish(),
 });
 
 /**
@@ -141,6 +152,7 @@ export const DeleteMpCredentialsParams = zod.object({
 export const DeleteMpCredentialsResponse = zod.object({
   hasMpCredentials: zod.boolean(),
   mpClientIdMasked: zod.string().nullish(),
+  mpClientSecretMasked: zod.string().nullish(),
 });
 
 /**

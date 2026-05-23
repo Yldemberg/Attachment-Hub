@@ -42,6 +42,7 @@ interface Account {
   lastSyncAt?: string | null;
   hasMpCredentials?: boolean;
   mpClientIdMasked?: string | null;
+  mpClientSecretMasked?: string | null;
 }
 
 function ConnectButton() {

@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
 import { syncAccount } from "../lib/sync";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
+import { z } from "zod/v4";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -18,9 +19,15 @@ function buildRedirectUri(req: import("express").Request): string {
   return `${proto}://${host}/api/callback`;
 }
 
-function maskClientId(id: string | null | undefined): string | null {
-  if (!id || id.length < 4) return null;
-  return "•••" + id.slice(-4);
+const upsertMpCredentialsSchema = z.object({
+  mpClientId: z.string().trim().min(1, "mpClientId é obrigatório"),
+  mpClientSecret: z.string().trim().min(1, "mpClientSecret é obrigatório"),
+  mpAccessToken: z.string().trim().min(1, "mpAccessToken é obrigatório"),
+});
+
+function maskField(value: string | null | undefined): string | null {
+  if (!value || value.length < 4) return null;
+  return "•••" + value.slice(-4);
 }
 
 function serializeAccount(row: typeof accountsTable.$inferSelect) {
@@ -35,7 +42,8 @@ function serializeAccount(row: typeof accountsTable.$inferSelect) {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     hasMpCredentials: !!(row.mpClientId && row.mpAccessToken),
-    mpClientIdMasked: maskClientId(row.mpClientId),
+    mpClientIdMasked: maskField(row.mpClientId),
+    mpClientSecretMasked: maskField(row.mpClientSecret),
   };
 }
 
@@ -170,31 +178,20 @@ router.get("/accounts/:id", ...auth, async (req, res) => {
 });
 
 router.put("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
-  const { mpClientId, mpClientSecret, mpAccessToken } = req.body as {
-    mpClientId?: unknown;
-    mpClientSecret?: unknown;
-    mpAccessToken?: unknown;
-  };
-
-  if (
-    typeof mpClientId !== "string" || !mpClientId.trim() ||
-    typeof mpClientSecret !== "string" || !mpClientSecret.trim() ||
-    typeof mpAccessToken !== "string" || !mpAccessToken.trim()
-  ) {
-    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "mpClientId, mpClientSecret e mpAccessToken são obrigatórios" } });
+  const parsed = upsertMpCredentialsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((i) => i.message).join("; ");
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message } });
     return;
   }
+
+  const { mpClientId, mpClientSecret, mpAccessToken } = parsed.data;
 
   try {
     const db = getDb();
     const [updated] = await db
       .update(accountsTable)
-      .set({
-        mpClientId: mpClientId.trim(),
-        mpClientSecret: mpClientSecret.trim(),
-        mpAccessToken: mpAccessToken.trim(),
-        updatedAt: new Date(),
-      })
+      .set({ mpClientId, mpClientSecret, mpAccessToken, updatedAt: new Date() })
       .where(and(eq(accountsTable.id, req.params.id as string), eq(accountsTable.userId, req.user!.id)))
       .returning();
 
@@ -205,7 +202,8 @@ router.put("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
 
     res.json({
       hasMpCredentials: true,
-      mpClientIdMasked: maskClientId(updated.mpClientId),
+      mpClientIdMasked: maskField(updated.mpClientId),
+      mpClientSecretMasked: maskField(updated.mpClientSecret),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to save MP credentials");
@@ -218,12 +216,7 @@ router.delete("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
     const db = getDb();
     const [updated] = await db
       .update(accountsTable)
-      .set({
-        mpClientId: null,
-        mpClientSecret: null,
-        mpAccessToken: null,
-        updatedAt: new Date(),
-      })
+      .set({ mpClientId: null, mpClientSecret: null, mpAccessToken: null, updatedAt: new Date() })
       .where(and(eq(accountsTable.id, req.params.id as string), eq(accountsTable.userId, req.user!.id)))
       .returning({ id: accountsTable.id });
 
@@ -232,7 +225,7 @@ router.delete("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
       return;
     }
 
-    res.json({ hasMpCredentials: false, mpClientIdMasked: null });
+    res.json({ hasMpCredentials: false, mpClientIdMasked: null, mpClientSecretMasked: null });
   } catch (err) {
     req.log.error({ err }, "Failed to remove MP credentials");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
