@@ -18,6 +18,7 @@ import type { SalesReportExportRow } from "../lib/sales-report-export";
 import { buildSalesReportExportRow, type SalesReportDbDetailRow } from "../lib/sales-report-row-build";
 import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 import { resolveOrderNetReceivedAmount } from "../lib/mercadopago";
+import { fetchMlExtraCostsAggregated } from "../lib/ml-billing";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -125,6 +126,18 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get dashboard summary");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.get("/dashboard/ml-extra-costs", ...auth, async (req, res) => {
+  try {
+    const { account_id } = req.query as Record<string, string>;
+    const accountIds = await getUserAccountIds(req.user!.id, account_id);
+    const data = await fetchMlExtraCostsAggregated(accountIds);
+    res.json(data);
+  } catch (err) {
+    req.log.error({ err }, "Failed to get ML extra costs");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

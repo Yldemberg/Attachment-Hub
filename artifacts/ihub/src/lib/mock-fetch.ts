@@ -108,6 +108,24 @@ export function installMockFetch(): void {
       return jsonResponse({ ...DEMO_DASHBOARD_SUMMARY, criticalStockCount: criticalCount, unansweredQuestions: unansweredCount });
     }
 
+    if (path === "/dashboard/ml-extra-costs") {
+      const today = new Date();
+      const from = new Date(today.getFullYear(), today.getMonth(), 1);
+      const to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      return jsonResponse({
+        periodKey: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`,
+        periodFrom: fmt(from),
+        periodTo: fmt(to),
+        productAds: 486.5,
+        fullShipping: 312.4,
+        fullStorage: 189.75,
+        totalExtraCosts: 988.65,
+        available: true,
+        message: null,
+      });
+    }
+
     if (path === "/dashboard/sales-chart") {
       const period = params.get("period") ?? "30d";
       if (period === "7d") return jsonResponse(DEMO_SALES_CHART_7D);

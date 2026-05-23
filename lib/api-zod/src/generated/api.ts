@@ -1014,6 +1014,36 @@ export const GetDashboardSummaryResponse = zod.object({
 });
 
 /**
+ * Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente (API billing/integration).
+ * @summary Custos extras cobrados pelo Mercado Livre
+ */
+export const GetMlExtraCostsQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+});
+
+export const GetMlExtraCostsResponse = zod.object({
+  periodKey: zod.string().nullish(),
+  periodFrom: zod.coerce.date().nullish(),
+  periodTo: zod.coerce.date().nullish(),
+  productAds: zod
+    .number()
+    .describe("Campanhas Product Ads (tipo PADS no resumo de faturamento)."),
+  fullShipping: zod
+    .number()
+    .describe(
+      "Custos Full de envio\/coleta (INBOUND_COLLECT, WITHDRAWAL, etc.).",
+    ),
+  fullStorage: zod
+    .number()
+    .describe(
+      "Custos Full de armazenamento (WAREHOUSING, AGING, OVERAGE, etc.).",
+    ),
+  totalExtraCosts: zod.number(),
+  available: zod.boolean(),
+  message: zod.string().nullish(),
+});
+
+/**
  * Returns daily sales data for the specified period
  * @summary Get sales chart data
  */

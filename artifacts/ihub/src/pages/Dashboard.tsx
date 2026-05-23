@@ -2,12 +2,14 @@ import { useState } from "react";
 import {
   useGetDashboardSummary,
   useGetSalesChart,
+  useGetMlExtraCosts,
   useGetLowStockProducts,
   useListAccounts,
   useListQuestions,
   useAnswerQuestion,
   getGetDashboardSummaryQueryKey,
   getGetSalesChartQueryKey,
+  getGetMlExtraCostsQueryKey,
   getGetLowStockProductsQueryKey,
   getListQuestionsQueryKey,
   getGetQuestionQueryKey,
@@ -31,6 +33,7 @@ import {
   Plug,
   Send,
   TrendingUp,
+  Receipt,
 } from "lucide-react";
 import {
   Select,
@@ -125,6 +128,29 @@ function QuickReply({ q }: { q: Question }) {
   );
 }
 
+interface MlExtraCostsData {
+  periodKey?: string | null;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+  productAds?: number;
+  fullShipping?: number;
+  fullStorage?: number;
+  totalExtraCosts?: number;
+  available?: boolean;
+  message?: string | null;
+}
+
+function formatIsoDatePtBr(ymd: string | null | undefined): string {
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("30d");
   const [accountId, setAccountId] = useState<string | undefined>();
@@ -137,6 +163,12 @@ export default function Dashboard() {
     { query: { queryKey: getGetDashboardSummaryQueryKey({ account_id: accountId }) } },
   );
   const s = summary as DashboardSummaryData | null;
+
+  const { data: extraCostsRaw, isLoading: loadingExtraCosts } = useGetMlExtraCosts(
+    accountId ? { account_id: accountId } : {},
+    { query: { queryKey: getGetMlExtraCostsQueryKey({ account_id: accountId }) } },
+  );
+  const extraCosts = extraCostsRaw as MlExtraCostsData | null;
 
   const { data: chartData } = useGetSalesChart(
     { period, ...(accountId ? { account_id: accountId } : {}) },
@@ -265,6 +297,63 @@ export default function Dashboard() {
               <div key={kpi.label}>{inner}</div>
             );
           })}
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-start gap-2">
+              <Receipt className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Custos extras Mercado Livre</h2>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  {extraCosts?.periodFrom && extraCosts?.periodTo
+                    ? `Período de faturamento: ${formatIsoDatePtBr(extraCosts.periodFrom)} — ${formatIsoDatePtBr(extraCosts.periodTo)}`
+                    : "Product Ads e taxas Full (envios e estoque) do último período de faturamento."}
+                </p>
+              </div>
+            </div>
+            {extraCosts?.available && extraCosts.totalExtraCosts != null && (
+              <div className="text-right flex-shrink-0">
+                <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Total</p>
+                <p className="text-lg font-bold text-orange-600 tabular-nums">
+                  {loadingExtraCosts ? "—" : formatCurrency(extraCosts.totalExtraCosts)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {loadingExtraCosts ? (
+            <p className="text-muted-foreground text-sm text-center py-6">Carregando custos…</p>
+          ) : !extraCosts?.available ? (
+            <p className="text-muted-foreground text-sm text-center py-6">
+              {extraCosts?.message ?? "Conecte uma conta do Mercado Livre para ver os custos extras."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <p className="text-muted-foreground text-xs">Product Ads</p>
+                <p className="text-base font-semibold text-foreground tabular-nums mt-1">
+                  {formatCurrency(extraCosts.productAds ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <p className="text-muted-foreground text-xs">Full — envios / coleta</p>
+                <p className="text-base font-semibold text-foreground tabular-nums mt-1">
+                  {formatCurrency(extraCosts.fullShipping ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <p className="text-muted-foreground text-xs">Full — armazenamento</p>
+                <p className="text-base font-semibold text-foreground tabular-nums mt-1">
+                  {formatCurrency(extraCosts.fullStorage ?? 0)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {extraCosts?.available && extraCosts.message && (
+            <p className="text-amber-700 text-xs mt-3">{extraCosts.message}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

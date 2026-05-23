@@ -379,6 +379,21 @@ export interface DashboardSummary {
   activeAccounts: number;
 }
 
+export interface MlExtraCostsBreakdown {
+  periodKey?: string | null;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+  /** Campanhas Product Ads (tipo PADS no resumo de faturamento). */
+  productAds: number;
+  /** Custos Full de envio/coleta (INBOUND_COLLECT, WITHDRAWAL, etc.). */
+  fullShipping: number;
+  /** Custos Full de armazenamento (WAREHOUSING, AGING, OVERAGE, etc.). */
+  fullStorage: number;
+  totalExtraCosts: number;
+  available: boolean;
+  message?: string | null;
+}
+
 export interface SalesChartDataPoint {
   date: string;
   revenue: number;
@@ -601,6 +616,10 @@ export type MarkAllNotificationsRead200 = {
 };
 
 export type GetDashboardSummaryParams = {
+  account_id?: string;
+};
+
+export type GetMlExtraCostsParams = {
   account_id?: string;
 };
 

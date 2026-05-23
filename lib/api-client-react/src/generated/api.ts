@@ -27,6 +27,7 @@ import type {
   GetLowStockProducts200,
   GetLowStockProductsParams,
   GetMercadoPagoPaymentParams,
+  GetMlExtraCostsParams,
   GetSalesChartParams,
   GetSalesReportParams,
   HandleConnectCallbackParams,
@@ -46,6 +47,7 @@ import type {
   MarkAllNotificationsRead200,
   MercadoLivreWebhookPayload,
   MercadoPagoPayment,
+  MlExtraCostsBreakdown,
   MpCredentialsStatus,
   NotFoundResponse,
   Notification,
@@ -2851,6 +2853,104 @@ export function useGetDashboardSummary<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDashboardSummaryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente (API billing/integration).
+ * @summary Custos extras cobrados pelo Mercado Livre
+ */
+export const getGetMlExtraCostsUrl = (params?: GetMlExtraCostsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/ml-extra-costs?${stringifiedParams}`
+    : `/api/dashboard/ml-extra-costs`;
+};
+
+export const getMlExtraCosts = async (
+  params?: GetMlExtraCostsParams,
+  options?: RequestInit,
+): Promise<MlExtraCostsBreakdown> => {
+  return customFetch<MlExtraCostsBreakdown>(getGetMlExtraCostsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMlExtraCostsQueryKey = (params?: GetMlExtraCostsParams) => {
+  return [
+    `/api/dashboard/ml-extra-costs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetMlExtraCostsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMlExtraCosts>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetMlExtraCostsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMlExtraCosts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMlExtraCostsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMlExtraCosts>>> = ({
+    signal,
+  }) => getMlExtraCosts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMlExtraCosts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMlExtraCostsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMlExtraCosts>>
+>;
+export type GetMlExtraCostsQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Custos extras cobrados pelo Mercado Livre
+ */
+
+export function useGetMlExtraCosts<
+  TData = Awaited<ReturnType<typeof getMlExtraCosts>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetMlExtraCostsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMlExtraCosts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMlExtraCostsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

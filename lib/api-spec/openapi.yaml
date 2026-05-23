@@ -934,6 +934,31 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /dashboard/ml-extra-costs:
+    get:
+      operationId: getMlExtraCosts
+      tags: [dashboard]
+      summary: Custos extras cobrados pelo Mercado Livre
+      description: >-
+        Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente
+        (API billing/integration).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Breakdown de custos extras ML
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MlExtraCostsBreakdown"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /dashboard/sales-chart:
     get:
       operationId: getSalesChart
@@ -1806,6 +1831,43 @@ components:
         activeAccounts:
           type: integer
       required: [salesToday, salesMonth, ordersToday, ordersMonth, pendingOrders, unansweredQuestions, criticalStockCount, activeAccounts]
+
+    MlExtraCostsBreakdown:
+      type: object
+      properties:
+        periodKey:
+          type: string
+          nullable: true
+        periodFrom:
+          type: string
+          format: date
+          nullable: true
+        periodTo:
+          type: string
+          format: date
+          nullable: true
+        productAds:
+          type: number
+          description: Campanhas Product Ads (tipo PADS no resumo de faturamento).
+        fullShipping:
+          type: number
+          description: Custos Full de envio/coleta (INBOUND_COLLECT, WITHDRAWAL, etc.).
+        fullStorage:
+          type: number
+          description: Custos Full de armazenamento (WAREHOUSING, AGING, OVERAGE, etc.).
+        totalExtraCosts:
+          type: number
+        available:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+      required:
+        - productAds
+        - fullShipping
+        - fullStorage
+        - totalExtraCosts
+        - available
 
     SalesChartDataPoint:
       type: object
