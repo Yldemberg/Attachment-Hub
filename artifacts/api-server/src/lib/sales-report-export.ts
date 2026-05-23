@@ -15,6 +15,8 @@ export interface SalesReportExportRow {
   shippingTotal: number;
   /** Imposto estimado: soma (subtotal da linha × % do SKU). */
   taxTotal: number;
+  /** Soma de transaction_details.net_received_amount (Mercado Pago) por pagamento. */
+  netReceivedAmount: number | null;
   /**
    * Subtotal itens − taxas ML − imposto − preço de compra dos produtos.
    * Subtotal itens = soma unit_price×qtd (mesmo base do relatório ML ao sincronizar).
@@ -36,6 +38,7 @@ const CSV_HEADERS = [
   "Total de taxas do Mercado Livre",
   "Frete",
   "Imposto",
+  "À Receber",
   "Lucro",
 ];
 
@@ -65,6 +68,7 @@ export function buildSalesReportCsv(
         fmtMoney(r.marketplaceFeesTotal),
         fmtMoney(r.shippingTotal),
         fmtMoney(r.taxTotal),
+        fmtMoney(r.netReceivedAmount),
         fmtMoney(r.profit),
       ]
         .map(csvEscape)
@@ -96,6 +100,7 @@ export async function buildSalesReportXlsx(
       r.marketplaceFeesTotal,
       r.shippingTotal,
       r.taxTotal,
+      r.netReceivedAmount,
       r.profit,
     ]);
   }
@@ -126,7 +131,7 @@ export function buildSalesReportPdf(
     doc.moveDown(0.5);
     doc.fontSize(6.5);
     doc.text(
-      "Data       Pedido        Conta                 Tot.Compra Pr.Compra TaxasML   Frete   Imposto Lucro",
+      "Data       Pedido        Conta                 Tot.Compra Pr.Compra TaxasML   Frete   Imposto A.Receber Lucro",
     );
     doc.moveDown(0.15);
 
@@ -144,6 +149,7 @@ export function buildSalesReportPdf(
         fmtMoney(r.marketplaceFeesTotal).padStart(9),
         fmtMoney(r.shippingTotal).padStart(7),
         fmtMoney(r.taxTotal).padStart(8),
+        fmtMoney(r.netReceivedAmount).padStart(10),
         fmtMoney(r.profit).padStart(10),
       ].join(" ");
       doc.text(line);

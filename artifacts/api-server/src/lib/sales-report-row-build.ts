@@ -12,7 +12,10 @@ export function parseReportFinancialsDb(raw: unknown): OrderReportFinancials | n
   if (!Number.isFinite(itemsSubtotal) || !Number.isFinite(marketplaceFeesTotal) || !Number.isFinite(shippingTotal)) {
     return null;
   }
-  return { itemsSubtotal, marketplaceFeesTotal, shippingTotal };
+  const netRaw = o.netReceivedAmount;
+  const netReceivedAmount =
+    netRaw != null && Number.isFinite(Number(netRaw)) ? Number(netRaw) : null;
+  return { itemsSubtotal, marketplaceFeesTotal, shippingTotal, netReceivedAmount };
 }
 
 export function itemsSubtotalFromStoredItems(items: StoredMlOrderItemsJsonRow[]): number {
@@ -21,6 +24,7 @@ export function itemsSubtotalFromStoredItems(items: StoredMlOrderItemsJsonRow[])
 
 export type SalesReportDbDetailRow = {
   referenceDate: string;
+  accountId: string;
   mlOrderId: bigint | null;
   totalAmount: string | null;
   accountNickname: string | null;
@@ -63,6 +67,7 @@ export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: Sku
     marketplaceFeesTotal,
     shippingTotal,
     taxTotal,
+    netReceivedAmount: snap?.netReceivedAmount ?? null,
     profit,
   };
 }

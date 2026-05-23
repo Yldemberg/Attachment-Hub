@@ -265,8 +265,8 @@ export default function SalesReport() {
             <h1 className="text-xl font-bold text-foreground">Relatório de vendas</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
               Pedidos pagos e confirmados por data de referência (horário de Brasília). Colunas: totais do pedido, custos
-              cadastrados no inventário, taxas e frete vindos do Mercado Livre (após sincronizar pedidos) e lucro estimado:
-              subtotal dos itens − taxas − imposto − preço de compra.
+              cadastrados no inventário, taxas e frete vindos do Mercado Livre (após sincronizar pedidos), valor à receber
+              do Mercado Pago (`net_received_amount`) e lucro estimado: subtotal dos itens − taxas − imposto − preço de compra.
             </p>
           </div>
         </div>
@@ -392,13 +392,14 @@ export default function SalesReport() {
                     <TableHead className="text-xs text-right whitespace-nowrap">Taxas ML</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Frete</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Imposto</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">À receber</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Lucro</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {report.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                         Nenhuma venda neste período.
                       </TableCell>
                     </TableRow>
@@ -424,6 +425,9 @@ export default function SalesReport() {
                         </TableCell>
                         <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
                           {formatCurrency(r.taxTotal)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap text-sky-700">
+                          {r.netReceivedAmount != null ? formatCurrency(r.netReceivedAmount) : "—"}
                         </TableCell>
                         <TableCell
                           className={`text-xs text-right tabular-nums font-medium whitespace-nowrap ${

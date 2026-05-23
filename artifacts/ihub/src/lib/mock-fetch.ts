@@ -147,6 +147,9 @@ export function installMockFetch(): void {
           const taxTotal = Math.round(lineSubtotal * 0.06 * 100) / 100;
           const profit =
             Math.round((itemsSubtotal - marketplaceFeesTotal - taxTotal - productPurchaseTotal) * 100) / 100;
+          const netReceivedAmount =
+            (snap as { netReceivedAmount?: number | null } | undefined)?.netReceivedAmount ??
+            Math.round((lineSubtotal - marketplaceFeesTotal) * 0.92 * 100) / 100;
           return {
             referenceDate: x.ref,
             mlOrderId: Number(o.mlOrderId),
@@ -156,6 +159,7 @@ export function installMockFetch(): void {
             marketplaceFeesTotal,
             shippingTotal,
             taxTotal,
+            netReceivedAmount,
             profit,
           };
         });
@@ -172,10 +176,10 @@ export function installMockFetch(): void {
       }
       if (format === "csv") {
         const header =
-          "Data,Número do Pedido,Conta,Total da Compra,Preço de Compra do Produto,Total de taxas do Mercado Livre,Frete,Imposto,Lucro";
+          "Data,Número do Pedido,Conta,Total da Compra,Preço de Compra do Produto,Total de taxas do Mercado Livre,Frete,Imposto,À Receber,Lucro";
         const lines = rows.map(
           (r) =>
-            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.orderTotal ?? ""},${r.productPurchaseTotal},${r.marketplaceFeesTotal},${r.shippingTotal},${r.taxTotal},${r.profit}`,
+            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.orderTotal ?? ""},${r.productPurchaseTotal},${r.marketplaceFeesTotal},${r.shippingTotal},${r.taxTotal},${r.netReceivedAmount ?? ""},${r.profit}`,
         );
         const body = "\uFEFF" + [header, ...lines].join("\n");
         return new Response(body, {

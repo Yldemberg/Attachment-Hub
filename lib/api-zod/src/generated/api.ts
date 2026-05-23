@@ -1089,6 +1089,12 @@ export const GetSalesReportResponse = zod.object({
         .describe(
           "Imposto estimado (% por SKU sobre o subtotal de cada linha).",
         ),
+      netReceivedAmount: zod
+        .number()
+        .nullish()
+        .describe(
+          "Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago (GET \/v1\/payments\/{id}).",
+        ),
       profit: zod
         .number()
         .describe(

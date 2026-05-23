@@ -17,6 +17,7 @@ import { buildSalesReportCsv, buildSalesReportPdf, buildSalesReportXlsx } from "
 import type { SalesReportExportRow } from "../lib/sales-report-export";
 import { buildSalesReportExportRow, type SalesReportDbDetailRow } from "../lib/sales-report-row-build";
 import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
+import { resolveOrderNetReceivedAmount } from "../lib/mercadopago";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -271,6 +272,7 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
         : db
             .select({
               referenceDate: refYmd,
+              accountId: ordersTable.accountId,
               mlOrderId: ordersTable.mlOrderId,
               totalAmount: ordersTable.totalAmount,
               accountNickname: accountsTable.mlNickname,
@@ -325,8 +327,14 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       }
     }
 
-    const exportRows: SalesReportExportRow[] = detailRows.map((r) =>
-      buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap),
+    const exportRows: SalesReportExportRow[] = await Promise.all(
+      detailRows.map(async (r) => {
+        const row = buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap);
+        if (row.netReceivedAmount == null && r.accountId && r.mlOrderId != null) {
+          row.netReceivedAmount = await resolveOrderNetReceivedAmount(r.accountId, r.mlOrderId);
+        }
+        return row;
+      }),
     );
 
     const jsonRows = exportRows.map((e) => ({
@@ -338,6 +346,7 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       marketplaceFeesTotal: e.marketplaceFeesTotal,
       shippingTotal: e.shippingTotal,
       taxTotal: e.taxTotal,
+      netReceivedAmount: e.netReceivedAmount,
       profit: e.profit,
     }));
 

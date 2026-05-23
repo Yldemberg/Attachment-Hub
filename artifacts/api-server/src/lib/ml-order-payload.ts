@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { productsTable } from "@workspace/db/schema";
 import type { MlOrder } from "./mercadolivre";
-import { fetchMlShipmentOrderDetails } from "./mercadolivre";
+import { fetchMlShipmentOrderDetails, ml } from "./mercadolivre";
+import { resolveOrderNetReceivedAmount } from "./mercadopago";
 
 export type OrderReportFinancials = {
   /** Soma unit_price × quantity dos itens (base para imposto estimado e lucro). */
@@ -11,6 +12,8 @@ export type OrderReportFinancials = {
   marketplaceFeesTotal: number;
   /** Soma de shipping_cost dos pagamentos. */
   shippingTotal: number;
+  /** Soma de transaction_details.net_received_amount (Mercado Pago) por pagamento. */
+  netReceivedAmount?: number | null;
 };
 
 function roundMoney(n: number): number {
@@ -91,7 +94,22 @@ export async function buildMlOrderStoredPayload(
     }),
   );
 
-  const reportFinancials = computeOrderReportFinancials(order);
+  let orderForFinancials = order;
+  const hasPaymentIds = (order.payments ?? []).some((p) => p.id != null);
+  if (!hasPaymentIds) {
+    try {
+      orderForFinancials = await ml.get<MlOrder>(accountId, `/orders/${order.id}`);
+    } catch {
+      orderForFinancials = order;
+    }
+  }
+
+  const reportFinancials = computeOrderReportFinancials(orderForFinancials);
+  reportFinancials.netReceivedAmount = await resolveOrderNetReceivedAmount(
+    accountId,
+    order.id,
+    orderForFinancials.payments?.map((p) => p.id),
+  );
 
   return { itemsJson, shippingStatus, shippingSubstatus, reportFinancials };
 }

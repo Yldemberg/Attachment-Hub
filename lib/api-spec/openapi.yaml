@@ -1879,6 +1879,12 @@ components:
         taxTotal:
           type: number
           description: Imposto estimado (% por SKU sobre o subtotal de cada linha).
+        netReceivedAmount:
+          type: number
+          nullable: true
+          description: >-
+            Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago
+            (GET /v1/payments/{id}).
         profit:
           type: number
           description: Subtotal dos itens − taxas ML − imposto − preço de compra dos produtos.
