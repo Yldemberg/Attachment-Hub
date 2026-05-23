@@ -306,9 +306,9 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Custos extras Mercado Livre</h2>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  {extraCosts?.periodFrom && extraCosts?.periodTo
+                  {extraCosts?.available && extraCosts?.periodFrom && extraCosts?.periodTo
                     ? `Período de faturamento: ${formatIsoDatePtBr(extraCosts.periodFrom)} — ${formatIsoDatePtBr(extraCosts.periodTo)}`
-                    : "Product Ads e taxas Full (envios e estoque) do último período de faturamento."}
+                    : "Product Ads e taxas Full (envios e estoque) do último período de faturamento ML."}
                 </p>
               </div>
             </div>
