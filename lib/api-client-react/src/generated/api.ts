@@ -46,6 +46,7 @@ import type {
   MarkAllNotificationsRead200,
   MercadoLivreWebhookPayload,
   MercadoPagoPayment,
+  MpCredentialsStatus,
   NotFoundResponse,
   Notification,
   NotificationListResponse,
@@ -68,6 +69,7 @@ import type {
   UpdateStockBySkuParams,
   UpdateStockRequest,
   UpdateStockResponse,
+  UpsertMpCredentialsRequest,
   UserProfile,
 } from "./api.schemas";
 
@@ -648,6 +650,186 @@ export const useDeleteAccount = <
   TContext
 > => {
   return useMutation(getDeleteAccountMutationOptions(options));
+};
+
+/**
+ * @summary Salvar credenciais do app Mercado Pago para uma conta
+ */
+export const getUpsertMpCredentialsUrl = (id: string) => {
+  return `/api/accounts/${id}/mp-credentials`;
+};
+
+export const upsertMpCredentials = async (
+  id: string,
+  upsertMpCredentialsRequest: UpsertMpCredentialsRequest,
+  options?: RequestInit,
+): Promise<MpCredentialsStatus> => {
+  return customFetch<MpCredentialsStatus>(getUpsertMpCredentialsUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(upsertMpCredentialsRequest),
+  });
+};
+
+export const getUpsertMpCredentialsMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertMpCredentials>>,
+    TError,
+    { id: string; data: BodyType<UpsertMpCredentialsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertMpCredentials>>,
+  TError,
+  { id: string; data: BodyType<UpsertMpCredentialsRequest> },
+  TContext
+> => {
+  const mutationKey = ["upsertMpCredentials"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertMpCredentials>>,
+    { id: string; data: BodyType<UpsertMpCredentialsRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return upsertMpCredentials(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertMpCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertMpCredentials>>
+>;
+export type UpsertMpCredentialsMutationBody =
+  BodyType<UpsertMpCredentialsRequest>;
+export type UpsertMpCredentialsMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Salvar credenciais do app Mercado Pago para uma conta
+ */
+export const useUpsertMpCredentials = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertMpCredentials>>,
+    TError,
+    { id: string; data: BodyType<UpsertMpCredentialsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertMpCredentials>>,
+  TError,
+  { id: string; data: BodyType<UpsertMpCredentialsRequest> },
+  TContext
+> => {
+  return useMutation(getUpsertMpCredentialsMutationOptions(options));
+};
+
+/**
+ * @summary Remover credenciais do app Mercado Pago de uma conta
+ */
+export const getDeleteMpCredentialsUrl = (id: string) => {
+  return `/api/accounts/${id}/mp-credentials`;
+};
+
+export const deleteMpCredentials = async (
+  id: string,
+  options?: RequestInit,
+): Promise<MpCredentialsStatus> => {
+  return customFetch<MpCredentialsStatus>(getDeleteMpCredentialsUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteMpCredentialsMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteMpCredentials>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteMpCredentials>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteMpCredentials"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteMpCredentials>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteMpCredentials(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteMpCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteMpCredentials>>
+>;
+
+export type DeleteMpCredentialsMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Remover credenciais do app Mercado Pago de uma conta
+ */
+export const useDeleteMpCredentials = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteMpCredentials>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteMpCredentials>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteMpCredentialsMutationOptions(options));
 };
 
 /**

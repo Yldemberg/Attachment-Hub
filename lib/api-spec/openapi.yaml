@@ -176,6 +176,54 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /accounts/{id}/mp-credentials:
+    put:
+      operationId: upsertMpCredentials
+      tags: [accounts]
+      summary: Salvar credenciais do app Mercado Pago para uma conta
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertMpCredentialsRequest"
+      responses:
+        "200":
+          description: Credenciais salvas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MpCredentialsStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteMpCredentials
+      tags: [accounts]
+      summary: Remover credenciais do app Mercado Pago de uma conta
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Credenciais removidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MpCredentialsStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /accounts/{id}/sync:
     post:
       operationId: syncAccount
@@ -1155,13 +1203,44 @@ components:
           type: string
           format: date-time
           nullable: true
+        hasMpCredentials:
+          type: boolean
+          description: Indica se a conta tem credenciais MP configuradas (client_id + access_token)
+        mpClientIdMasked:
+          type: string
+          nullable: true
+          description: Últimos 4 chars do Client ID (ou null se não configurado)
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-      required: [id, userId, isActive, createdAt, updatedAt]
+      required: [id, userId, isActive, hasMpCredentials, createdAt, updatedAt]
+
+    UpsertMpCredentialsRequest:
+      type: object
+      properties:
+        mpClientId:
+          type: string
+          description: Client ID do app Mercado Pago
+        mpClientSecret:
+          type: string
+          description: Client Secret do app Mercado Pago
+        mpAccessToken:
+          type: string
+          description: Access Token de produção do app Mercado Pago
+      required: [mpClientId, mpClientSecret, mpAccessToken]
+
+    MpCredentialsStatus:
+      type: object
+      properties:
+        hasMpCredentials:
+          type: boolean
+        mpClientIdMasked:
+          type: string
+          nullable: true
+      required: [hasMpCredentials]
 
     # --------------------------------------------------------------------------
     # Products

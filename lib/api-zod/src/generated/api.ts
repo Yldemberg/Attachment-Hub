@@ -44,6 +44,15 @@ export const ListAccountsResponse = zod.object({
       mlEmail: zod.string().nullish(),
       isActive: zod.boolean(),
       lastSyncAt: zod.coerce.date().nullish(),
+      hasMpCredentials: zod
+        .boolean()
+        .describe(
+          "Indica se a conta tem credenciais MP configuradas (client_id + access_token)",
+        ),
+      mpClientIdMasked: zod
+        .string()
+        .nullish()
+        .describe("Últimos 4 chars do Client ID (ou null se não configurado)"),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -82,6 +91,15 @@ export const GetAccountResponse = zod.object({
   mlEmail: zod.string().nullish(),
   isActive: zod.boolean(),
   lastSyncAt: zod.coerce.date().nullish(),
+  hasMpCredentials: zod
+    .boolean()
+    .describe(
+      "Indica se a conta tem credenciais MP configuradas (client_id + access_token)",
+    ),
+  mpClientIdMasked: zod
+    .string()
+    .nullish()
+    .describe("Últimos 4 chars do Client ID (ou null se não configurado)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -91,6 +109,38 @@ export const GetAccountResponse = zod.object({
  */
 export const DeleteAccountParams = zod.object({
   id: zod.coerce.string(),
+});
+
+/**
+ * @summary Salvar credenciais do app Mercado Pago para uma conta
+ */
+export const UpsertMpCredentialsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpsertMpCredentialsBody = zod.object({
+  mpClientId: zod.string().describe("Client ID do app Mercado Pago"),
+  mpClientSecret: zod.string().describe("Client Secret do app Mercado Pago"),
+  mpAccessToken: zod
+    .string()
+    .describe("Access Token de produção do app Mercado Pago"),
+});
+
+export const UpsertMpCredentialsResponse = zod.object({
+  hasMpCredentials: zod.boolean(),
+  mpClientIdMasked: zod.string().nullish(),
+});
+
+/**
+ * @summary Remover credenciais do app Mercado Pago de uma conta
+ */
+export const DeleteMpCredentialsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteMpCredentialsResponse = zod.object({
+  hasMpCredentials: zod.boolean(),
+  mpClientIdMasked: zod.string().nullish(),
 });
 
 /**

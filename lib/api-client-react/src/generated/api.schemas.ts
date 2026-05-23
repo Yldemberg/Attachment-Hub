@@ -54,8 +54,26 @@ export interface Account {
   mlEmail?: string | null;
   isActive: boolean;
   lastSyncAt?: string | null;
+  /** Indica se a conta tem credenciais MP configuradas (client_id + access_token) */
+  hasMpCredentials: boolean;
+  /** Últimos 4 chars do Client ID (ou null se não configurado) */
+  mpClientIdMasked?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpsertMpCredentialsRequest {
+  /** Client ID do app Mercado Pago */
+  mpClientId: string;
+  /** Client Secret do app Mercado Pago */
+  mpClientSecret: string;
+  /** Access Token de produção do app Mercado Pago */
+  mpAccessToken: string;
+}
+
+export interface MpCredentialsStatus {
+  hasMpCredentials: boolean;
+  mpClientIdMasked?: string | null;
 }
 
 export interface AccountSummary {

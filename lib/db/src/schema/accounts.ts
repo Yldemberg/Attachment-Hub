@@ -16,6 +16,9 @@ export const accountsTable = pgTable("accounts", {
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
   isActive: boolean("is_active").default(true).notNull(),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  mpClientId: text("mp_client_id"),
+  mpClientSecret: text("mp_client_secret"),
+  mpAccessToken: text("mp_access_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

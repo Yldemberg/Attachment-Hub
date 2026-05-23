@@ -1,4 +1,7 @@
 import { getMlAccessToken } from "./mercadolivre";
+import { getDb } from "./db";
+import { accountsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
 const MP_BASE_URL = "https://api.mercadopago.com";
@@ -24,15 +27,34 @@ function normalizePaymentId(paymentId: string | number): string {
 }
 
 /**
+ * Resolve the best access token for a Mercado Pago API call.
+ * Priority: dedicated MP access_token > ML OAuth token (fallback).
+ */
+async function getMpToken(accountId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ mpAccessToken: accountsTable.mpAccessToken })
+    .from(accountsTable)
+    .where(eq(accountsTable.id, accountId))
+    .limit(1);
+
+  if (row?.mpAccessToken) {
+    return row.mpAccessToken;
+  }
+
+  return getMlAccessToken(accountId);
+}
+
+/**
  * GET https://api.mercadopago.com/v1/payments/{id}
- * Uses the seller OAuth token stored for the connected ML account.
+ * Uses the dedicated MP app token when configured, falls back to ML OAuth token.
  */
 export async function fetchMpPayment(
   accountId: string,
   paymentId: string | number,
 ): Promise<Record<string, unknown>> {
   const id = normalizePaymentId(paymentId);
-  const token = await getMlAccessToken(accountId);
+  const token = await getMpToken(accountId);
   const url = `${MP_BASE_URL}/v1/payments/${id}`;
 
   const controller = new AbortController();

@@ -18,25 +18,36 @@ function buildRedirectUri(req: import("express").Request): string {
   return `${proto}://${host}/api/callback`;
 }
 
+function maskClientId(id: string | null | undefined): string | null {
+  if (!id || id.length < 4) return null;
+  return "•••" + id.slice(-4);
+}
+
+function serializeAccount(row: typeof accountsTable.$inferSelect) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    mlUserId: row.mlUserId,
+    mlNickname: row.mlNickname,
+    mlEmail: row.mlEmail,
+    isActive: row.isActive,
+    lastSyncAt: row.lastSyncAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    hasMpCredentials: !!(row.mpClientId && row.mpAccessToken),
+    mpClientIdMasked: maskClientId(row.mpClientId),
+  };
+}
+
 router.get("/accounts", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const accounts = await db
-      .select({
-        id: accountsTable.id,
-        userId: accountsTable.userId,
-        mlUserId: accountsTable.mlUserId,
-        mlNickname: accountsTable.mlNickname,
-        mlEmail: accountsTable.mlEmail,
-        isActive: accountsTable.isActive,
-        lastSyncAt: accountsTable.lastSyncAt,
-        createdAt: accountsTable.createdAt,
-        updatedAt: accountsTable.updatedAt,
-      })
+    const rows = await db
+      .select()
       .from(accountsTable)
       .where(eq(accountsTable.userId, req.user!.id));
 
-    res.json({ data: accounts });
+    res.json({ data: rows.map(serializeAccount) });
   } catch (err) {
     req.log.error({ err }, "Failed to list accounts");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -141,29 +152,89 @@ router.get("/accounts/connect/callback", handleOAuthCallback);
 router.get("/accounts/:id", ...auth, async (req, res) => {
   try {
     const db = getDb();
-    const [account] = await db
-      .select({
-        id: accountsTable.id,
-        userId: accountsTable.userId,
-        mlUserId: accountsTable.mlUserId,
-        mlNickname: accountsTable.mlNickname,
-        mlEmail: accountsTable.mlEmail,
-        isActive: accountsTable.isActive,
-        lastSyncAt: accountsTable.lastSyncAt,
-        createdAt: accountsTable.createdAt,
-        updatedAt: accountsTable.updatedAt,
-      })
+    const [row] = await db
+      .select()
       .from(accountsTable)
       .where(and(eq(accountsTable.id, req.params.id as string), eq(accountsTable.userId, req.user!.id)));
 
-    if (!account) {
+    if (!row) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Account not found" } });
       return;
     }
 
-    res.json(account);
+    res.json(serializeAccount(row));
   } catch (err) {
     req.log.error({ err }, "Failed to get account");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.put("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
+  const { mpClientId, mpClientSecret, mpAccessToken } = req.body as {
+    mpClientId?: unknown;
+    mpClientSecret?: unknown;
+    mpAccessToken?: unknown;
+  };
+
+  if (
+    typeof mpClientId !== "string" || !mpClientId.trim() ||
+    typeof mpClientSecret !== "string" || !mpClientSecret.trim() ||
+    typeof mpAccessToken !== "string" || !mpAccessToken.trim()
+  ) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "mpClientId, mpClientSecret e mpAccessToken são obrigatórios" } });
+    return;
+  }
+
+  try {
+    const db = getDb();
+    const [updated] = await db
+      .update(accountsTable)
+      .set({
+        mpClientId: mpClientId.trim(),
+        mpClientSecret: mpClientSecret.trim(),
+        mpAccessToken: mpAccessToken.trim(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accountsTable.id, req.params.id as string), eq(accountsTable.userId, req.user!.id)))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Account not found" } });
+      return;
+    }
+
+    res.json({
+      hasMpCredentials: true,
+      mpClientIdMasked: maskClientId(updated.mpClientId),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to save MP credentials");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.delete("/accounts/:id/mp-credentials", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const [updated] = await db
+      .update(accountsTable)
+      .set({
+        mpClientId: null,
+        mpClientSecret: null,
+        mpAccessToken: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accountsTable.id, req.params.id as string), eq(accountsTable.userId, req.user!.id)))
+      .returning({ id: accountsTable.id });
+
+    if (!updated) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Account not found" } });
+      return;
+    }
+
+    res.json({ hasMpCredentials: false, mpClientIdMasked: null });
+  } catch (err) {
+    req.log.error({ err }, "Failed to remove MP credentials");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

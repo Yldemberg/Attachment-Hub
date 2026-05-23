@@ -2,14 +2,21 @@ import {
   useListAccounts,
   useDeleteAccount,
   useSyncAccount,
+  useUpsertMpCredentials,
+  useDeleteMpCredentials,
   getListAccountsQueryKey,
   getConnectUrl,
   ApiError,
 } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, Copy, Check, Store } from "lucide-react";
+import {
+  Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle,
+  Loader2, Copy, Check, Store, ShieldCheck, ShieldOff, ChevronDown, ChevronUp, Eye, EyeOff,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +40,8 @@ interface Account {
   mlUserId?: string | null;
   isActive?: boolean | null;
   lastSyncAt?: string | null;
+  hasMpCredentials?: boolean;
+  mpClientIdMasked?: string | null;
 }
 
 function ConnectButton() {
@@ -165,6 +174,202 @@ function WebhookUrlCard() {
   );
 }
 
+interface MpCredentialsPanelProps {
+  account: Account;
+  onUpdated: () => void;
+}
+
+function MpCredentialsPanel({ account, onUpdated }: MpCredentialsPanelProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+
+  const { mutate: save, isPending: saving } = useUpsertMpCredentials({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Credenciais MP salvas", description: "As credenciais do app Mercado Pago foram salvas com sucesso." });
+        setClientId("");
+        setClientSecret("");
+        setAccessToken("");
+        setOpen(false);
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+        onUpdated();
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível salvar as credenciais. Tente novamente." });
+      },
+    },
+  });
+
+  const { mutate: remove, isPending: removing } = useDeleteMpCredentials({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Credenciais removidas", description: "As credenciais do app Mercado Pago foram removidas." });
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+        onUpdated();
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "Erro ao remover", description: "Não foi possível remover as credenciais." });
+      },
+    },
+  });
+
+  const handleSave = () => {
+    if (!clientId.trim() || !clientSecret.trim() || !accessToken.trim()) {
+      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha Client ID, Client Secret e Access Token." });
+      return;
+    }
+    save({
+      id: account.id,
+      data: { mpClientId: clientId.trim(), mpClientSecret: clientSecret.trim(), mpAccessToken: accessToken.trim() },
+    });
+  };
+
+  return (
+    <div className="mt-3 border-t border-card-border pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+      >
+        {account.hasMpCredentials ? (
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+        ) : (
+          <ShieldOff className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+        )}
+        <span className="flex-1">
+          {account.hasMpCredentials
+            ? <>App Mercado Pago <span className="text-muted-foreground/60 font-normal">· {account.mpClientIdMasked ?? "configurado"}</span></>
+            : "Configurar app Mercado Pago"}
+        </span>
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Insira as credenciais do seu app MP. Encontre-as em{" "}
+            <span className="text-primary">developers.mercadopago.com.br</span> → Credenciais.
+          </p>
+
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Client ID</Label>
+              <Input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder={account.hasMpCredentials ? `•••${account.mpClientIdMasked ?? "****"}` : "Ex: 123456789"}
+                className="h-8 text-xs mt-1 bg-muted/50 border-border"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Client Secret</Label>
+              <div className="relative mt-1">
+                <Input
+                  type={showSecret ? "text" : "password"}
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={account.hasMpCredentials ? "••••••••••••" : "Client Secret do app"}
+                  className="h-8 text-xs pr-8 bg-muted/50 border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Access Token de Produção</Label>
+              <div className="relative mt-1">
+                <Input
+                  type={showToken ? "text" : "password"}
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  placeholder={account.hasMpCredentials ? "••••••••••••" : "APP_USR-..."}
+                  className="h-8 text-xs pr-8 bg-muted/50 border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving}
+              className="h-7 text-xs px-3 gap-1.5"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+              Salvar credenciais
+            </Button>
+
+            {account.hasMpCredentials && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={removing}
+                    className="h-7 text-xs px-3 gap-1.5 border-red-200 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  >
+                    {removing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldOff className="w-3 h-3" />}
+                    Remover
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Remover credenciais MP</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Tem certeza que deseja remover as credenciais do app Mercado Pago da conta{" "}
+                      <span className="text-foreground font-medium">{account.mlNickname ?? account.id}</span>?
+                      As chamadas à API do Mercado Pago voltarão a usar o token OAuth do ML.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => remove({ id: account.id })}
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    >
+                      Remover
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+              className="h-7 text-xs px-2 ml-auto text-muted-foreground"
+            >
+              Fechar
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SYNC_POLL_INTERVAL = 3000;
 const SYNC_TIMEOUT_MS = 120_000;
 
@@ -203,7 +408,7 @@ export default function Integrations() {
     }
   }, []);
 
-  const { data: accountsData, isLoading } = useListAccounts({
+  const { data: accountsData, isLoading, refetch: refetchAccounts } = useListAccounts({
     query: {
       queryKey: getListAccountsQueryKey(),
       refetchInterval: Object.keys(syncingAccounts).length > 0 ? SYNC_POLL_INTERVAL : false,
@@ -354,89 +559,93 @@ export default function Integrations() {
               return (
                 <div
                   key={account.id}
-                  className="bg-card border border-card-border rounded-xl p-4 flex items-center gap-4"
+                  className="bg-card border border-card-border rounded-xl p-4"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
-                    <span className="text-amber-700 font-bold text-sm">ML</span>
-                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                      <span className="text-amber-700 font-bold text-sm">ML</span>
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-foreground font-medium text-sm">
-                        {account.mlNickname ?? account.mlUserId ?? account.id}
-                      </h3>
-                      {account.isActive ? (
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-foreground font-medium text-sm">
+                          {account.mlNickname ?? account.mlUserId ?? account.id}
+                        </h3>
+                        {account.isActive ? (
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        ) : (
+                          <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                        )}
+                        {isSyncing && (
+                          <span className="text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            Sincronizando...
+                          </span>
+                        )}
+                      </div>
+                      {account.mlEmail && (
+                        <p className="text-muted-foreground text-xs mt-0.5">{account.mlEmail}</p>
                       )}
-                      {isSyncing && (
-                        <span className="text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                          Sincronizando...
-                        </span>
+                      {account.lastSyncAt && (
+                        <p className="text-muted-foreground/60 text-xs mt-0.5">
+                          Última sincronização: {formatDateTime(account.lastSyncAt)}
+                        </p>
                       )}
                     </div>
-                    {account.mlEmail && (
-                      <p className="text-muted-foreground text-xs mt-0.5">{account.mlEmail}</p>
-                    )}
-                    {account.lastSyncAt && (
-                      <p className="text-muted-foreground/60 text-xs mt-0.5">
-                        Última sincronização: {formatDateTime(account.lastSyncAt)}
-                      </p>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSync(account)}
-                      disabled={isSyncing}
-                      className="h-8 text-xs gap-1.5 min-w-[110px]"
-                    >
-                      {isSyncing ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-3 h-3" />
-                      )}
-                      {isSyncing ? "Sincronizando..." : "Sincronizar"}
-                    </Button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSync(account)}
+                        disabled={isSyncing}
+                        className="h-8 text-xs gap-1.5 min-w-[110px]"
+                      >
+                        {isSyncing ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                        {isSyncing ? "Sincronizando..." : "Sincronizar"}
+                      </Button>
 
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-red-200 text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remover conta</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Tem certeza que deseja remover a conta{" "}
-                            <span className="text-foreground font-medium">{account.mlNickname}</span>?
-                            Todos os dados sincronizados serão mantidos, mas a conta será desconectada.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>
-                            Cancelar
-                          </AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteAccount({ id: account.id })}
-                            disabled={deleting}
-                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-red-200 text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
                           >
-                            Remover
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remover conta</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja remover a conta{" "}
+                              <span className="text-foreground font-medium">{account.mlNickname}</span>?
+                              Todos os dados sincronizados serão mantidos, mas a conta será desconectada.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>
+                              Cancelar
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteAccount({ id: account.id })}
+                              disabled={deleting}
+                              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                            >
+                              Remover
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
+
+                  <MpCredentialsPanel account={account} onUpdated={() => refetchAccounts()} />
                 </div>
               );
             })}

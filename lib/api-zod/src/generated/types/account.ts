@@ -14,6 +14,10 @@ export interface Account {
   mlEmail?: string | null;
   isActive: boolean;
   lastSyncAt?: Date | null;
+  /** Indica se a conta tem credenciais MP configuradas (client_id + access_token) */
+  hasMpCredentials: boolean;
+  /** Últimos 4 chars do Client ID (ou null se não configurado) */
+  mpClientIdMasked?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
