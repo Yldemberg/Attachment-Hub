@@ -234,7 +234,6 @@ function classifyFullAmount(row: MlFullBillingRow): { shipping: number; storage:
   if (FULL_SHIPPING_TYPES.has(fType)) return { shipping: amount, storage: 0 };
 
   const desc = (info?.transaction_detail ?? "").toLowerCase();
-  const sub = (info?.detail_sub_type ?? "").toUpperCase();
   if (FULL_STORAGE_TEXT_RE.test(desc)) {
     return { shipping: 0, storage: amount };
   }
