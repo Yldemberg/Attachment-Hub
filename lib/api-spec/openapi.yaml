@@ -940,8 +940,8 @@ paths:
       tags: [dashboard]
       summary: Custos extras cobrados pelo Mercado Livre
       description: >-
-        Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente
-        (API billing/integration).
+        Product Ads, envios Full e armazenamento Full acumulados no mês calendário selecionado
+        (padrão: mês atual). Use period_key para consultar meses anteriores (formato YYYY-MM-01).
       security:
         - bearerAuth: []
       parameters:
@@ -949,6 +949,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: period_key
+          in: query
+          description: Chave do mês calendário (YYYY-MM-01). Padrão = mês atual (America/Sao_Paulo).
+          schema:
+            type: string
+            example: "2026-05-01"
       responses:
         "200":
           description: Breakdown de custos extras ML
@@ -1832,12 +1838,37 @@ components:
           type: integer
       required: [salesToday, salesMonth, ordersToday, ordersMonth, pendingOrders, unansweredQuestions, criticalStockCount, activeAccounts]
 
+    MlBillingPeriodOption:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Chave do mês calendário (YYYY-MM-01).
+        dateFrom:
+          type: string
+          format: date
+          nullable: true
+        dateTo:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          nullable: true
+          description: Status do período na API ML (OPEN/CLOSED), quando disponível.
+      required:
+        - key
+
     MlExtraCostsBreakdown:
       type: object
       properties:
         periodKey:
           type: string
           nullable: true
+        selectedPeriodKey:
+          type: string
+          nullable: true
+          description: Mês calendário selecionado na consulta (YYYY-MM-01).
         periodFrom:
           type: string
           format: date
@@ -1862,12 +1893,17 @@ components:
         message:
           type: string
           nullable: true
+        availablePeriods:
+          type: array
+          items:
+            $ref: "#/components/schemas/MlBillingPeriodOption"
       required:
         - productAds
         - fullShipping
         - fullStorage
         - totalExtraCosts
         - available
+        - availablePeriods
 
     SalesChartDataPoint:
       type: object

@@ -2862,7 +2862,7 @@ export function useGetDashboardSummary<
 }
 
 /**
- * Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente (API billing/integration).
+ * Product Ads, envios Full e armazenamento Full acumulados no mês calendário selecionado (padrão: mês atual). Use period_key para consultar meses anteriores (formato YYYY-MM-01).
  * @summary Custos extras cobrados pelo Mercado Livre
  */
 export const getGetMlExtraCostsUrl = (params?: GetMlExtraCostsParams) => {

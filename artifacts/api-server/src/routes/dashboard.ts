@@ -132,9 +132,9 @@ router.get("/dashboard/summary", ...auth, async (req, res) => {
 
 router.get("/dashboard/ml-extra-costs", ...auth, async (req, res) => {
   try {
-    const { account_id } = req.query as Record<string, string>;
+    const { account_id, period_key } = req.query as Record<string, string>;
     const accountIds = await getUserAccountIds(req.user!.id, account_id);
-    const data = await fetchMlExtraCostsAggregated(accountIds);
+    const data = await fetchMlExtraCostsAggregated(accountIds, period_key);
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "Failed to get ML extra costs");

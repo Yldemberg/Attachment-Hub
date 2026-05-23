@@ -19,6 +19,11 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function currentMonthKeyDemo(): string {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 function productListingForMlItem(mlItemId: string | undefined | null): {
   listingThumbnailUrl: string | null;
   listingPermalink: string | null;
@@ -109,12 +114,31 @@ export function installMockFetch(): void {
     }
 
     if (path === "/dashboard/ml-extra-costs") {
+      const periodKey = params.get("period_key") ?? currentMonthKeyDemo();
       const today = new Date();
-      const from = new Date(today.getFullYear(), today.getMonth(), 1);
-      const to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const [y, m] = periodKey.split("-").map(Number);
+      const from = new Date(y, m - 1, 1);
+      const isCurrent = periodKey === currentMonthKeyDemo();
+      const to = isCurrent ? today : new Date(y, m, 0);
       const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const availablePeriods = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+        const rangeFrom = fmt(new Date(d.getFullYear(), d.getMonth(), 1));
+        const rangeTo =
+          key === currentMonthKeyDemo()
+            ? fmt(today)
+            : fmt(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+        return {
+          key,
+          dateFrom: rangeFrom,
+          dateTo: rangeTo,
+          status: key === currentMonthKeyDemo() ? "OPEN" : "CLOSED",
+        };
+      });
       return jsonResponse({
-        periodKey: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`,
+        periodKey: periodKey,
+        selectedPeriodKey: periodKey,
         periodFrom: fmt(from),
         periodTo: fmt(to),
         productAds: 486.5,
@@ -123,6 +147,7 @@ export function installMockFetch(): void {
         totalExtraCosts: 988.65,
         available: true,
         message: null,
+        availablePeriods,
       });
     }
 

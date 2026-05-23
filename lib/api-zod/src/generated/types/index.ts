@@ -46,6 +46,7 @@ export * from "./mandateAdjustResponseResultsItem";
 export * from "./markAllNotificationsRead200";
 export * from "./mercadoLivreWebhookPayload";
 export * from "./mercadoPagoPayment";
+export * from "./mlBillingPeriodOption";
 export * from "./mlExtraCostsBreakdown";
 export * from "./mpCredentialsStatus";
 export * from "./notFoundResponse";

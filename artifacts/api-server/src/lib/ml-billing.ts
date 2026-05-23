@@ -2,6 +2,7 @@ import { ml } from "./mercadolivre";
 import { logger } from "./logger";
 
 const ML_REPORT_TZ = "America/Sao_Paulo";
+const PERIOD_HISTORY_MONTHS = 12;
 
 const FULL_SHIPPING_TYPES = new Set(["INBOUND_COLLECT", "WITHDRAWAL", "INBOUND_PENALTY"]);
 const FULL_STORAGE_TYPES = new Set(["WAREHOUSING", "AGING", "OVERAGE", "SPACE_PURCHASE", "SPACE_CANCELLATION"]);
@@ -56,8 +57,16 @@ type MlBillingPage<T> = {
   limit?: number;
 };
 
+export type MlBillingPeriodOption = {
+  key: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  status: string | null;
+};
+
 export type MlExtraCostsBreakdown = {
   periodKey: string | null;
+  selectedPeriodKey: string | null;
   periodFrom: string | null;
   periodTo: string | null;
   productAds: number;
@@ -66,21 +75,62 @@ export type MlExtraCostsBreakdown = {
   totalExtraCosts: number;
   available: boolean;
   message: string | null;
+  availablePeriods: MlBillingPeriodOption[];
 };
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function currentMonthPeriodKeyFallback(): string {
-  const ymd = new Intl.DateTimeFormat("en-CA", {
+function todayYmdSp(): string {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: ML_REPORT_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  const [y, m] = ymd.split("-");
+}
+
+function currentMonthPeriodKeyFallback(): string {
+  const [y, m] = todayYmdSp().split("-");
   return `${y}-${m}-01`;
+}
+
+export function normalizePeriodKey(input?: string | null): string {
+  if (!input?.trim()) return currentMonthPeriodKeyFallback();
+  const match = input.trim().match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+  if (!match) return currentMonthPeriodKeyFallback();
+  return `${match[1]}-${match[2]}-01`;
+}
+
+function calendarRangeForPeriodKey(periodKey: string): { dateFrom: string; dateTo: string } {
+  const [y, m] = periodKey.split("-").map(Number);
+  const month = String(m).padStart(2, "0");
+  const dateFrom = `${y}-${month}-01`;
+  const currentKey = currentMonthPeriodKeyFallback();
+  if (periodKey === currentKey) {
+    return { dateFrom, dateTo: todayYmdSp() };
+  }
+  const lastDay = new Date(y, m, 0).getDate();
+  const dateTo = `${y}-${month}-${String(lastDay).padStart(2, "0")}`;
+  return { dateFrom, dateTo };
+}
+
+function buildCalendarMonthOptions(count = PERIOD_HISTORY_MONTHS): MlBillingPeriodOption[] {
+  const [y, m] = todayYmdSp().split("-").map(Number);
+  const options: MlBillingPeriodOption[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(y, m - 1 - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    const range = calendarRangeForPeriodKey(key);
+    options.push({
+      key,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      status: key === currentMonthPeriodKeyFallback() ? "OPEN" : "CLOSED",
+    });
+  }
+  return options;
 }
 
 function isAdsCharge(charge: MlBillingCharge): boolean {
@@ -104,19 +154,27 @@ function sumProductAdsFromSummary(data: MlBillingSummaryResponse): number {
   return roundMoney(total);
 }
 
-async function fetchBillingPeriodCandidates(accountId: string): Promise<MlBillingPeriodRow[]> {
+function mapPeriodRow(row: MlBillingPeriodRow): MlBillingPeriodOption | null {
+  const key = normalizePeriodKey(row.key);
+  const calendar = calendarRangeForPeriodKey(key);
+  return {
+    key,
+    dateFrom: row.period?.date_from ?? calendar.dateFrom,
+    dateTo: row.period?.date_to ?? calendar.dateTo,
+    status: row.period_status ?? null,
+  };
+}
+
+async function fetchBillingPeriodRows(accountId: string): Promise<MlBillingPeriodRow[]> {
   try {
     const data = await ml.get<MlBillingPeriodsResponse>(
       accountId,
-      "/billing/integration/monthly/periods?group=ML&document_type=BILL&limit=12",
+      `/billing/integration/monthly/periods?group=ML&document_type=BILL&limit=${PERIOD_HISTORY_MONTHS}`,
     );
-    const rows = data.results ?? [];
-    const closed = rows.filter((r) => (r.period_status ?? "").toUpperCase() === "CLOSED");
-    const open = rows.filter((r) => (r.period_status ?? "").toUpperCase() === "OPEN");
-    return [...closed, ...open, ...rows];
+    return data.results ?? [];
   } catch (err) {
     logger.warn({ err, accountId }, "ML billing periods fetch failed");
-    return [{ key: currentMonthPeriodKeyFallback() }];
+    return [];
   }
 }
 
@@ -130,25 +188,11 @@ async function fetchBillingSummary(
   );
 }
 
-function billingPeriodDateRangeSp(): { dateFrom: string; dateTo: string } {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: ML_REPORT_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const [y, m] = today.split("-");
-  return { dateFrom: `${y}-${m}-01`, dateTo: today };
-}
-
 async function fetchProductAdsSpendFallback(
   accountId: string,
-  dateFrom?: string | null,
-  dateTo?: string | null,
+  dateFrom: string,
+  dateTo: string,
 ): Promise<number | null> {
-  const range = billingPeriodDateRangeSp();
-  const from = dateFrom ?? range.dateFrom;
-  const to = dateTo ?? range.dateTo;
   try {
     const advertisers = await ml.get<{
       advertisers?: Array<{ advertiser_id?: number; site_id?: string }>;
@@ -160,7 +204,7 @@ async function fetchProductAdsSpendFallback(
       results?: Array<{ metrics?: { cost?: number; spend?: number } }>;
     }>(
       accountId,
-      `/marketplace/advertising/${encodeURIComponent(siteId)}/advertisers/${adv.advertiser_id}/product_ads/campaigns/search?date_from=${encodeURIComponent(from)}&date_to=${encodeURIComponent(to)}&metrics=cost&limit=50`,
+      `/marketplace/advertising/${encodeURIComponent(siteId)}/advertisers/${adv.advertiser_id}/product_ads/campaigns/search?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&metrics=cost&limit=50`,
     );
     let total = 0;
     for (const row of data.results ?? []) {
@@ -236,75 +280,121 @@ async function fetchFullFulfillmentTotals(
   return { fullShipping: roundMoney(fullShipping), fullStorage: roundMoney(fullStorage) };
 }
 
+function mergeAvailablePeriods(lists: MlBillingPeriodOption[][]): MlBillingPeriodOption[] {
+  const byKey = new Map<string, MlBillingPeriodOption>();
+  for (const list of lists) {
+    for (const item of list) {
+      const existing = byKey.get(item.key);
+      if (!existing) {
+        byKey.set(item.key, item);
+        continue;
+      }
+      byKey.set(item.key, {
+        key: item.key,
+        dateFrom: existing.dateFrom ?? item.dateFrom,
+        dateTo: existing.dateTo ?? item.dateTo,
+        status: existing.status ?? item.status,
+      });
+    }
+  }
+
+  const calendar = buildCalendarMonthOptions();
+  for (const item of calendar) {
+    const existing = byKey.get(item.key);
+    byKey.set(item.key, {
+      key: item.key,
+      dateFrom: existing?.dateFrom ?? item.dateFrom,
+      dateTo: existing?.dateTo ?? item.dateTo,
+      status: existing?.status ?? item.status,
+    });
+  }
+
+  return [...byKey.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+async function buildAvailablePeriodsForAccount(accountId: string): Promise<MlBillingPeriodOption[]> {
+  const rows = await fetchBillingPeriodRows(accountId);
+  const fromMl = rows.map(mapPeriodRow).filter((p): p is MlBillingPeriodOption => p != null);
+  return mergeAvailablePeriods([fromMl, buildCalendarMonthOptions()]);
+}
+
 async function resolveExtraCostsForPeriod(
   accountId: string,
-  period: MlBillingPeriodRow,
+  periodKey: string,
 ): Promise<MlExtraCostsBreakdown | null> {
-  const periodKey = period.key;
-  if (!periodKey) return null;
+  const selectedPeriodKey = normalizePeriodKey(periodKey);
+  const calendar = calendarRangeForPeriodKey(selectedPeriodKey);
 
   let productAds = 0;
-  let periodFrom = period.period?.date_from ?? null;
-  let periodTo = period.period?.date_to ?? null;
-  let resolvedKey = periodKey;
+  let resolvedKey = selectedPeriodKey;
   let gotSummary = false;
 
   try {
-    const summary = await fetchBillingSummary(accountId, periodKey);
+    const summary = await fetchBillingSummary(accountId, selectedPeriodKey);
     gotSummary = true;
     productAds = sumProductAdsFromSummary(summary);
-    periodFrom = summary.period?.date_from ?? periodFrom;
-    periodTo = summary.period?.date_to ?? periodTo;
-    resolvedKey = summary.period?.key ?? periodKey;
+    resolvedKey = summary.period?.key ?? selectedPeriodKey;
   } catch (err) {
-    logger.warn({ err, accountId, periodKey }, "ML billing summary fetch failed");
+    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML billing summary fetch failed");
     try {
-      productAds = await aggregateProductAdsFromMlDetails(accountId, periodKey);
+      productAds = await aggregateProductAdsFromMlDetails(accountId, selectedPeriodKey);
       gotSummary = productAds > 0;
     } catch (detailsErr) {
-      logger.warn({ err: detailsErr, accountId, periodKey }, "ML billing details ads fetch failed");
+      logger.warn({ err: detailsErr, accountId, periodKey: selectedPeriodKey }, "ML billing details ads fetch failed");
     }
   }
 
   let fullShipping = 0;
   let fullStorage = 0;
   try {
-    const fullTotals = await fetchFullFulfillmentTotals(accountId, periodKey);
+    const fullTotals = await fetchFullFulfillmentTotals(accountId, selectedPeriodKey);
     fullShipping = fullTotals.fullShipping;
     fullStorage = fullTotals.fullStorage;
+    if (fullShipping > 0 || fullStorage > 0) gotSummary = true;
   } catch (err) {
-    logger.warn({ err, accountId, periodKey }, "ML full billing details fetch failed");
+    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML full billing details fetch failed");
   }
 
   if (productAds === 0) {
-    const adsFallback = await fetchProductAdsSpendFallback(accountId, periodFrom, periodTo);
+    const adsFallback = await fetchProductAdsSpendFallback(
+      accountId,
+      calendar.dateFrom,
+      calendar.dateTo,
+    );
     if (adsFallback != null) {
       productAds = adsFallback;
       gotSummary = true;
     }
   }
 
-  if (!gotSummary && fullShipping === 0 && fullStorage === 0 && productAds === 0) {
-    return null;
-  }
+  if (!gotSummary) return null;
 
   const totalExtraCosts = roundMoney(productAds + fullShipping + fullStorage);
   return {
     periodKey: resolvedKey,
-    periodFrom,
-    periodTo,
+    selectedPeriodKey,
+    periodFrom: calendar.dateFrom,
+    periodTo: calendar.dateTo,
     productAds,
     fullShipping,
     fullStorage,
     totalExtraCosts,
     available: true,
     message: null,
+    availablePeriods: [],
   };
 }
 
-export async function fetchMlExtraCostsForAccount(accountId: string): Promise<MlExtraCostsBreakdown> {
+export async function fetchMlExtraCostsForAccount(
+  accountId: string,
+  periodKey?: string | null,
+): Promise<MlExtraCostsBreakdown> {
+  const selectedPeriodKey = normalizePeriodKey(periodKey);
+  const availablePeriods = await buildAvailablePeriodsForAccount(accountId);
+
   const empty: MlExtraCostsBreakdown = {
-    periodKey: null,
+    periodKey: selectedPeriodKey,
+    selectedPeriodKey,
     periodFrom: null,
     periodTo: null,
     productAds: 0,
@@ -313,48 +403,32 @@ export async function fetchMlExtraCostsForAccount(accountId: string): Promise<Ml
     totalExtraCosts: 0,
     available: false,
     message:
-      "Não foi possível obter custos extras. Verifique se a conta ML tem faturamento habilitado e reconecte a integração.",
+      "Não foi possível obter custos extras para este mês. Verifique a integração ML ou tente outro período.",
+    availablePeriods,
   };
 
-  const candidates = await fetchBillingPeriodCandidates(accountId);
-  const seenKeys = new Set<string>();
-
-  for (const period of candidates) {
-    const key = period.key;
-    if (!key || seenKeys.has(key)) continue;
-    seenKeys.add(key);
-
-    try {
-      const result = await resolveExtraCostsForPeriod(accountId, period);
-      if (result) return result;
-    } catch (err) {
-      logger.warn({ err, accountId, periodKey: key }, "ML extra costs period attempt failed");
+  try {
+    const result = await resolveExtraCostsForPeriod(accountId, selectedPeriodKey);
+    if (result) {
+      return { ...result, availablePeriods };
     }
+  } catch (err) {
+    logger.warn({ err, accountId, periodKey: selectedPeriodKey }, "ML extra costs period attempt failed");
   }
 
-  const fallbackKey = currentMonthPeriodKeyFallback();
-  if (!seenKeys.has(fallbackKey)) {
-    try {
-      const result = await resolveExtraCostsForPeriod(accountId, { key: fallbackKey });
-      if (result) return result;
-    } catch (err) {
-      logger.warn({ err, accountId, periodKey: fallbackKey }, "ML extra costs fallback period failed");
-    }
-  }
-
-  const first = candidates[0];
-  return {
-    ...empty,
-    periodKey: first?.key ?? fallbackKey,
-    periodFrom: null,
-    periodTo: null,
-  };
+  return empty;
 }
 
-export async function fetchMlExtraCostsAggregated(accountIds: string[]): Promise<MlExtraCostsBreakdown> {
+export async function fetchMlExtraCostsAggregated(
+  accountIds: string[],
+  periodKey?: string | null,
+): Promise<MlExtraCostsBreakdown> {
+  const selectedPeriodKey = normalizePeriodKey(periodKey);
+
   if (accountIds.length === 0) {
     return {
-      periodKey: null,
+      periodKey: selectedPeriodKey,
+      selectedPeriodKey,
       periodFrom: null,
       periodTo: null,
       productAds: 0,
@@ -363,33 +437,41 @@ export async function fetchMlExtraCostsAggregated(accountIds: string[]): Promise
       totalExtraCosts: 0,
       available: false,
       message: "Conecte uma conta do Mercado Livre para ver custos extras.",
+      availablePeriods: buildCalendarMonthOptions(),
     };
   }
 
-  const parts = await Promise.all(accountIds.map((id) => fetchMlExtraCostsForAccount(id)));
+  const parts = await Promise.all(
+    accountIds.map((id) => fetchMlExtraCostsForAccount(id, selectedPeriodKey)),
+  );
+  const availablePeriods = mergeAvailablePeriods(parts.map((p) => p.availablePeriods));
   const availableParts = parts.filter((p) => p.available);
 
   if (availableParts.length === 0) {
+    const calendar = calendarRangeForPeriodKey(selectedPeriodKey);
     return {
-      periodKey: parts[0]?.periodKey ?? null,
-      periodFrom: null,
-      periodTo: null,
+      periodKey: selectedPeriodKey,
+      selectedPeriodKey,
+      periodFrom: calendar.dateFrom,
+      periodTo: calendar.dateTo,
       productAds: 0,
       fullShipping: 0,
       fullStorage: 0,
       totalExtraCosts: 0,
       available: false,
       message: parts[0]?.message ?? "Custos extras indisponíveis no momento.",
+      availablePeriods,
     };
   }
 
   const productAds = roundMoney(availableParts.reduce((s, p) => s + p.productAds, 0));
   const fullShipping = roundMoney(availableParts.reduce((s, p) => s + p.fullShipping, 0));
   const fullStorage = roundMoney(availableParts.reduce((s, p) => s + p.fullStorage, 0));
-
   const ref = availableParts[0];
+
   return {
     periodKey: ref.periodKey,
+    selectedPeriodKey,
     periodFrom: ref.periodFrom,
     periodTo: ref.periodTo,
     productAds,
@@ -401,5 +483,6 @@ export async function fetchMlExtraCostsAggregated(accountIds: string[]): Promise
       availableParts.length < parts.length
         ? "Algumas contas não retornaram dados de faturamento."
         : null,
+    availablePeriods,
   };
 }

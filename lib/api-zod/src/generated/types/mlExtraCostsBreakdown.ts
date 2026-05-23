@@ -5,9 +5,12 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { MlBillingPeriodOption } from "./mlBillingPeriodOption";
 
 export interface MlExtraCostsBreakdown {
   periodKey?: string | null;
+  /** Mês calendário selecionado na consulta (YYYY-MM-01). */
+  selectedPeriodKey?: string | null;
   periodFrom?: Date | null;
   periodTo?: Date | null;
   /** Campanhas Product Ads (tipo PADS no resumo de faturamento). */
@@ -19,4 +22,5 @@ export interface MlExtraCostsBreakdown {
   totalExtraCosts: number;
   available: boolean;
   message?: string | null;
+  availablePeriods: MlBillingPeriodOption[];
 }

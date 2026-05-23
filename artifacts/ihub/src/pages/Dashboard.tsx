@@ -130,6 +130,7 @@ function QuickReply({ q }: { q: Question }) {
 
 interface MlExtraCostsData {
   periodKey?: string | null;
+  selectedPeriodKey?: string | null;
   periodFrom?: string | null;
   periodTo?: string | null;
   productAds?: number;
@@ -138,6 +139,32 @@ interface MlExtraCostsData {
   totalExtraCosts?: number;
   available?: boolean;
   message?: string | null;
+  availablePeriods?: Array<{
+    key: string;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    status?: string | null;
+  }>;
+}
+
+function currentMonthPeriodKey(): string {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [y, m] = ymd.split("-");
+  return `${y}-${m}-01`;
+}
+
+function formatMonthPeriodLabel(key: string, isCurrentMonth: boolean): string {
+  const [y, m] = key.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
+    new Date(y, m - 1, 1),
+  );
+  const capitalized = label.charAt(0).toUpperCase() + label.slice(1);
+  return isCurrentMonth ? `${capitalized} (atual)` : capitalized;
 }
 
 function formatIsoDatePtBr(ymd: string | null | undefined): string {
@@ -154,6 +181,7 @@ function formatIsoDatePtBr(ymd: string | null | undefined): string {
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("30d");
   const [accountId, setAccountId] = useState<string | undefined>();
+  const [extraCostsPeriodKey, setExtraCostsPeriodKey] = useState(currentMonthPeriodKey);
 
   const { data: accountsData } = useListAccounts();
   const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
@@ -164,11 +192,22 @@ export default function Dashboard() {
   );
   const s = summary as DashboardSummaryData | null;
 
+  const extraCostsParams = {
+    period_key: extraCostsPeriodKey,
+    ...(accountId ? { account_id: accountId } : {}),
+  };
+
   const { data: extraCostsRaw, isLoading: loadingExtraCosts } = useGetMlExtraCosts(
-    accountId ? { account_id: accountId } : {},
-    { query: { queryKey: getGetMlExtraCostsQueryKey({ account_id: accountId }) } },
+    extraCostsParams,
+    { query: { queryKey: getGetMlExtraCostsQueryKey(extraCostsParams) } },
   );
   const extraCosts = extraCostsRaw as MlExtraCostsData | null;
+
+  const extraCostsMonthOptions =
+    extraCosts?.availablePeriods?.length
+      ? extraCosts.availablePeriods
+      : [{ key: extraCostsPeriodKey, dateFrom: null, dateTo: null, status: "OPEN" }];
+  const currentMonthKey = currentMonthPeriodKey();
 
   const { data: chartData } = useGetSalesChart(
     { period, ...(accountId ? { account_id: accountId } : {}) },
@@ -301,25 +340,42 @@ export default function Dashboard() {
 
         <div className="bg-card border border-card-border rounded-xl p-4">
           <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2 min-w-0">
               <Receipt className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-foreground">Custos extras Mercado Livre</h2>
                 <p className="text-muted-foreground text-xs mt-0.5">
                   {extraCosts?.available && extraCosts?.periodFrom && extraCosts?.periodTo
-                    ? `Período de faturamento: ${formatIsoDatePtBr(extraCosts.periodFrom)} — ${formatIsoDatePtBr(extraCosts.periodTo)}`
-                    : "Product Ads e taxas Full (envios e estoque) do último período de faturamento ML."}
+                    ? `Acumulado de ${formatIsoDatePtBr(extraCosts.periodFrom)} até ${formatIsoDatePtBr(extraCosts.periodTo)}`
+                    : "Product Ads e taxas Full (envios e estoque) acumulados no mês selecionado."}
                 </p>
               </div>
             </div>
-            {extraCosts?.available && extraCosts.totalExtraCosts != null && (
-              <div className="text-right flex-shrink-0">
-                <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Total</p>
-                <p className="text-lg font-bold text-orange-600 tabular-nums">
-                  {loadingExtraCosts ? "—" : formatCurrency(extraCosts.totalExtraCosts)}
-                </p>
-              </div>
-            )}
+            <div className="flex items-start gap-2 flex-shrink-0">
+              <Select
+                value={extraCosts?.selectedPeriodKey ?? extraCostsPeriodKey}
+                onValueChange={setExtraCostsPeriodKey}
+              >
+                <SelectTrigger className="w-44 text-xs h-8">
+                  <SelectValue placeholder="Mês" />
+                </SelectTrigger>
+                <SelectContent>
+                  {extraCostsMonthOptions.map((opt) => (
+                    <SelectItem key={opt.key} value={opt.key} className="text-xs">
+                      {formatMonthPeriodLabel(opt.key, opt.key === currentMonthKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {extraCosts?.available && extraCosts.totalExtraCosts != null && (
+                <div className="text-right">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Total</p>
+                  <p className="text-lg font-bold text-orange-600 tabular-nums">
+                    {loadingExtraCosts ? "—" : formatCurrency(extraCosts.totalExtraCosts)}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {loadingExtraCosts ? (

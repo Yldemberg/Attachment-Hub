@@ -379,8 +379,19 @@ export interface DashboardSummary {
   activeAccounts: number;
 }
 
+export interface MlBillingPeriodOption {
+  /** Chave do mês calendário (YYYY-MM-01). */
+  key: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  /** Status do período na API ML (OPEN/CLOSED), quando disponível. */
+  status?: string | null;
+}
+
 export interface MlExtraCostsBreakdown {
   periodKey?: string | null;
+  /** Mês calendário selecionado na consulta (YYYY-MM-01). */
+  selectedPeriodKey?: string | null;
   periodFrom?: string | null;
   periodTo?: string | null;
   /** Campanhas Product Ads (tipo PADS no resumo de faturamento). */
@@ -392,6 +403,7 @@ export interface MlExtraCostsBreakdown {
   totalExtraCosts: number;
   available: boolean;
   message?: string | null;
+  availablePeriods: MlBillingPeriodOption[];
 }
 
 export interface SalesChartDataPoint {
@@ -621,6 +633,10 @@ export type GetDashboardSummaryParams = {
 
 export type GetMlExtraCostsParams = {
   account_id?: string;
+  /**
+   * Chave do mês calendário (YYYY-MM-01). Padrão = mês atual (America/Sao_Paulo).
+   */
+  period_key?: string;
 };
 
 export type GetSalesChartParams = {

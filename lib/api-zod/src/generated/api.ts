@@ -1014,15 +1014,25 @@ export const GetDashboardSummaryResponse = zod.object({
 });
 
 /**
- * Product Ads, envios Full e armazenamento Full do período de faturamento ML mais recente (API billing/integration).
+ * Product Ads, envios Full e armazenamento Full acumulados no mês calendário selecionado (padrão: mês atual). Use period_key para consultar meses anteriores (formato YYYY-MM-01).
  * @summary Custos extras cobrados pelo Mercado Livre
  */
 export const GetMlExtraCostsQueryParams = zod.object({
   account_id: zod.coerce.string().optional(),
+  period_key: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Chave do mês calendário (YYYY-MM-01). Padrão = mês atual (America\/Sao_Paulo).",
+    ),
 });
 
 export const GetMlExtraCostsResponse = zod.object({
   periodKey: zod.string().nullish(),
+  selectedPeriodKey: zod
+    .string()
+    .nullish()
+    .describe("Mês calendário selecionado na consulta (YYYY-MM-01)."),
   periodFrom: zod.coerce.date().nullish(),
   periodTo: zod.coerce.date().nullish(),
   productAds: zod
@@ -1041,6 +1051,19 @@ export const GetMlExtraCostsResponse = zod.object({
   totalExtraCosts: zod.number(),
   available: zod.boolean(),
   message: zod.string().nullish(),
+  availablePeriods: zod.array(
+    zod.object({
+      key: zod.string().describe("Chave do mês calendário (YYYY-MM-01)."),
+      dateFrom: zod.coerce.date().nullish(),
+      dateTo: zod.coerce.date().nullish(),
+      status: zod
+        .string()
+        .nullish()
+        .describe(
+          "Status do período na API ML (OPEN\/CLOSED), quando disponível.",
+        ),
+    }),
+  ),
 });
 
 /**

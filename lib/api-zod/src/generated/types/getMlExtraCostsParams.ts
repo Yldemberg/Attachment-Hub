@@ -8,4 +8,8 @@
 
 export type GetMlExtraCostsParams = {
   account_id?: string;
+  /**
+   * Chave do mês calendário (YYYY-MM-01). Padrão = mês atual (America/Sao_Paulo).
+   */
+  period_key?: string;
 };
