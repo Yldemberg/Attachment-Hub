@@ -122,6 +122,11 @@ async function refreshAccessToken(accountId: string): Promise<string> {
   return data.access_token;
 }
 
+/** OAuth access token for ML/MP API calls on behalf of a connected seller account. */
+export async function getMlAccessToken(accountId: string): Promise<string> {
+  return getValidToken(accountId);
+}
+
 async function getValidToken(accountId: string): Promise<string> {
   const db = getDb();
   const [account] = await db
@@ -718,8 +723,10 @@ export type MlOrder = {
     quantity: number;
     unit_price: number;
   }>;
-  /** Presente em GET /orders/:id — taxas e frete por pagamento. */
+  /** Presente em GET /orders/:id — taxas, frete e ID do pagamento no Mercado Pago. */
   payments?: Array<{
+    id?: number | null;
+    status?: string | null;
     marketplace_fee?: number | null;
     shipping_cost?: number | null;
   }>;

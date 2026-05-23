@@ -21,10 +21,12 @@ import type {
   AnswerQuestionRequest,
   BadRequestResponse,
   DashboardSummary,
+  ErrorResponse,
   GetConnectUrl200,
   GetDashboardSummaryParams,
   GetLowStockProducts200,
   GetLowStockProductsParams,
+  GetMercadoPagoPaymentParams,
   GetSalesChartParams,
   GetSalesReportParams,
   HandleConnectCallbackParams,
@@ -43,6 +45,7 @@ import type {
   MandateAdjustResponse,
   MarkAllNotificationsRead200,
   MercadoLivreWebhookPayload,
+  MercadoPagoPayment,
   NotFoundResponse,
   Notification,
   NotificationListResponse,
@@ -1892,6 +1895,131 @@ export function useGetOrder<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetOrderQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Proxies GET https://api.mercadopago.com/v1/payments/{paymentId} using the OAuth token of the connected Mercado Livre account (`account_id`). No extra Mercado Pago secrets are required.
+ * @summary Get Mercado Pago payment details
+ */
+export const getGetMercadoPagoPaymentUrl = (
+  paymentId: string,
+  params: GetMercadoPagoPaymentParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/payments/${paymentId}?${stringifiedParams}`
+    : `/api/payments/${paymentId}`;
+};
+
+export const getMercadoPagoPayment = async (
+  paymentId: string,
+  params: GetMercadoPagoPaymentParams,
+  options?: RequestInit,
+): Promise<MercadoPagoPayment> => {
+  return customFetch<MercadoPagoPayment>(
+    getGetMercadoPagoPaymentUrl(paymentId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetMercadoPagoPaymentQueryKey = (
+  paymentId: string,
+  params?: GetMercadoPagoPaymentParams,
+) => {
+  return [`/api/payments/${paymentId}`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetMercadoPagoPaymentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMercadoPagoPayment>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+>(
+  paymentId: string,
+  params: GetMercadoPagoPaymentParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMercadoPagoPayment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetMercadoPagoPaymentQueryKey(paymentId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMercadoPagoPayment>>
+  > = ({ signal }) =>
+    getMercadoPagoPayment(paymentId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!paymentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMercadoPagoPayment>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMercadoPagoPaymentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMercadoPagoPayment>>
+>;
+export type GetMercadoPagoPaymentQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Get Mercado Pago payment details
+ */
+
+export function useGetMercadoPagoPayment<
+  TData = Awaited<ReturnType<typeof getMercadoPagoPayment>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+>(
+  paymentId: string,
+  params: GetMercadoPagoPaymentParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMercadoPagoPayment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMercadoPagoPaymentQueryOptions(
+    paymentId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

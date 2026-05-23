@@ -655,6 +655,33 @@ export const GetOrderResponse = zod.object({
 });
 
 /**
+ * Proxies GET https://api.mercadopago.com/v1/payments/{paymentId} using the OAuth token of the connected Mercado Livre account (`account_id`). No extra Mercado Pago secrets are required.
+ * @summary Get Mercado Pago payment details
+ */
+export const getMercadoPagoPaymentPathPaymentIdRegExp = new RegExp("^[0-9]+$");
+
+export const GetMercadoPagoPaymentParams = zod.object({
+  paymentId: zod.coerce
+    .string()
+    .regex(getMercadoPagoPaymentPathPaymentIdRegExp)
+    .describe(
+      "Mercado Pago payment ID (also present in ML order `payments[].id`).",
+    ),
+});
+
+export const GetMercadoPagoPaymentQueryParams = zod.object({
+  account_id: zod.coerce
+    .string()
+    .describe(
+      "iHub account UUID whose ML OAuth token will authorize the Mercado Pago request.",
+    ),
+});
+
+export const GetMercadoPagoPaymentResponse = zod
+  .record(zod.string(), zod.unknown())
+  .describe("Raw payload from Mercado Pago GET \/v1\/payments\/{id}");
+
+/**
  * @summary List questions with filters and pagination
  */
 export const listQuestionsQueryPageDefault = 1;

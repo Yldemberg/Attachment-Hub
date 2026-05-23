@@ -261,6 +261,13 @@ export interface OrderListResponse {
   pagination: Pagination;
 }
 
+/**
+ * Raw payload from Mercado Pago GET /v1/payments/{id}
+ */
+export interface MercadoPagoPayment {
+  [key: string]: unknown;
+}
+
 export type QuestionStatus =
   (typeof QuestionStatus)[keyof typeof QuestionStatus];
 
@@ -535,6 +542,13 @@ export const ListOrdersShipmentPhase = {
   label_issued: "label_issued",
   in_transit: "in_transit",
 } as const;
+
+export type GetMercadoPagoPaymentParams = {
+  /**
+   * iHub account UUID whose ML OAuth token will authorize the Mercado Pago request.
+   */
+  account_id: string;
+};
 
 export type ListQuestionsParams = {
   account_id?: string;

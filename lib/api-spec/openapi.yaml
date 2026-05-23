@@ -20,6 +20,8 @@ tags:
     description: Inventário geral e estoque mandatário por SKU
   - name: orders
     description: Order management
+  - name: payments
+    description: Mercado Pago payment details
   - name: questions
     description: Customer question management
   - name: notifications
@@ -639,6 +641,56 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /payments/{paymentId}:
+    get:
+      operationId: getMercadoPagoPayment
+      tags: [payments]
+      summary: Get Mercado Pago payment details
+      description: >-
+        Proxies GET https://api.mercadopago.com/v1/payments/{paymentId} using the OAuth token
+        of the connected Mercado Livre account (`account_id`). No extra Mercado Pago secrets are required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[0-9]+$"
+          description: Mercado Pago payment ID (also present in ML order `payments[].id`).
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: iHub account UUID whose ML OAuth token will authorize the Mercado Pago request.
+      responses:
+        "200":
+          description: Mercado Pago payment payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MercadoPagoPayment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Pago upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: Mercado Pago request timed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ---------------------------------------------------------------------------
   # Questions
@@ -1506,6 +1558,11 @@ components:
         pagination:
           $ref: "#/components/schemas/Pagination"
       required: [data, pagination]
+
+    MercadoPagoPayment:
+      type: object
+      description: Raw payload from Mercado Pago GET /v1/payments/{id}
+      additionalProperties: true
 
     # --------------------------------------------------------------------------
     # Questions
