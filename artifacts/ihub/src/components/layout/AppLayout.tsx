@@ -23,6 +23,7 @@ import {
   X,
   Clock,
   FileSpreadsheet,
+  Tag,
 } from "lucide-react";
 import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, badge: "none" as const },
   { path: "/products", label: "Produtos", icon: Package, badge: "none" as const },
+  { path: "/promotions", label: "Promoções", icon: Tag, badge: "none" as const },
   { path: "/inventory", label: "Inventário geral", icon: Warehouse, badge: "none" as const },
   { path: "/reports/sales", label: "Relatório de vendas", icon: FileSpreadsheet, badge: "none" as const },
   { path: "/orders", label: "Pedidos", icon: ShoppingCart, badge: "none" as const },

@@ -896,6 +896,353 @@ export const AnswerQuestionResponse = zod.object({
 });
 
 /**
+ * @summary Promotion KPIs across connected accounts
+ */
+export const getPromotionsSummaryQueryRefreshDefault = false;
+
+export const GetPromotionsSummaryQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+  refresh: zod.coerce
+    .boolean()
+    .default(getPromotionsSummaryQueryRefreshDefault)
+    .describe("Bypass cache when true"),
+});
+
+export const GetPromotionsSummaryResponse = zod.object({
+  totalCampaigns: zod.number(),
+  activeCampaigns: zod.number(),
+  candidateItems: zod.number(),
+  expiringToday: zod.number(),
+  accounts: zod.array(
+    zod.object({
+      accountId: zod.string(),
+      nickname: zod.string().nullish(),
+      campaigns: zod.number(),
+      candidates: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Unified queue of candidate items across campaigns
+ */
+export const listPromotionInboxQueryPageDefault = 1;
+export const listPromotionInboxQueryLimitDefault = 20;
+export const listPromotionInboxQueryRefreshDefault = false;
+
+export const ListPromotionInboxQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  promotion_type: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listPromotionInboxQueryPageDefault),
+  limit: zod.coerce.number().default(listPromotionInboxQueryLimitDefault),
+  refresh: zod.coerce.boolean().default(listPromotionInboxQueryRefreshDefault),
+});
+
+export const ListPromotionInboxResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      itemId: zod.string(),
+      promotionId: zod.string(),
+      promotionType: zod.string(),
+      promotionTypeLabel: zod.string().nullish(),
+      promotionName: zod.string().nullish(),
+      promotionStatus: zod.string().nullish(),
+      deadlineDate: zod.string().nullish(),
+      itemStatus: zod.string(),
+      accountId: zod.string(),
+      accountNickname: zod.string().nullish(),
+      originalPrice: zod.number().nullish(),
+      suggestedDiscountedPrice: zod.number().nullish(),
+      minDiscountedPrice: zod.number().nullish(),
+      maxDiscountedPrice: zod.number().nullish(),
+      discountPercent: zod.number().nullish(),
+      title: zod.string().nullish(),
+      sku: zod.string().nullish(),
+      thumbnail: zod.string().nullish(),
+      permalink: zod.string().nullish(),
+      availableQuantity: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
+
+/**
+ * @summary List ML promotion campaigns
+ */
+export const listPromotionsQueryPageDefault = 1;
+export const listPromotionsQueryLimitDefault = 20;
+export const listPromotionsQueryRefreshDefault = false;
+
+export const ListPromotionsQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+  promotion_type: zod.coerce.string().optional(),
+  status: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by campaign status (started, pending, finished)"),
+  page: zod.coerce.number().default(listPromotionsQueryPageDefault),
+  limit: zod.coerce.number().default(listPromotionsQueryLimitDefault),
+  refresh: zod.coerce.boolean().default(listPromotionsQueryRefreshDefault),
+});
+
+export const ListPromotionsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string(),
+      type: zod.string(),
+      typeLabel: zod.string().nullish(),
+      status: zod.string(),
+      startDate: zod.string().nullish(),
+      finishDate: zod.string().nullish(),
+      deadlineDate: zod.string().nullish(),
+      name: zod.string().nullish(),
+      subType: zod.string().nullish(),
+      benefits: zod
+        .object({
+          type: zod.string().nullish(),
+          meliPercent: zod.number().nullish(),
+          sellerPercent: zod.number().nullish(),
+          name: zod.string().nullish(),
+          buyQuantity: zod.number().nullish(),
+          payQuantity: zod.number().nullish(),
+          itemDiscountPercent: zod.number().nullish(),
+        })
+        .optional(),
+      accountId: zod.string(),
+      accountNickname: zod.string().nullish(),
+      candidateCount: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
+
+/**
+ * @summary Get promotion campaign details
+ */
+export const GetPromotionParams = zod.object({
+  promotionId: zod.coerce.string(),
+});
+
+export const GetPromotionQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+  promotion_type: zod.coerce.string(),
+});
+
+export const GetPromotionResponse = zod.object({
+  id: zod.string(),
+  type: zod.string(),
+  typeLabel: zod.string().nullish(),
+  status: zod.string(),
+  startDate: zod.string().nullish(),
+  finishDate: zod.string().nullish(),
+  deadlineDate: zod.string().nullish(),
+  name: zod.string().nullish(),
+  subType: zod.string().nullish(),
+  benefits: zod
+    .object({
+      type: zod.string().nullish(),
+      meliPercent: zod.number().nullish(),
+      sellerPercent: zod.number().nullish(),
+      name: zod.string().nullish(),
+      buyQuantity: zod.number().nullish(),
+      payQuantity: zod.number().nullish(),
+      itemDiscountPercent: zod.number().nullish(),
+    })
+    .optional(),
+  accountId: zod.string(),
+  accountNickname: zod.string().nullish(),
+  candidateCount: zod.number().nullish(),
+});
+
+/**
+ * @summary List items in a promotion campaign
+ */
+export const ListPromotionItemsParams = zod.object({
+  promotionId: zod.coerce.string(),
+});
+
+export const listPromotionItemsQueryPageDefault = 1;
+export const listPromotionItemsQueryLimitDefault = 50;
+export const listPromotionItemsQueryRefreshDefault = false;
+
+export const ListPromotionItemsQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+  promotion_type: zod.coerce.string(),
+  status: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Item status in campaign (candidate, pending, started, finished)",
+    ),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listPromotionItemsQueryPageDefault),
+  limit: zod.coerce.number().default(listPromotionItemsQueryLimitDefault),
+  refresh: zod.coerce.boolean().default(listPromotionItemsQueryRefreshDefault),
+});
+
+export const ListPromotionItemsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      itemId: zod.string(),
+      status: zod.string(),
+      price: zod.number().nullish(),
+      originalPrice: zod.number().nullish(),
+      minDiscountedPrice: zod.number().nullish(),
+      maxDiscountedPrice: zod.number().nullish(),
+      suggestedDiscountedPrice: zod.number().nullish(),
+      topDealPrice: zod.number().nullish(),
+      discountPercentage: zod.number().nullish(),
+      startDate: zod.string().nullish(),
+      endDate: zod.string().nullish(),
+      productId: zod.string().nullish(),
+      title: zod.string().nullish(),
+      sku: zod.string().nullish(),
+      thumbnail: zod.string().nullish(),
+      permalink: zod.string().nullish(),
+      availableQuantity: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+  promotion: zod
+    .object({
+      id: zod.string(),
+      type: zod.string(),
+      typeLabel: zod.string().nullish(),
+      status: zod.string(),
+      startDate: zod.string().nullish(),
+      finishDate: zod.string().nullish(),
+      deadlineDate: zod.string().nullish(),
+      name: zod.string().nullish(),
+      subType: zod.string().nullish(),
+      benefits: zod
+        .object({
+          type: zod.string().nullish(),
+          meliPercent: zod.number().nullish(),
+          sellerPercent: zod.number().nullish(),
+          name: zod.string().nullish(),
+          buyQuantity: zod.number().nullish(),
+          payQuantity: zod.number().nullish(),
+          itemDiscountPercent: zod.number().nullish(),
+        })
+        .optional(),
+      accountId: zod.string(),
+      accountNickname: zod.string().nullish(),
+      candidateCount: zod.number().nullish(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Activate multiple items in a promotion
+ */
+export const BulkActivatePromotionItemsParams = zod.object({
+  promotionId: zod.coerce.string(),
+});
+
+export const bulkActivatePromotionItemsBodyItemsItemUseSuggestedDefault = false;
+
+export const BulkActivatePromotionItemsBody = zod.object({
+  accountId: zod.string(),
+  promotionType: zod.string(),
+  items: zod
+    .array(
+      zod.object({
+        itemId: zod.string(),
+        dealPrice: zod.number().nullish(),
+        topDealPrice: zod.number().nullish(),
+        useSuggested: zod
+          .boolean()
+          .default(bulkActivatePromotionItemsBodyItemsItemUseSuggestedDefault),
+      }),
+    )
+    .min(1),
+});
+
+export const BulkActivatePromotionItemsResponse = zod.object({
+  results: zod.array(
+    zod.object({
+      itemId: zod.string(),
+      ok: zod.boolean(),
+      error: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Add or activate an item in a promotion
+ */
+export const ActivatePromotionItemParams = zod.object({
+  promotionId: zod.coerce.string(),
+  itemId: zod.coerce.string(),
+});
+
+export const ActivatePromotionItemBody = zod.object({
+  accountId: zod.string(),
+  promotionType: zod.string(),
+  dealPrice: zod.number().nullish(),
+  topDealPrice: zod.number().nullish(),
+});
+
+export const ActivatePromotionItemResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary Update promotion price for an item
+ */
+export const UpdatePromotionItemParams = zod.object({
+  promotionId: zod.coerce.string(),
+  itemId: zod.coerce.string(),
+});
+
+export const UpdatePromotionItemBody = zod.object({
+  accountId: zod.string(),
+  promotionType: zod.string(),
+  dealPrice: zod.number().nullish(),
+  topDealPrice: zod.number().nullish(),
+});
+
+export const UpdatePromotionItemResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary Remove an item from a promotion
+ */
+export const RemovePromotionItemParams = zod.object({
+  promotionId: zod.coerce.string(),
+  itemId: zod.coerce.string(),
+});
+
+export const RemovePromotionItemQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+  promotion_type: zod.coerce.string(),
+});
+
+export const RemovePromotionItemResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
  * @summary List notifications
  */
 export const listNotificationsQueryPageDefault = 1;

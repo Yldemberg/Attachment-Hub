@@ -18,8 +18,12 @@ import type {
 
 import type {
   Account,
+  ActivatePromotionItem200,
+  ActivatePromotionItemRequest,
   AnswerQuestionRequest,
   BadRequestResponse,
+  BulkActivatePromotionItemsRequest,
+  BulkActivatePromotionItemsResponse,
   DashboardSummary,
   ErrorResponse,
   GetConnectUrl200,
@@ -28,6 +32,8 @@ import type {
   GetLowStockProductsParams,
   GetMercadoPagoPaymentParams,
   GetMlExtraCostsParams,
+  GetPromotionParams,
+  GetPromotionsSummaryParams,
   GetSalesChartParams,
   GetSalesReportParams,
   HandleConnectCallbackParams,
@@ -41,6 +47,9 @@ import type {
   ListNotificationsParams,
   ListOrdersParams,
   ListProductsParams,
+  ListPromotionInboxParams,
+  ListPromotionItemsParams,
+  ListPromotionsParams,
   ListQuestionsParams,
   MandateAdjustRequest,
   MandateAdjustResponse,
@@ -56,8 +65,15 @@ import type {
   OrderListResponse,
   Product,
   ProductListResponse,
+  Promotion,
+  PromotionInboxListResponse,
+  PromotionItemListResponse,
+  PromotionListResponse,
+  PromotionSummary,
   Question,
   QuestionListResponse,
+  RemovePromotionItem200,
+  RemovePromotionItemParams,
   SalesChartResponse,
   SalesReportResponse,
   SearchInventoryParams,
@@ -68,6 +84,7 @@ import type {
   UpdateProductListingStatus200,
   UpdateProductListingStatusRequest,
   UpdateProductStock200,
+  UpdatePromotionItem200,
   UpdateStockBySkuParams,
   UpdateStockRequest,
   UpdateStockResponse,
@@ -2487,6 +2504,975 @@ export const useAnswerQuestion = <
   TContext
 > => {
   return useMutation(getAnswerQuestionMutationOptions(options));
+};
+
+/**
+ * @summary Promotion KPIs across connected accounts
+ */
+export const getGetPromotionsSummaryUrl = (
+  params?: GetPromotionsSummaryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions/summary?${stringifiedParams}`
+    : `/api/promotions/summary`;
+};
+
+export const getPromotionsSummary = async (
+  params?: GetPromotionsSummaryParams,
+  options?: RequestInit,
+): Promise<PromotionSummary> => {
+  return customFetch<PromotionSummary>(getGetPromotionsSummaryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPromotionsSummaryQueryKey = (
+  params?: GetPromotionsSummaryParams,
+) => {
+  return [`/api/promotions/summary`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetPromotionsSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPromotionsSummary>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetPromotionsSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPromotionsSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPromotionsSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPromotionsSummary>>
+  > = ({ signal }) =>
+    getPromotionsSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPromotionsSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPromotionsSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPromotionsSummary>>
+>;
+export type GetPromotionsSummaryQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Promotion KPIs across connected accounts
+ */
+
+export function useGetPromotionsSummary<
+  TData = Awaited<ReturnType<typeof getPromotionsSummary>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetPromotionsSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPromotionsSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPromotionsSummaryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Unified queue of candidate items across campaigns
+ */
+export const getListPromotionInboxUrl = (params?: ListPromotionInboxParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions/inbox?${stringifiedParams}`
+    : `/api/promotions/inbox`;
+};
+
+export const listPromotionInbox = async (
+  params?: ListPromotionInboxParams,
+  options?: RequestInit,
+): Promise<PromotionInboxListResponse> => {
+  return customFetch<PromotionInboxListResponse>(
+    getListPromotionInboxUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPromotionInboxQueryKey = (
+  params?: ListPromotionInboxParams,
+) => {
+  return [`/api/promotions/inbox`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPromotionInboxQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPromotionInbox>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListPromotionInboxParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotionInbox>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPromotionInboxQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPromotionInbox>>
+  > = ({ signal }) => listPromotionInbox(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPromotionInbox>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPromotionInboxQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPromotionInbox>>
+>;
+export type ListPromotionInboxQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Unified queue of candidate items across campaigns
+ */
+
+export function useListPromotionInbox<
+  TData = Awaited<ReturnType<typeof listPromotionInbox>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListPromotionInboxParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotionInbox>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPromotionInboxQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List ML promotion campaigns
+ */
+export const getListPromotionsUrl = (params?: ListPromotionsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions?${stringifiedParams}`
+    : `/api/promotions`;
+};
+
+export const listPromotions = async (
+  params?: ListPromotionsParams,
+  options?: RequestInit,
+): Promise<PromotionListResponse> => {
+  return customFetch<PromotionListResponse>(getListPromotionsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPromotionsQueryKey = (params?: ListPromotionsParams) => {
+  return [`/api/promotions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPromotionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPromotions>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListPromotionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPromotionsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPromotions>>> = ({
+    signal,
+  }) => listPromotions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPromotions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPromotionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPromotions>>
+>;
+export type ListPromotionsQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary List ML promotion campaigns
+ */
+
+export function useListPromotions<
+  TData = Awaited<ReturnType<typeof listPromotions>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListPromotionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPromotionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get promotion campaign details
+ */
+export const getGetPromotionUrl = (
+  promotionId: string,
+  params: GetPromotionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions/${promotionId}?${stringifiedParams}`
+    : `/api/promotions/${promotionId}`;
+};
+
+export const getPromotion = async (
+  promotionId: string,
+  params: GetPromotionParams,
+  options?: RequestInit,
+): Promise<Promotion> => {
+  return customFetch<Promotion>(getGetPromotionUrl(promotionId, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPromotionQueryKey = (
+  promotionId: string,
+  params?: GetPromotionParams,
+) => {
+  return [
+    `/api/promotions/${promotionId}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetPromotionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPromotion>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  promotionId: string,
+  params: GetPromotionParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPromotion>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPromotionQueryKey(promotionId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPromotion>>> = ({
+    signal,
+  }) => getPromotion(promotionId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!promotionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPromotion>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPromotionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPromotion>>
+>;
+export type GetPromotionQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Get promotion campaign details
+ */
+
+export function useGetPromotion<
+  TData = Awaited<ReturnType<typeof getPromotion>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  promotionId: string,
+  params: GetPromotionParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPromotion>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPromotionQueryOptions(
+    promotionId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List items in a promotion campaign
+ */
+export const getListPromotionItemsUrl = (
+  promotionId: string,
+  params: ListPromotionItemsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions/${promotionId}/items?${stringifiedParams}`
+    : `/api/promotions/${promotionId}/items`;
+};
+
+export const listPromotionItems = async (
+  promotionId: string,
+  params: ListPromotionItemsParams,
+  options?: RequestInit,
+): Promise<PromotionItemListResponse> => {
+  return customFetch<PromotionItemListResponse>(
+    getListPromotionItemsUrl(promotionId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPromotionItemsQueryKey = (
+  promotionId: string,
+  params?: ListPromotionItemsParams,
+) => {
+  return [
+    `/api/promotions/${promotionId}/items`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListPromotionItemsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPromotionItems>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  promotionId: string,
+  params: ListPromotionItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotionItems>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListPromotionItemsQueryKey(promotionId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPromotionItems>>
+  > = ({ signal }) =>
+    listPromotionItems(promotionId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!promotionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPromotionItems>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPromotionItemsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPromotionItems>>
+>;
+export type ListPromotionItemsQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary List items in a promotion campaign
+ */
+
+export function useListPromotionItems<
+  TData = Awaited<ReturnType<typeof listPromotionItems>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  promotionId: string,
+  params: ListPromotionItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPromotionItems>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPromotionItemsQueryOptions(
+    promotionId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Activate multiple items in a promotion
+ */
+export const getBulkActivatePromotionItemsUrl = (promotionId: string) => {
+  return `/api/promotions/${promotionId}/items/bulk`;
+};
+
+export const bulkActivatePromotionItems = async (
+  promotionId: string,
+  bulkActivatePromotionItemsRequest: BulkActivatePromotionItemsRequest,
+  options?: RequestInit,
+): Promise<BulkActivatePromotionItemsResponse> => {
+  return customFetch<BulkActivatePromotionItemsResponse>(
+    getBulkActivatePromotionItemsUrl(promotionId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(bulkActivatePromotionItemsRequest),
+    },
+  );
+};
+
+export const getBulkActivatePromotionItemsMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkActivatePromotionItems>>,
+    TError,
+    { promotionId: string; data: BodyType<BulkActivatePromotionItemsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkActivatePromotionItems>>,
+  TError,
+  { promotionId: string; data: BodyType<BulkActivatePromotionItemsRequest> },
+  TContext
+> => {
+  const mutationKey = ["bulkActivatePromotionItems"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkActivatePromotionItems>>,
+    { promotionId: string; data: BodyType<BulkActivatePromotionItemsRequest> }
+  > = (props) => {
+    const { promotionId, data } = props ?? {};
+
+    return bulkActivatePromotionItems(promotionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkActivatePromotionItemsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkActivatePromotionItems>>
+>;
+export type BulkActivatePromotionItemsMutationBody =
+  BodyType<BulkActivatePromotionItemsRequest>;
+export type BulkActivatePromotionItemsMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Activate multiple items in a promotion
+ */
+export const useBulkActivatePromotionItems = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkActivatePromotionItems>>,
+    TError,
+    { promotionId: string; data: BodyType<BulkActivatePromotionItemsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkActivatePromotionItems>>,
+  TError,
+  { promotionId: string; data: BodyType<BulkActivatePromotionItemsRequest> },
+  TContext
+> => {
+  return useMutation(getBulkActivatePromotionItemsMutationOptions(options));
+};
+
+/**
+ * @summary Add or activate an item in a promotion
+ */
+export const getActivatePromotionItemUrl = (
+  promotionId: string,
+  itemId: string,
+) => {
+  return `/api/promotions/${promotionId}/items/${itemId}`;
+};
+
+export const activatePromotionItem = async (
+  promotionId: string,
+  itemId: string,
+  activatePromotionItemRequest: ActivatePromotionItemRequest,
+  options?: RequestInit,
+): Promise<ActivatePromotionItem200> => {
+  return customFetch<ActivatePromotionItem200>(
+    getActivatePromotionItemUrl(promotionId, itemId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(activatePromotionItemRequest),
+    },
+  );
+};
+
+export const getActivatePromotionItemMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activatePromotionItem>>,
+    TError,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof activatePromotionItem>>,
+  TError,
+  {
+    promotionId: string;
+    itemId: string;
+    data: BodyType<ActivatePromotionItemRequest>;
+  },
+  TContext
+> => {
+  const mutationKey = ["activatePromotionItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof activatePromotionItem>>,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    }
+  > = (props) => {
+    const { promotionId, itemId, data } = props ?? {};
+
+    return activatePromotionItem(promotionId, itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ActivatePromotionItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof activatePromotionItem>>
+>;
+export type ActivatePromotionItemMutationBody =
+  BodyType<ActivatePromotionItemRequest>;
+export type ActivatePromotionItemMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Add or activate an item in a promotion
+ */
+export const useActivatePromotionItem = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activatePromotionItem>>,
+    TError,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof activatePromotionItem>>,
+  TError,
+  {
+    promotionId: string;
+    itemId: string;
+    data: BodyType<ActivatePromotionItemRequest>;
+  },
+  TContext
+> => {
+  return useMutation(getActivatePromotionItemMutationOptions(options));
+};
+
+/**
+ * @summary Update promotion price for an item
+ */
+export const getUpdatePromotionItemUrl = (
+  promotionId: string,
+  itemId: string,
+) => {
+  return `/api/promotions/${promotionId}/items/${itemId}`;
+};
+
+export const updatePromotionItem = async (
+  promotionId: string,
+  itemId: string,
+  activatePromotionItemRequest: ActivatePromotionItemRequest,
+  options?: RequestInit,
+): Promise<UpdatePromotionItem200> => {
+  return customFetch<UpdatePromotionItem200>(
+    getUpdatePromotionItemUrl(promotionId, itemId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(activatePromotionItemRequest),
+    },
+  );
+};
+
+export const getUpdatePromotionItemMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePromotionItem>>,
+    TError,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePromotionItem>>,
+  TError,
+  {
+    promotionId: string;
+    itemId: string;
+    data: BodyType<ActivatePromotionItemRequest>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updatePromotionItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePromotionItem>>,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    }
+  > = (props) => {
+    const { promotionId, itemId, data } = props ?? {};
+
+    return updatePromotionItem(promotionId, itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePromotionItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePromotionItem>>
+>;
+export type UpdatePromotionItemMutationBody =
+  BodyType<ActivatePromotionItemRequest>;
+export type UpdatePromotionItemMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Update promotion price for an item
+ */
+export const useUpdatePromotionItem = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePromotionItem>>,
+    TError,
+    {
+      promotionId: string;
+      itemId: string;
+      data: BodyType<ActivatePromotionItemRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePromotionItem>>,
+  TError,
+  {
+    promotionId: string;
+    itemId: string;
+    data: BodyType<ActivatePromotionItemRequest>;
+  },
+  TContext
+> => {
+  return useMutation(getUpdatePromotionItemMutationOptions(options));
+};
+
+/**
+ * @summary Remove an item from a promotion
+ */
+export const getRemovePromotionItemUrl = (
+  promotionId: string,
+  itemId: string,
+  params: RemovePromotionItemParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/promotions/${promotionId}/items/${itemId}?${stringifiedParams}`
+    : `/api/promotions/${promotionId}/items/${itemId}`;
+};
+
+export const removePromotionItem = async (
+  promotionId: string,
+  itemId: string,
+  params: RemovePromotionItemParams,
+  options?: RequestInit,
+): Promise<RemovePromotionItem200> => {
+  return customFetch<RemovePromotionItem200>(
+    getRemovePromotionItemUrl(promotionId, itemId, params),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getRemovePromotionItemMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removePromotionItem>>,
+    TError,
+    { promotionId: string; itemId: string; params: RemovePromotionItemParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof removePromotionItem>>,
+  TError,
+  { promotionId: string; itemId: string; params: RemovePromotionItemParams },
+  TContext
+> => {
+  const mutationKey = ["removePromotionItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof removePromotionItem>>,
+    { promotionId: string; itemId: string; params: RemovePromotionItemParams }
+  > = (props) => {
+    const { promotionId, itemId, params } = props ?? {};
+
+    return removePromotionItem(promotionId, itemId, params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RemovePromotionItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof removePromotionItem>>
+>;
+
+export type RemovePromotionItemMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Remove an item from a promotion
+ */
+export const useRemovePromotionItem = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removePromotionItem>>,
+    TError,
+    { promotionId: string; itemId: string; params: RemovePromotionItemParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof removePromotionItem>>,
+  TError,
+  { promotionId: string; itemId: string; params: RemovePromotionItemParams },
+  TContext
+> => {
+  return useMutation(getRemovePromotionItemMutationOptions(options));
 };
 
 /**

@@ -28,6 +28,8 @@ tags:
     description: In-app notifications
   - name: dashboard
     description: Dashboard KPIs and analytics
+  - name: promotions
+    description: Mercado Livre seller promotions and campaigns
   - name: webhooks
     description: External webhook receivers
 
@@ -826,6 +828,364 @@ paths:
                 $ref: "#/components/schemas/Question"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Promotions
+  # ---------------------------------------------------------------------------
+  /promotions/summary:
+    get:
+      operationId: getPromotionsSummary
+      tags: [promotions]
+      summary: Promotion KPIs across connected accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: refresh
+          in: query
+          description: Bypass cache when true
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Promotion summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromotionSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /promotions/inbox:
+    get:
+      operationId: listPromotionInbox
+      tags: [promotions]
+      summary: Unified queue of candidate items across campaigns
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: promotion_type
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Paginated inbox entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromotionInboxListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /promotions:
+    get:
+      operationId: listPromotions
+      tags: [promotions]
+      summary: List ML promotion campaigns
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: promotion_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by campaign status (started, pending, finished)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Paginated list of campaigns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromotionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /promotions/{promotionId}:
+    get:
+      operationId: getPromotion
+      tags: [promotions]
+      summary: Get promotion campaign details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: promotion_type
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Promotion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /promotions/{promotionId}/items:
+    get:
+      operationId: listPromotionItems
+      tags: [promotions]
+      summary: List items in a promotion campaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: promotion_type
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Item status in campaign (candidate, pending, started, finished)
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Paginated promotion items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromotionItemListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /promotions/{promotionId}/items/bulk:
+    post:
+      operationId: bulkActivatePromotionItems
+      tags: [promotions]
+      summary: Activate multiple items in a promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActivatePromotionItemsRequest"
+      responses:
+        "200":
+          description: Bulk activation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkActivatePromotionItemsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /promotions/{promotionId}/items/{itemId}:
+    post:
+      operationId: activatePromotionItem
+      tags: [promotions]
+      summary: Add or activate an item in a promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivatePromotionItemRequest"
+      responses:
+        "200":
+          description: Item activated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      operationId: updatePromotionItem
+      tags: [promotions]
+      summary: Update promotion price for an item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivatePromotionItemRequest"
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: removePromotionItem
+      tags: [promotions]
+      summary: Remove an item from a promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: promotion_type
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Item removed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1813,6 +2173,319 @@ components:
         unreadCount:
           type: integer
       required: [data, pagination, unreadCount]
+
+    # --------------------------------------------------------------------------
+    # Promotions
+    # --------------------------------------------------------------------------
+    PromotionBenefits:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        meliPercent:
+          type: number
+          nullable: true
+        sellerPercent:
+          type: number
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        buyQuantity:
+          type: integer
+          nullable: true
+        payQuantity:
+          type: integer
+          nullable: true
+        itemDiscountPercent:
+          type: number
+          nullable: true
+
+    Promotion:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        typeLabel:
+          type: string
+          nullable: true
+        status:
+          type: string
+        startDate:
+          type: string
+          nullable: true
+        finishDate:
+          type: string
+          nullable: true
+        deadlineDate:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        subType:
+          type: string
+          nullable: true
+        benefits:
+          $ref: "#/components/schemas/PromotionBenefits"
+        accountId:
+          type: string
+        accountNickname:
+          type: string
+          nullable: true
+        candidateCount:
+          type: integer
+          nullable: true
+      required: [id, type, status, accountId]
+
+    PromotionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Promotion"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+
+    PromotionItem:
+      type: object
+      properties:
+        itemId:
+          type: string
+        status:
+          type: string
+        price:
+          type: number
+          nullable: true
+        originalPrice:
+          type: number
+          nullable: true
+        minDiscountedPrice:
+          type: number
+          nullable: true
+        maxDiscountedPrice:
+          type: number
+          nullable: true
+        suggestedDiscountedPrice:
+          type: number
+          nullable: true
+        topDealPrice:
+          type: number
+          nullable: true
+        discountPercentage:
+          type: number
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        productId:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+        permalink:
+          type: string
+          nullable: true
+        availableQuantity:
+          type: integer
+          nullable: true
+      required: [itemId, status]
+
+    PromotionItemListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromotionItem"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+        promotion:
+          $ref: "#/components/schemas/Promotion"
+      required: [data, pagination]
+
+    PromotionInboxEntry:
+      type: object
+      properties:
+        itemId:
+          type: string
+        promotionId:
+          type: string
+        promotionType:
+          type: string
+        promotionTypeLabel:
+          type: string
+          nullable: true
+        promotionName:
+          type: string
+          nullable: true
+        promotionStatus:
+          type: string
+          nullable: true
+        deadlineDate:
+          type: string
+          nullable: true
+        itemStatus:
+          type: string
+        accountId:
+          type: string
+        accountNickname:
+          type: string
+          nullable: true
+        originalPrice:
+          type: number
+          nullable: true
+        suggestedDiscountedPrice:
+          type: number
+          nullable: true
+        minDiscountedPrice:
+          type: number
+          nullable: true
+        maxDiscountedPrice:
+          type: number
+          nullable: true
+        discountPercent:
+          type: integer
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+        permalink:
+          type: string
+          nullable: true
+        availableQuantity:
+          type: integer
+          nullable: true
+      required: [itemId, promotionId, promotionType, itemStatus, accountId]
+
+    PromotionInboxListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromotionInboxEntry"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+
+    PromotionSummaryAccount:
+      type: object
+      properties:
+        accountId:
+          type: string
+        nickname:
+          type: string
+          nullable: true
+        campaigns:
+          type: integer
+        candidates:
+          type: integer
+      required: [accountId, campaigns, candidates]
+
+    PromotionSummary:
+      type: object
+      properties:
+        totalCampaigns:
+          type: integer
+        activeCampaigns:
+          type: integer
+        candidateItems:
+          type: integer
+        expiringToday:
+          type: integer
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromotionSummaryAccount"
+      required: [totalCampaigns, activeCampaigns, candidateItems, expiringToday, accounts]
+
+    ActivatePromotionItemRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        promotionType:
+          type: string
+        dealPrice:
+          type: number
+          nullable: true
+        topDealPrice:
+          type: number
+          nullable: true
+      required: [accountId, promotionType]
+
+    BulkActivatePromotionItem:
+      type: object
+      properties:
+        itemId:
+          type: string
+        dealPrice:
+          type: number
+          nullable: true
+        topDealPrice:
+          type: number
+          nullable: true
+        useSuggested:
+          type: boolean
+          default: false
+      required: [itemId]
+
+    BulkActivatePromotionItemsRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        promotionType:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkActivatePromotionItem"
+          minItems: 1
+      required: [accountId, promotionType, items]
+
+    BulkActivatePromotionItemResult:
+      type: object
+      properties:
+        itemId:
+          type: string
+        ok:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+      required: [itemId, ok]
+
+    BulkActivatePromotionItemsResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkActivatePromotionItemResult"
+      required: [results]
 
     # --------------------------------------------------------------------------
     # Dashboard

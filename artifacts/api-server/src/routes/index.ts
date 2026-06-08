@@ -9,6 +9,7 @@ import paymentsRouter from "./payments";
 import questionsRouter from "./questions";
 import notificationsRouter from "./notifications";
 import dashboardRouter from "./dashboard";
+import promotionsRouter from "./promotions";
 import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
@@ -24,5 +25,6 @@ router.use(paymentsRouter);
 router.use(questionsRouter);
 router.use(notificationsRouter);
 router.use(dashboardRouter);
+router.use(promotionsRouter);
 
 export default router;

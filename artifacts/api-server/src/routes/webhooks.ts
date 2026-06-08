@@ -23,6 +23,12 @@ import {
   getMlEffectiveLogisticType,
   getMlOriginalListPrice,
 } from "../lib/mercadolivre";
+import {
+  fetchPromotionCandidate,
+  fetchPromotionOffer,
+  invalidatePromotionsCache,
+  PROMOTION_TYPE_LABELS,
+} from "../lib/ml-promotions";
 import { buildMlOrderStoredPayload } from "../lib/ml-order-payload";
 
 const router = Router();
@@ -315,6 +321,108 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             resourceType: "product",
             resourceId: item.id,
           });
+        }
+      } else if (topic === "public_candidates" || topic === "candidates") {
+        const candidateId = resource.split("/").pop();
+        if (!candidateId) return;
+
+        invalidatePromotionsCache(account.id);
+
+        try {
+          const candidate = await fetchPromotionCandidate(account.id, candidateId);
+          if (candidate.status?.id !== "candidate") return;
+
+          let listingThumbnailUrl: string | null = null;
+          let listingPermalink: string | null = null;
+          let productTitle: string | null = null;
+
+          if (candidate.item_id) {
+            const [fromDb] = await db
+              .select({
+                thumbnail: productsTable.thumbnail,
+                permalink: productsTable.permalink,
+                title: productsTable.title,
+              })
+              .from(productsTable)
+              .where(
+                and(
+                  eq(productsTable.accountId, account.id),
+                  eq(productsTable.mlItemId, candidate.item_id),
+                ),
+              )
+              .limit(1);
+            listingThumbnailUrl = fromDb?.thumbnail ?? null;
+            listingPermalink = fromDb?.permalink ?? null;
+            productTitle = fromDb?.title ?? null;
+          }
+
+          const typeLabel = PROMOTION_TYPE_LABELS[candidate.type] ?? candidate.type;
+          await db.insert(notificationsTable).values({
+            userId: account.userId,
+            accountId: account.id,
+            type: "promotion_candidate",
+            title: "Produto elegível para promoção",
+            message: `${productTitle ?? candidate.item_id} pode participar de ${typeLabel}`,
+            isRead: false,
+            resourceType: "promotion",
+            resourceId: candidate.promotion_id,
+            listingThumbnailUrl,
+            listingPermalink,
+          });
+        } catch (err) {
+          logger.warn({ err, candidateId }, "ML webhook: failed to process promotion candidate");
+        }
+      } else if (topic === "public_offers" || topic === "offers") {
+        const offerId = resource.split("/").pop();
+        if (!offerId) return;
+
+        invalidatePromotionsCache(account.id);
+
+        try {
+          const offer = await fetchPromotionOffer(account.id, offerId);
+          const statusId = offer.status?.id?.toLowerCase() ?? "";
+
+          if (statusId === "active" || statusId === "started") {
+            let listingThumbnailUrl: string | null = null;
+            let listingPermalink: string | null = null;
+            let productTitle: string | null = null;
+
+            if (offer.item_id) {
+              const [fromDb] = await db
+                .select({
+                  thumbnail: productsTable.thumbnail,
+                  permalink: productsTable.permalink,
+                  title: productsTable.title,
+                })
+                .from(productsTable)
+                .where(
+                  and(
+                    eq(productsTable.accountId, account.id),
+                    eq(productsTable.mlItemId, offer.item_id),
+                  ),
+                )
+                .limit(1);
+              listingThumbnailUrl = fromDb?.thumbnail ?? null;
+              listingPermalink = fromDb?.permalink ?? null;
+              productTitle = fromDb?.title ?? null;
+            }
+
+            const typeLabel = PROMOTION_TYPE_LABELS[offer.type] ?? offer.type;
+            await db.insert(notificationsTable).values({
+              userId: account.userId,
+              accountId: account.id,
+              type: "promotion_active",
+              title: "Promoção ativada",
+              message: `${productTitle ?? offer.item_id} entrou em ${typeLabel}`,
+              isRead: false,
+              resourceType: "promotion",
+              resourceId: offer.promotion_id,
+              listingThumbnailUrl,
+              listingPermalink,
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, offerId }, "ML webhook: failed to process promotion offer");
         }
       }
     } catch (err) {

@@ -31,6 +31,8 @@ interface Product {
   soldQuantity?: number | null;
   price?: number | null;
   originalPrice?: number | null;
+  amount?: number | null;
+  regularAmount?: number | null;
   status?: string | null;
   isFull?: boolean | null;
   thumbnail?: string | null;
@@ -107,7 +109,10 @@ export default function ProductDetail() {
     );
   }
 
-  const hasPromo = p.originalPrice != null && p.originalPrice > (p.price ?? 0);
+  const salePrice = p.amount ?? p.price;
+  const listPrice = p.regularAmount ?? p.originalPrice;
+  const hasPromo =
+    listPrice != null && salePrice != null && listPrice > salePrice;
   const variations: ProductVariation[] = Array.isArray(p.variationsJson) ? p.variationsJson : [];
 
   return (
@@ -167,15 +172,15 @@ export default function ProductDetail() {
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Preço</p>
-              {hasPromo ? (
+              {hasPromo && listPrice != null ? (
                 <div className="mt-0.5 space-y-0.5">
                   <p className="text-muted-foreground text-xs line-through">
-                    {formatCurrency(p.originalPrice)}
+                    {formatCurrency(listPrice)}
                   </p>
-                  <p className="text-amber-600 text-xl font-bold">{formatCurrency(p.price)}</p>
+                  <p className="text-red-600 text-xl font-bold">{formatCurrency(salePrice)}</p>
                 </div>
               ) : (
-                <p className="text-amber-600 text-xl font-bold mt-0.5">{formatCurrency(p.price)}</p>
+                <p className="text-amber-600 text-xl font-bold mt-0.5">{formatCurrency(salePrice)}</p>
               )}
             </div>
             <div>

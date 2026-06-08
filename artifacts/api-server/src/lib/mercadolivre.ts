@@ -221,6 +221,9 @@ export const ml = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  delete: <T>(accountId: string, path: string) =>
+    mlFetch<T>(accountId, path, { method: "DELETE" }),
 };
 
 export type MlUser = {

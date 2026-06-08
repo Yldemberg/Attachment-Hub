@@ -227,7 +227,7 @@ function ProductCard({
           <div className="flex items-center gap-0.5 mt-1 min-w-0 flex-nowrap overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {isPromo && (
               <span
-                className="inline-flex items-center justify-center size-5 rounded-md text-pink-600 bg-pink-50 border border-pink-200 shrink-0"
+                className="inline-flex items-center justify-center size-5 rounded-md text-red-600 bg-red-50 border border-red-200 shrink-0"
                 title="Promoção"
                 aria-label="Promoção"
               >

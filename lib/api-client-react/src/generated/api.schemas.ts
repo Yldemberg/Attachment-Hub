@@ -368,6 +368,137 @@ export interface NotificationListResponse {
   unreadCount: number;
 }
 
+export interface PromotionBenefits {
+  type?: string | null;
+  meliPercent?: number | null;
+  sellerPercent?: number | null;
+  name?: string | null;
+  buyQuantity?: number | null;
+  payQuantity?: number | null;
+  itemDiscountPercent?: number | null;
+}
+
+export interface Promotion {
+  id: string;
+  type: string;
+  typeLabel?: string | null;
+  status: string;
+  startDate?: string | null;
+  finishDate?: string | null;
+  deadlineDate?: string | null;
+  name?: string | null;
+  subType?: string | null;
+  benefits?: PromotionBenefits;
+  accountId: string;
+  accountNickname?: string | null;
+  candidateCount?: number | null;
+}
+
+export interface PromotionListResponse {
+  data: Promotion[];
+  pagination: Pagination;
+}
+
+export interface PromotionItem {
+  itemId: string;
+  status: string;
+  price?: number | null;
+  originalPrice?: number | null;
+  minDiscountedPrice?: number | null;
+  maxDiscountedPrice?: number | null;
+  suggestedDiscountedPrice?: number | null;
+  topDealPrice?: number | null;
+  discountPercentage?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  productId?: string | null;
+  title?: string | null;
+  sku?: string | null;
+  thumbnail?: string | null;
+  permalink?: string | null;
+  availableQuantity?: number | null;
+}
+
+export interface PromotionItemListResponse {
+  data: PromotionItem[];
+  pagination: Pagination;
+  promotion?: Promotion;
+}
+
+export interface PromotionInboxEntry {
+  itemId: string;
+  promotionId: string;
+  promotionType: string;
+  promotionTypeLabel?: string | null;
+  promotionName?: string | null;
+  promotionStatus?: string | null;
+  deadlineDate?: string | null;
+  itemStatus: string;
+  accountId: string;
+  accountNickname?: string | null;
+  originalPrice?: number | null;
+  suggestedDiscountedPrice?: number | null;
+  minDiscountedPrice?: number | null;
+  maxDiscountedPrice?: number | null;
+  discountPercent?: number | null;
+  title?: string | null;
+  sku?: string | null;
+  thumbnail?: string | null;
+  permalink?: string | null;
+  availableQuantity?: number | null;
+}
+
+export interface PromotionInboxListResponse {
+  data: PromotionInboxEntry[];
+  pagination: Pagination;
+}
+
+export interface PromotionSummaryAccount {
+  accountId: string;
+  nickname?: string | null;
+  campaigns: number;
+  candidates: number;
+}
+
+export interface PromotionSummary {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  candidateItems: number;
+  expiringToday: number;
+  accounts: PromotionSummaryAccount[];
+}
+
+export interface ActivatePromotionItemRequest {
+  accountId: string;
+  promotionType: string;
+  dealPrice?: number | null;
+  topDealPrice?: number | null;
+}
+
+export interface BulkActivatePromotionItem {
+  itemId: string;
+  dealPrice?: number | null;
+  topDealPrice?: number | null;
+  useSuggested?: boolean;
+}
+
+export interface BulkActivatePromotionItemsRequest {
+  accountId: string;
+  promotionType: string;
+  /** @minItems 1 */
+  items: BulkActivatePromotionItem[];
+}
+
+export interface BulkActivatePromotionItemResult {
+  itemId: string;
+  ok: boolean;
+  error?: string | null;
+}
+
+export interface BulkActivatePromotionItemsResponse {
+  results: BulkActivatePromotionItemResult[];
+}
+
 export interface DashboardSummary {
   salesToday: number;
   salesMonth: number;
@@ -616,6 +747,64 @@ export const ListQuestionsStatus = {
   closed_unanswered: "closed_unanswered",
   under_review: "under_review",
 } as const;
+
+export type GetPromotionsSummaryParams = {
+  account_id?: string;
+  /**
+   * Bypass cache when true
+   */
+  refresh?: boolean;
+};
+
+export type ListPromotionInboxParams = {
+  account_id?: string;
+  search?: string;
+  promotion_type?: string;
+  page?: number;
+  limit?: number;
+  refresh?: boolean;
+};
+
+export type ListPromotionsParams = {
+  account_id?: string;
+  promotion_type?: string;
+  /**
+   * Filter by campaign status (started, pending, finished)
+   */
+  status?: string;
+  page?: number;
+  limit?: number;
+  refresh?: boolean;
+};
+
+export type GetPromotionParams = {
+  account_id: string;
+  promotion_type: string;
+};
+
+export type ListPromotionItemsParams = {
+  account_id: string;
+  promotion_type: string;
+  /**
+   * Item status in campaign (candidate, pending, started, finished)
+   */
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  refresh?: boolean;
+};
+
+export type ActivatePromotionItem200 = { [key: string]: unknown };
+
+export type UpdatePromotionItem200 = { [key: string]: unknown };
+
+export type RemovePromotionItemParams = {
+  account_id: string;
+  promotion_type: string;
+};
+
+export type RemovePromotionItem200 = { [key: string]: unknown };
 
 export type ListNotificationsParams = {
   is_read?: boolean;

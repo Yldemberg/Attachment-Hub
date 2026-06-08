@@ -19,6 +19,8 @@ import Integrations from "@/pages/Integrations";
 import Profile from "@/pages/Profile";
 import GeneralInventory from "@/pages/inventory/GeneralInventory";
 import SalesReport from "@/pages/reports/SalesReport";
+import Promotions from "@/pages/promotions/Promotions";
+import PromotionDetail from "@/pages/promotions/PromotionDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +71,24 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <Products />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/promotions/:promotionId">
+        {() => (
+          <ProtectedRoute>
+            <AppLayout>
+              <PromotionDetail />
+            </AppLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      <Route path="/promotions">
+        <ProtectedRoute>
+          <AppLayout>
+            <Promotions />
           </AppLayout>
         </ProtectedRoute>
       </Route>
