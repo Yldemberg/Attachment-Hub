@@ -1117,6 +1117,12 @@ export const ListPromotionItemsResponse = zod.object({
       endDate: zod.string().nullish(),
       stockMin: zod.number().nullish(),
       stockMax: zod.number().nullish(),
+      netProceeds: zod
+        .object({
+          amount: zod.number().optional(),
+          currency: zod.string().nullish(),
+        })
+        .nullish(),
       productId: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),

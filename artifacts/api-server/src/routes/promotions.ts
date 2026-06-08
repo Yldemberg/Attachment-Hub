@@ -8,6 +8,8 @@ import {
   listSellerPromotions,
   getPromotionDetail,
   listPromotionItems,
+  fetchMlItemPromotions,
+  mergePromotionItemWithContext,
   enrichItemsWithProducts,
   aggregateInboxForAccount,
   buildPromotionSummary,
@@ -102,6 +104,12 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     endDate: item.end_date ?? null,
     stockMin: stockBounds.stockMin,
     stockMax: stockBounds.stockMax,
+    netProceeds: item.net_proceeds?.amount != null
+      ? {
+          amount: item.net_proceeds.amount,
+          currency: item.net_proceeds.currency ?? null,
+        }
+      : null,
     productId: item.productId ?? null,
     title: item.title ?? null,
     sku: item.sku ?? null,
@@ -316,6 +324,17 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
     ]);
 
     let enriched = await enrichItemsWithProducts(acc.id, items);
+    if (item_id && enriched.length > 0) {
+      const contexts = await fetchMlItemPromotions(acc.id, item_id);
+      enriched = enriched.map((row) => {
+        const ctx = contexts.find(
+          (c) =>
+            c.type === promotion_type &&
+            (c.id === promotionId || c.id == null || c.id === ""),
+        );
+        return mergePromotionItemWithContext(row, ctx);
+      });
+    }
     if (search.trim()) {
       enriched = enriched.filter(
         (e) =>

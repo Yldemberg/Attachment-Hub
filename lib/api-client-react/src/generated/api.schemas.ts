@@ -399,6 +399,11 @@ export interface PromotionListResponse {
   pagination: Pagination;
 }
 
+export type PromotionItemNetProceeds = {
+  amount?: number;
+  currency?: string | null;
+} | null;
+
 export interface PromotionItem {
   itemId: string;
   status: string;
@@ -414,6 +419,7 @@ export interface PromotionItem {
   endDate?: string | null;
   stockMin?: number | null;
   stockMax?: number | null;
+  netProceeds?: PromotionItemNetProceeds;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;

@@ -76,6 +76,7 @@ export * from "./promotionInboxEntry";
 export * from "./promotionInboxListResponse";
 export * from "./promotionItem";
 export * from "./promotionItemListResponse";
+export * from "./promotionItemNetProceeds";
 export * from "./promotionListResponse";
 export * from "./promotionSummary";
 export * from "./promotionSummaryAccount";

@@ -5,6 +5,7 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { PromotionItemNetProceeds } from "./promotionItemNetProceeds";
 
 export interface PromotionItem {
   itemId: string;
@@ -21,6 +22,7 @@ export interface PromotionItem {
   endDate?: string | null;
   stockMin?: number | null;
   stockMax?: number | null;
+  netProceeds?: PromotionItemNetProceeds;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;

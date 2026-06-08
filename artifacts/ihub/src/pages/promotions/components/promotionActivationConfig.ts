@@ -15,6 +15,7 @@ export type PromotionItemFields = Pick<
   | "price"
   | "discountPercentage"
   | "status"
+  | "netProceeds"
 >;
 
 export type PromotionActivationConfig = {
@@ -103,35 +104,20 @@ export function getPromotionActivationConfig(promotionType: string): PromotionAc
 
 /**
  * Faixa de preço promocional permitida pelo ML.
- * - min_discounted_price → preço mínimo (desconto máximo)
- * - max_discounted_price → preço máximo credível (desconto mínimo)
- * - max_original_price (LIGHTNING) → piso alternativo quando enviado
+ * - min_discounted_price → piso (desconto máximo)
+ * - max_discounted_price → teto credível (desconto mínimo)
  */
 export function getPriceBounds(
-  promotionType: string,
+  _promotionType: string,
   item: PromotionItemFields,
 ): { min: number | null; max: number | null } {
   const minDiscounted = item.minDiscountedPrice ?? null;
   const maxDiscounted = item.maxDiscountedPrice ?? null;
-  const maxOriginal = item.maxOriginalPrice ?? null;
   const original = item.originalPrice ?? null;
 
-  let min: number | null;
-  let max: number | null;
+  let min = minDiscounted;
+  let max = maxDiscounted ?? original;
 
-  if (promotionType === "LIGHTNING" || promotionType === "DOD") {
-    min = maxOriginal ?? minDiscounted;
-    // Teto: max_discounted_price; nunca reutilizar min_discounted como teto.
-    max = maxDiscounted ?? original;
-  } else {
-    min = minDiscounted;
-    max = maxDiscounted;
-  }
-
-  // Corrige faixa degenerada (ex.: R$ 20,97 — R$ 20,97) quando há preço original maior.
-  if (min != null && max != null && min >= max && original != null && original > min) {
-    max = maxDiscounted ?? original;
-  }
   if (min != null && max != null && min > max) {
     const lo = Math.min(min, max);
     const hi = Math.max(min, max);
@@ -155,7 +141,7 @@ export function calcDiscountAmount(original: number, discountPercent: number): n
   return Math.round((original * (discountPercent / 100)) * 100) / 100;
 }
 
-/** Preço promocional sugerido pelo ML (várias fontes conforme tipo de campanha). */
+/** Preço promocional sugerido pelo ML (`suggested_discounted_price` na API v2). */
 export function resolveSuggestedDealPrice(
   item: PromotionItemFields & { discountPercent?: number | null },
 ): number | null {
@@ -163,7 +149,15 @@ export function resolveSuggestedDealPrice(
     return item.suggestedDiscountedPrice;
   }
   if (item.status === "candidate" && item.price != null && item.price > 0) {
-    return item.price;
+    const maxDiscounted = item.maxDiscountedPrice;
+    const original = item.originalPrice;
+    const isCeilingPrice =
+      maxDiscounted != null && Math.abs(item.price - maxDiscounted) < 0.02;
+    const isNearOriginal = original != null && item.price >= original * 0.85;
+    if (!isCeilingPrice && !isNearOriginal) {
+      return item.price;
+    }
+    return null;
   }
   if (
     item.originalPrice != null &&
@@ -229,7 +223,8 @@ export function mergeItemFields(
     maxOriginalPrice: fresh?.maxOriginalPrice ?? inbox?.maxOriginalPrice ?? null,
     minDiscountedPrice: src.minDiscountedPrice ?? fresh?.minDiscountedPrice ?? null,
     maxDiscountedPrice: src.maxDiscountedPrice ?? fresh?.maxDiscountedPrice ?? null,
-    suggestedDiscountedPrice: src.suggestedDiscountedPrice ?? fresh?.suggestedDiscountedPrice ?? null,
+    suggestedDiscountedPrice: fresh?.suggestedDiscountedPrice ?? src.suggestedDiscountedPrice ?? null,
+    netProceeds: fresh?.netProceeds ?? src.netProceeds ?? null,
     stockMin: fresh?.stockMin ?? inbox?.stockMin ?? null,
     stockMax: fresh?.stockMax ?? inbox?.stockMax ?? null,
     availableQuantity: src.availableQuantity ?? fresh?.availableQuantity ?? null,
@@ -259,8 +254,8 @@ export function defaultStockValue(item: PromotionItemFields, config: PromotionAc
   const max = item.stockMax ?? total;
 
   if (config.needsStock || config.stockOptional) {
-    // ML sugere usar o máximo permitido na faixa (ex.: 5–6 → 6).
-    const suggested = max > 0 ? max : total;
+    // ML pré-preenche com o mínimo da faixa (ex.: 5 de 5–16).
+    const suggested = min > 0 ? min : 1;
     const clamped = total > 0 ? Math.min(total, suggested) : suggested;
     return String(Math.max(min, clamped));
   }

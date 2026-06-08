@@ -70,6 +70,11 @@ export type MlPromotionItemStock =
     }
   | null;
 
+export type MlNetProceeds = {
+  amount?: number | null;
+  currency?: string | null;
+};
+
 export type MlPromotionItem = {
   id: string;
   status: string;
@@ -86,20 +91,91 @@ export type MlPromotionItem = {
   sub_type?: string | null;
   currency?: string | null;
   stock?: MlPromotionItemStock;
+  net_proceeds?: MlNetProceeds | null;
 };
 
-/** Preço sugerido pelo ML: `suggested_discounted_price` ou `price` (candidatos LIGHTNING/DOD). */
-export function resolveMlSuggestedPrice(item: Pick<
-  MlPromotionItem,
-  "status" | "price" | "suggested_discounted_price"
->): number | null {
+/** Contexto de promoção retornado por GET /seller-promotions/items/{itemId}. */
+export type MlItemPromotionContext = {
+  id?: string | null;
+  type?: string | null;
+  status?: string | null;
+  price?: number | null;
+  original_price?: number | null;
+  min_discounted_price?: number | null;
+  max_discounted_price?: number | null;
+  suggested_discounted_price?: number | null;
+  net_proceeds?: MlNetProceeds | null;
+  stock?: MlPromotionItemStock;
+  start_date?: string | null;
+  end_date?: string | null;
+};
+
+/**
+ * Preço sugerido pelo ML para candidatos.
+ * A API v2 usa `suggested_discounted_price`; `price` costuma ser 0 ou o teto (`max_discounted_price`).
+ */
+export function resolveMlSuggestedPrice(
+  item: Pick<
+    MlPromotionItem,
+    | "status"
+    | "price"
+    | "suggested_discounted_price"
+    | "max_discounted_price"
+    | "original_price"
+  >,
+): number | null {
   if (item.suggested_discounted_price != null && item.suggested_discounted_price > 0) {
     return item.suggested_discounted_price;
   }
   if (item.status === "candidate" && item.price != null && item.price > 0) {
+    const maxDiscounted = item.max_discounted_price;
+    const original = item.original_price;
+    const isCeilingPrice =
+      maxDiscounted != null && Math.abs(item.price - maxDiscounted) < 0.02;
+    const isNearOriginal = original != null && item.price >= original * 0.85;
+    if (!isCeilingPrice && !isNearOriginal) {
+      return item.price;
+    }
+    return null;
+  }
+  if (item.status !== "candidate" && item.price != null && item.price > 0) {
     return item.price;
   }
   return null;
+}
+
+export async function fetchMlItemPromotions(
+  accountId: string,
+  itemId: string,
+): Promise<MlItemPromotionContext[]> {
+  const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;
+  const res = await ml.get<MlItemPromotionContext[] | { results?: MlItemPromotionContext[] }>(
+    accountId,
+    path,
+  );
+  if (Array.isArray(res)) return res;
+  return res.results ?? [];
+}
+
+export function mergePromotionItemWithContext(
+  item: MlPromotionItem,
+  context: MlItemPromotionContext | undefined,
+): MlPromotionItem {
+  if (!context) return item;
+
+  return {
+    ...item,
+    suggested_discounted_price:
+      context.suggested_discounted_price ?? item.suggested_discounted_price,
+    min_discounted_price: context.min_discounted_price ?? item.min_discounted_price,
+    max_discounted_price: context.max_discounted_price ?? item.max_discounted_price,
+    original_price: context.original_price ?? item.original_price,
+    stock: context.stock ?? item.stock,
+    net_proceeds: context.net_proceeds ?? item.net_proceeds,
+    start_date: context.start_date ?? item.start_date,
+    end_date: context.end_date ?? item.end_date,
+    price: item.price ?? context.price,
+  };
 }
 
 export function parsePromotionStockBounds(stock?: MlPromotionItemStock): {

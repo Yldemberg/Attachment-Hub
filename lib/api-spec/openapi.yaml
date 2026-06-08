@@ -2300,6 +2300,15 @@ components:
         stockMax:
           type: integer
           nullable: true
+        netProceeds:
+          type: object
+          nullable: true
+          properties:
+            amount:
+              type: number
+            currency:
+              type: string
+              nullable: true
         productId:
           type: string
           nullable: true

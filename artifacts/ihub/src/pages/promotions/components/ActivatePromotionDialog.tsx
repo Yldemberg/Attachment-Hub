@@ -479,6 +479,15 @@ export function ActivatePromotionDialog({
                     {formatCurrency(resolveSuggestedDealPrice(merged) ?? 0)}
                   </button>
                 )}
+
+                {merged.netProceeds?.amount != null && (
+                  <div className="pt-1">
+                    <Label className="text-sm text-muted-foreground">Você recebe</Label>
+                    <p className="text-lg font-semibold text-foreground mt-0.5">
+                      {formatCurrency(merged.netProceeds.amount)}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
