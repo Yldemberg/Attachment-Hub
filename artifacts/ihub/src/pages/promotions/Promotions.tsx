@@ -26,6 +26,7 @@ import {
   Clock,
   CheckSquare,
   Square,
+  MinusSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +43,13 @@ import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBa
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 
 const ALL_CAMPAIGNS = "all";
+const ALL_CANDIDATES = "all-candidates";
 
 type ViewMode = "campaigns" | "candidates";
+
+function entrySelectionKey(entry: PromotionInboxEntry): string {
+  return `${entry.promotionId}:${entry.itemId}`;
+}
 
 function parseCampaignValue(value: string): {
   accountId: string;
@@ -296,6 +302,7 @@ export default function Promotions() {
   const skuQuery = search.trim();
 
   const viewMode: ViewMode = useMemo(() => {
+    if (selectedCampaign === ALL_CANDIDATES) return "candidates";
     if (selectedCampaign !== ALL_CAMPAIGNS) return "candidates";
     if (skuQuery.length > 0) return "candidates";
     return "campaigns";
@@ -344,14 +351,19 @@ export default function Promotions() {
   const campaignOptions = useMemo(() => {
     const campaigns = campaignsDropdownData?.data ?? [];
     return [
-      { value: ALL_CAMPAIGNS, label: "Todos os tipos", hint: undefined as string | undefined },
+      { value: ALL_CAMPAIGNS, label: "Todas as campanhas", hint: undefined as string | undefined },
+      {
+        value: ALL_CANDIDATES,
+        label: "Todos os anúncios candidatos",
+        hint: summary?.candidateItems ? `${summary.candidateItems} itens` : undefined,
+      },
       ...campaigns.map((p) => ({
         value: `${p.accountId}::${p.id}::${p.type}`,
         label: p.name ?? p.typeLabel ?? p.id,
         hint: p.accountNickname ?? undefined,
       })),
     ];
-  }, [campaignsDropdownData?.data]);
+  }, [campaignsDropdownData?.data, summary?.candidateItems]);
 
   const selectedCampaignMeta = useMemo(() => {
     if (!campaignFilter) return null;
@@ -378,10 +390,15 @@ export default function Promotions() {
     refresh: refreshing,
   };
 
+  const inboxEnabled =
+    viewMode === "candidates" &&
+    (selectedCampaign === ALL_CANDIDATES ||
+      (selectedCampaign === ALL_CAMPAIGNS && skuQuery.length > 0));
+
   const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(inboxParams, {
     query: {
       queryKey: getListPromotionInboxQueryKey(inboxParams),
-      enabled: viewMode === "candidates" && selectedCampaign === ALL_CAMPAIGNS && skuQuery.length > 0,
+      enabled: inboxEnabled,
     },
   });
 
@@ -492,8 +509,29 @@ export default function Promotions() {
     });
   }
 
+  const currentPageKeys = useMemo(
+    () => candidateEntries.map(entrySelectionKey),
+    [candidateEntries],
+  );
+
+  const allPageSelected =
+    currentPageKeys.length > 0 && currentPageKeys.every((key) => selected.has(key));
+  const somePageSelected = currentPageKeys.some((key) => selected.has(key));
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const key of currentPageKeys) next.delete(key);
+      } else {
+        for (const key of currentPageKeys) next.add(key);
+      }
+      return next;
+    });
+  }
+
   function handleBulkActivate() {
-    const entries = candidateEntries.filter((e) => selected.has(`${e.promotionId}:${e.itemId}`));
+    const entries = candidateEntries.filter((e) => selected.has(entrySelectionKey(e)));
     if (entries.length === 0) return;
 
     const byPromo = new Map<string, PromotionInboxEntry[]>();
@@ -518,7 +556,8 @@ export default function Promotions() {
   }
 
   const campaigns = campaignsListData?.data ?? [];
-  const showCampaignNameInCards = selectedCampaign === ALL_CAMPAIGNS;
+  const showCampaignNameInCards =
+    selectedCampaign === ALL_CAMPAIGNS || selectedCampaign === ALL_CANDIDATES;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -602,15 +641,54 @@ export default function Promotions() {
           </div>
         </div>
 
-        {viewMode === "candidates" && selected.size > 0 && (
-          <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-            <span className="text-xs text-foreground">{selected.size} selecionados</span>
-            <Button size="sm" className="h-7 text-xs ml-auto" onClick={handleBulkActivate} disabled={bulkPending}>
-              {bulkPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Ativar com preço sugerido"}
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelected(new Set())}>
-              Limpar
-            </Button>
+        {viewMode === "candidates" && candidateEntries.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2">
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary"
+            >
+              {allPageSelected ? (
+                <CheckSquare className="w-4 h-4 text-primary" />
+              ) : somePageSelected ? (
+                <MinusSquare className="w-4 h-4 text-primary" />
+              ) : (
+                <Square className="w-4 h-4 text-muted-foreground" />
+              )}
+              {allPageSelected ? "Desmarcar todos" : "Selecionar todos"}
+              {pagination && pagination.total > candidateEntries.length
+                ? ` (${candidateEntries.length} nesta página)`
+                : pagination
+                  ? ` (${pagination.total})`
+                  : ""}
+            </button>
+
+            {selected.size > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                <span className="text-xs text-foreground">{selected.size} selecionado(s)</span>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs ml-auto"
+                  onClick={handleBulkActivate}
+                  disabled={bulkPending}
+                >
+                  {bulkPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    "Ativar com preço sugerido"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Limpar
+                </Button>
+              </>
+            )}
           </div>
         )}
 
@@ -632,11 +710,13 @@ export default function Promotions() {
           )
         ) : candidateEntries.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            {campaignFilter
-              ? skuQuery
-                ? `Nenhum anúncio candidato para "${skuQuery}" nesta campanha.`
-                : "Nenhum anúncio candidato nesta campanha."
-              : `Nenhuma campanha disponível para "${skuQuery}".`}
+            {selectedCampaign === ALL_CANDIDATES
+              ? "Nenhum anúncio candidato no momento."
+              : campaignFilter
+                ? skuQuery
+                  ? `Nenhum anúncio candidato para "${skuQuery}" nesta campanha.`
+                  : "Nenhum anúncio candidato nesta campanha."
+                : `Nenhuma campanha disponível para "${skuQuery}".`}
           </div>
         ) : (
           <div className="space-y-2">
@@ -644,6 +724,11 @@ export default function Promotions() {
               <p className="text-xs text-muted-foreground">
                 {candidateEntries.length} resultado(s)
                 {campaignFilter ? " nesta campanha" : ""} para &quot;{skuQuery}&quot;
+              </p>
+            )}
+            {selectedCampaign === ALL_CANDIDATES && pagination && (
+              <p className="text-xs text-muted-foreground">
+                {pagination.total} anúncio(s) candidato(s) em todas as campanhas
               </p>
             )}
             {!skuQuery && campaignFilter && selectedCampaignMeta && (
@@ -656,7 +741,7 @@ export default function Promotions() {
               <CandidateCard
                 key={`${entry.promotionId}-${entry.itemId}`}
                 entry={entry}
-                selected={selected.has(`${entry.promotionId}:${entry.itemId}`)}
+                selected={selected.has(entrySelectionKey(entry))}
                 onToggle={() => toggleSelect(entry.itemId, entry.promotionId)}
                 onActivate={() => setActivateTarget(entry)}
                 showCampaignName={showCampaignNameInCards}

@@ -19,6 +19,7 @@ import {
   Loader2,
   CheckSquare,
   Square,
+  MinusSquare,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -217,6 +218,10 @@ export default function PromotionDetail() {
   const items = itemsData?.data ?? [];
   const pagination = itemsData?.pagination;
   const deadline = promotion ? formatDeadline(promotion.deadlineDate) : null;
+  const candidateItems = items.filter((item) => item.status === "candidate");
+  const allPageSelected =
+    candidateItems.length > 0 && candidateItems.every((item) => selected.has(item.itemId));
+  const somePageSelected = candidateItems.some((item) => selected.has(item.itemId));
 
   function handleRefresh() {
     setRefreshing(true);
@@ -235,6 +240,18 @@ export default function PromotionDetail() {
         promotionType,
         items: [...selected].map((itemId) => ({ itemId, useSuggested: true })),
       },
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const item of candidateItems) next.delete(item.itemId);
+      } else {
+        for (const item of candidateItems) next.add(item.itemId);
+      }
+      return next;
     });
   }
 
@@ -306,12 +323,50 @@ export default function PromotionDetail() {
           />
         </div>
 
-        {itemStatus === "candidate" && selected.size > 0 && (
-          <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-            <span className="text-xs">{selected.size} selecionados</span>
-            <Button size="sm" className="h-7 text-xs ml-auto" onClick={handleBulkActivate} disabled={bulkPending}>
-              Ativar com preço sugerido
-            </Button>
+        {itemStatus === "candidate" && candidateItems.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2">
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary"
+            >
+              {allPageSelected ? (
+                <CheckSquare className="w-4 h-4 text-primary" />
+              ) : somePageSelected ? (
+                <MinusSquare className="w-4 h-4 text-primary" />
+              ) : (
+                <Square className="w-4 h-4 text-muted-foreground" />
+              )}
+              {allPageSelected ? "Desmarcar todos" : "Selecionar todos"}
+              {pagination && pagination.total > candidateItems.length
+                ? ` (${candidateItems.length} nesta página)`
+                : pagination
+                  ? ` (${candidateItems.length})`
+                  : ""}
+            </button>
+
+            {selected.size > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                <span className="text-xs">{selected.size} selecionado(s)</span>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs ml-auto"
+                  onClick={handleBulkActivate}
+                  disabled={bulkPending}
+                >
+                  Ativar com preço sugerido
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Limpar
+                </Button>
+              </>
+            )}
           </div>
         )}
 
