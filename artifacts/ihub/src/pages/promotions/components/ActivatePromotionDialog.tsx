@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useActivatePromotionItem,
   useListPromotionItems,
@@ -67,14 +67,17 @@ export function ActivatePromotionDialog({
   const promotionTypeLabel =
     item && "promotionTypeLabel" in item ? item.promotionTypeLabel : null;
 
-  const itemParams = {
-    account_id: accountId,
-    promotion_type: promotionType,
-    item_id: itemId,
-    status: "candidate",
-    limit: 1,
-    refresh: true,
-  };
+  const itemParams = useMemo(
+    () => ({
+      account_id: accountId,
+      promotion_type: promotionType,
+      item_id: itemId,
+      status: "candidate" as const,
+      limit: 1,
+      refresh: open,
+    }),
+    [accountId, promotionType, itemId, open],
+  );
   const promotionParams = { account_id: accountId, promotion_type: promotionType };
 
   const { data: itemsData, isLoading: itemLoading } = useListPromotionItems(
@@ -101,7 +104,10 @@ export function ActivatePromotionDialog({
     [item, freshItem],
   );
 
-  const config = getPromotionActivationConfig(promotionType);
+  const config = useMemo(
+    () => getPromotionActivationConfig(promotionType),
+    [promotionType],
+  );
   const priceBounds = getPriceBounds(promotionType, merged);
   const original = merged.originalPrice;
 
@@ -110,9 +116,19 @@ export function ActivatePromotionDialog({
   const [finalPrice, setFinalPrice] = useState("");
   const [topDealPrice, setTopDealPrice] = useState("");
   const [lastEdited, setLastEdited] = useState<"percent" | "price" | null>(null);
+  const initializedForRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || !item) return;
+    if (!open) {
+      initializedForRef.current = null;
+      return;
+    }
+    if (!item) return;
+
+    // Inicializa uma vez por item; re-inicializa só quando dados frescos do ML chegam.
+    const initKey = `${itemId}:${freshItem ? "loaded" : "pending"}`;
+    if (initializedForRef.current === initKey) return;
+    initializedForRef.current = initKey;
 
     const suggested = merged.suggestedDiscountedPrice;
     const orig = merged.originalPrice;
@@ -134,7 +150,7 @@ export function ActivatePromotionDialog({
       setLastEdited(null);
     }
     setTopDealPrice("");
-  }, [open, item, merged, config]);
+  }, [open, item, itemId, freshItem, merged, config]);
 
   const { mutate: activate, isPending } = useActivatePromotionItem({
     mutation: {
@@ -171,19 +187,21 @@ export function ActivatePromotionDialog({
   );
 
   function handleDiscountChange(raw: string) {
-    setDiscountPercent(raw);
+    const normalized = raw.replace(",", ".");
+    setDiscountPercent(normalized);
     setLastEdited("percent");
-    const pct = parseFloat(raw.replace(",", "."));
-    if (original != null && !Number.isNaN(pct)) {
+    const pct = parseFloat(normalized);
+    if (original != null && normalized.trim() !== "" && !Number.isNaN(pct)) {
       setFinalPrice(calcFinalFromDiscount(original, pct).toFixed(2));
     }
   }
 
   function handleFinalPriceChange(raw: string) {
-    setFinalPrice(raw);
+    const normalized = raw.replace(",", ".");
+    setFinalPrice(normalized);
     setLastEdited("price");
-    const price = parseFloat(raw.replace(",", "."));
-    if (original != null && !Number.isNaN(price)) {
+    const price = parseFloat(normalized);
+    if (original != null && normalized.trim() !== "" && !Number.isNaN(price)) {
       setDiscountPercent(String(calcDiscountPercent(original, price)));
     }
   }
@@ -367,12 +385,12 @@ export function ActivatePromotionDialog({
                 )}
                 <Input
                   id="promo-qty"
-                  type="number"
-                  min={merged.stockMin ?? 1}
-                  max={merged.stockMax ?? merged.availableQuantity ?? undefined}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="mt-1.5 h-10 text-base font-semibold"
+                  onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ""))}
+                  className="mt-1.5 h-10 text-base font-semibold bg-background"
                 />
               </div>
             )}
@@ -395,13 +413,11 @@ export function ActivatePromotionDialog({
                     <div className="relative mt-1.5">
                       <Input
                         id="promo-discount"
-                        type="number"
-                        min={0}
-                        max={80}
-                        step="1"
+                        type="text"
+                        inputMode="decimal"
                         value={discountPercent}
                         onChange={(e) => handleDiscountChange(e.target.value)}
-                        className="h-10 pr-8 text-base font-semibold"
+                        className="h-10 pr-8 text-base font-semibold bg-background"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                         %
@@ -424,12 +440,11 @@ export function ActivatePromotionDialog({
                       </span>
                       <Input
                         id="promo-final"
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         value={finalPrice}
                         onChange={(e) => handleFinalPriceChange(e.target.value)}
-                        className="h-10 pl-9 text-base font-semibold"
+                        className="h-10 pl-9 text-base font-semibold bg-background"
                       />
                     </div>
                   </div>
@@ -474,12 +489,11 @@ export function ActivatePromotionDialog({
                   </span>
                   <Input
                     id="promo-top"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={topDealPrice}
                     onChange={(e) => setTopDealPrice(e.target.value)}
-                    className="h-10 pl-9"
+                    className="h-10 pl-9 bg-background"
                   />
                 </div>
               </div>
