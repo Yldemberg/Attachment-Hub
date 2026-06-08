@@ -30,10 +30,13 @@ import {
   calcDiscountPercent,
   calcFinalFromDiscount,
   defaultStockValue,
+  formatPriceInput,
   formatPromotionValidity,
   getPriceBounds,
   getPromotionActivationConfig,
   mergeItemFields,
+  resolveSuggestedDealPrice,
+  resolveSuggestedDiscountPercent,
 } from "./promotionActivationConfig";
 
 type ItemLike = PromotionItem | PromotionInboxEntry;
@@ -124,25 +127,26 @@ export function ActivatePromotionDialog({
       return;
     }
     if (!item) return;
+    // Aguarda dados do ML para pré-preencher sugestões (ex.: LIGHTNING usa campo `price`).
+    if (config.hasPriceSuggestion && itemLoading) return;
 
-    // Inicializa uma vez por item; re-inicializa só quando dados frescos do ML chegam.
-    const initKey = `${itemId}:${freshItem ? "loaded" : "pending"}`;
+    const initKey = `${itemId}:${freshItem?.itemId ?? "inbox"}`;
     if (initializedForRef.current === initKey) return;
     initializedForRef.current = initKey;
 
-    const suggested = merged.suggestedDiscountedPrice;
+    const suggestedPrice = resolveSuggestedDealPrice(merged);
     const orig = merged.originalPrice;
 
     setQuantity(defaultStockValue(merged, config));
 
-    if (orig != null && suggested != null) {
-      const pct = calcDiscountPercent(orig, suggested);
-      setDiscountPercent(String(pct));
-      setFinalPrice(suggested.toFixed(2));
+    if (orig != null && suggestedPrice != null) {
+      const pct = resolveSuggestedDiscountPercent(merged, suggestedPrice);
+      setDiscountPercent(pct != null ? String(pct) : "");
+      setFinalPrice(formatPriceInput(suggestedPrice));
       setLastEdited("percent");
-    } else if (orig != null) {
+    } else if (orig != null && !config.hasPriceSuggestion) {
       setDiscountPercent("10");
-      setFinalPrice(calcFinalFromDiscount(orig, 10).toFixed(2));
+      setFinalPrice(formatPriceInput(calcFinalFromDiscount(orig, 10)));
       setLastEdited("percent");
     } else {
       setDiscountPercent("");
@@ -150,7 +154,7 @@ export function ActivatePromotionDialog({
       setLastEdited(null);
     }
     setTopDealPrice("");
-  }, [open, item, itemId, freshItem, merged, config]);
+  }, [open, item, itemId, freshItem, itemLoading, merged, config]);
 
   const { mutate: activate, isPending } = useActivatePromotionItem({
     mutation: {
@@ -192,7 +196,7 @@ export function ActivatePromotionDialog({
     setLastEdited("percent");
     const pct = parseFloat(normalized);
     if (original != null && normalized.trim() !== "" && !Number.isNaN(pct)) {
-      setFinalPrice(calcFinalFromDiscount(original, pct).toFixed(2));
+      setFinalPrice(formatPriceInput(calcFinalFromDiscount(original, pct)));
     }
   }
 
@@ -459,20 +463,20 @@ export function ActivatePromotionDialog({
                   </p>
                 )}
 
-                {config.hasPriceSuggestion && merged.suggestedDiscountedPrice != null && (
+                {config.hasPriceSuggestion && resolveSuggestedDealPrice(merged) != null && (
                   <button
                     type="button"
                     className="text-xs text-primary hover:underline"
                     onClick={() => {
-                      const s = merged.suggestedDiscountedPrice!;
-                      setFinalPrice(s.toFixed(2));
-                      if (original != null) {
-                        setDiscountPercent(String(calcDiscountPercent(original, s)));
-                      }
+                      const s = resolveSuggestedDealPrice(merged)!;
+                      setFinalPrice(formatPriceInput(s));
+                      const pct = resolveSuggestedDiscountPercent(merged, s);
+                      if (pct != null) setDiscountPercent(String(pct));
                       setLastEdited("percent");
                     }}
                   >
-                    Usar preço sugerido: {formatCurrency(merged.suggestedDiscountedPrice)}
+                    Usar preço sugerido:{" "}
+                    {formatCurrency(resolveSuggestedDealPrice(merged) ?? 0)}
                   </button>
                 )}
               </div>

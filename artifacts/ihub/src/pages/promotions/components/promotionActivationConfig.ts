@@ -12,6 +12,9 @@ export type PromotionItemFields = Pick<
   | "availableQuantity"
   | "startDate"
   | "endDate"
+  | "price"
+  | "discountPercentage"
+  | "status"
 >;
 
 export type PromotionActivationConfig = {
@@ -128,6 +131,53 @@ export function calcDiscountAmount(original: number, discountPercent: number): n
   return Math.round((original * (discountPercent / 100)) * 100) / 100;
 }
 
+/** Preço promocional sugerido pelo ML (várias fontes conforme tipo de campanha). */
+export function resolveSuggestedDealPrice(
+  item: PromotionItemFields & { discountPercent?: number | null },
+): number | null {
+  if (item.suggestedDiscountedPrice != null && item.suggestedDiscountedPrice > 0) {
+    return item.suggestedDiscountedPrice;
+  }
+  if (item.status === "candidate" && item.price != null && item.price > 0) {
+    return item.price;
+  }
+  if (
+    item.originalPrice != null &&
+    item.discountPercentage != null &&
+    item.discountPercentage > 0
+  ) {
+    return calcFinalFromDiscount(item.originalPrice, item.discountPercentage);
+  }
+  if (
+    item.originalPrice != null &&
+    item.discountPercent != null &&
+    item.discountPercent > 0
+  ) {
+    return calcFinalFromDiscount(item.originalPrice, item.discountPercent);
+  }
+  return null;
+}
+
+export function resolveSuggestedDiscountPercent(
+  item: PromotionItemFields & { discountPercent?: number | null },
+  suggestedPrice: number | null,
+): number | null {
+  if (item.discountPercentage != null && item.discountPercentage > 0) {
+    return Math.round(item.discountPercentage);
+  }
+  if (item.discountPercent != null && item.discountPercent > 0) {
+    return item.discountPercent;
+  }
+  if (item.originalPrice != null && suggestedPrice != null) {
+    return calcDiscountPercent(item.originalPrice, suggestedPrice);
+  }
+  return null;
+}
+
+export function formatPriceInput(value: number): string {
+  return value.toFixed(2).replace(".", ",");
+}
+
 export function mergeItemFields(
   base: PromotionInboxEntry | PromotionItem | null,
   fresh?: PromotionItem | null,
@@ -136,25 +186,31 @@ export function mergeItemFields(
   title?: string | null;
   thumbnail?: string | null;
   sku?: string | null;
+  discountPercent?: number | null;
 } {
   const itemId =
     base && "itemId" in base ? base.itemId : (base as PromotionItem | null)?.itemId ?? "";
   const src = { ...base, ...fresh } as PromotionInboxEntry & PromotionItem;
+  const inbox = base as PromotionInboxEntry | null;
   return {
     itemId,
     title: src.title,
     thumbnail: src.thumbnail,
     sku: src.sku,
+    status: fresh?.status ?? src.status ?? inbox?.itemStatus ?? null,
+    price: fresh?.price ?? src.price ?? null,
+    discountPercentage: fresh?.discountPercentage ?? src.discountPercentage ?? null,
+    discountPercent: inbox?.discountPercent ?? null,
     originalPrice: src.originalPrice ?? fresh?.originalPrice ?? null,
-    maxOriginalPrice: fresh?.maxOriginalPrice ?? (src as PromotionInboxEntry).maxOriginalPrice ?? null,
+    maxOriginalPrice: fresh?.maxOriginalPrice ?? inbox?.maxOriginalPrice ?? null,
     minDiscountedPrice: src.minDiscountedPrice ?? fresh?.minDiscountedPrice ?? null,
     maxDiscountedPrice: src.maxDiscountedPrice ?? fresh?.maxDiscountedPrice ?? null,
     suggestedDiscountedPrice: src.suggestedDiscountedPrice ?? fresh?.suggestedDiscountedPrice ?? null,
-    stockMin: fresh?.stockMin ?? (src as PromotionInboxEntry).stockMin ?? null,
-    stockMax: fresh?.stockMax ?? (src as PromotionInboxEntry).stockMax ?? null,
+    stockMin: fresh?.stockMin ?? inbox?.stockMin ?? null,
+    stockMax: fresh?.stockMax ?? inbox?.stockMax ?? null,
     availableQuantity: src.availableQuantity ?? fresh?.availableQuantity ?? null,
-    startDate: fresh?.startDate ?? (src as PromotionInboxEntry).startDate ?? null,
-    endDate: fresh?.endDate ?? (src as PromotionInboxEntry).endDate ?? null,
+    startDate: fresh?.startDate ?? inbox?.startDate ?? null,
+    endDate: fresh?.endDate ?? inbox?.endDate ?? null,
   };
 }
 
@@ -175,10 +231,14 @@ export function formatPromotionValidity(start?: string | null, end?: string | nu
 
 export function defaultStockValue(item: PromotionItemFields, config: PromotionActivationConfig): string {
   const total = item.availableQuantity ?? 0;
+  const min = item.stockMin ?? 1;
   const max = item.stockMax ?? total;
-  if (config.needsStock && !config.stockOptional) {
-    return String(Math.min(total, max > 0 ? max : total));
+
+  if (config.needsStock || config.stockOptional) {
+    // ML sugere usar o máximo permitido na faixa (ex.: 5–6 → 6).
+    const suggested = max > 0 ? max : total;
+    const clamped = total > 0 ? Math.min(total, suggested) : suggested;
+    return String(Math.max(min, clamped));
   }
-  if (config.stockOptional && max > 0) return String(Math.min(total, max));
   return total > 0 ? String(total) : "1";
 }

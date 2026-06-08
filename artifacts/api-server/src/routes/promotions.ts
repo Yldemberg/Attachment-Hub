@@ -17,6 +17,7 @@ import {
   bulkActivatePromotionItems,
   mapMlPromotionError,
   parsePromotionStockBounds,
+  resolveMlSuggestedPrice,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -85,6 +86,7 @@ function mapPromotion(
 
 function mapPromotionItem(item: EnrichedPromotionItem) {
   const stockBounds = parsePromotionStockBounds(item.stock);
+  const suggestedDiscountedPrice = resolveMlSuggestedPrice(item);
   return {
     itemId: item.id,
     status: item.status,
@@ -93,7 +95,7 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     maxOriginalPrice: item.max_original_price ?? null,
     minDiscountedPrice: item.min_discounted_price ?? null,
     maxDiscountedPrice: item.max_discounted_price ?? null,
-    suggestedDiscountedPrice: item.suggested_discounted_price ?? null,
+    suggestedDiscountedPrice,
     topDealPrice: item.top_deal_price ?? null,
     discountPercentage: item.discount_percentage ?? null,
     startDate: item.start_date ?? null,

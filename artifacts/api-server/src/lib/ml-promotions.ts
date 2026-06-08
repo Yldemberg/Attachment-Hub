@@ -88,6 +88,20 @@ export type MlPromotionItem = {
   stock?: MlPromotionItemStock;
 };
 
+/** Preço sugerido pelo ML: `suggested_discounted_price` ou `price` (candidatos LIGHTNING/DOD). */
+export function resolveMlSuggestedPrice(item: Pick<
+  MlPromotionItem,
+  "status" | "price" | "suggested_discounted_price"
+>): number | null {
+  if (item.suggested_discounted_price != null && item.suggested_discounted_price > 0) {
+    return item.suggested_discounted_price;
+  }
+  if (item.status === "candidate" && item.price != null && item.price > 0) {
+    return item.price;
+  }
+  return null;
+}
+
 export function parsePromotionStockBounds(stock?: MlPromotionItemStock): {
   stockMin: number | null;
   stockMax: number | null;
@@ -324,7 +338,7 @@ export async function aggregateInboxForAccount(
           });
           const enriched = await enrichItemsWithProducts(accountId, items);
           for (const item of enriched) {
-            const suggested = item.suggested_discounted_price;
+            const suggested = resolveMlSuggestedPrice(item);
             const original = item.original_price;
             const stockBounds = parsePromotionStockBounds(item.stock);
             inbox.push({
@@ -351,7 +365,7 @@ export async function aggregateInboxForAccount(
               thumbnail: item.thumbnail,
               permalink: item.permalink,
               availableQuantity: item.availableQuantity,
-              discountPercent: calcDiscountPercent(original, suggested ?? item.price),
+              discountPercent: calcDiscountPercent(original, suggested),
             });
           }
         } catch {
