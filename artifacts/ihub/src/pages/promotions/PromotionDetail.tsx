@@ -139,7 +139,7 @@ function ItemCard({
 }
 
 export default function PromotionDetail() {
-  const { promotionId } = useParams<{ promotionId: string }>();
+  const { promotionId: rawPromotionId } = useParams<{ promotionId: string }>();
   const search = useSearch();
   const [, navigate] = useLocation();
   const { account_id: accountId, promotion_type: promotionType } = parseSearchParams(search);
@@ -154,6 +154,8 @@ export default function PromotionDetail() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const promoId = decodeURIComponent(rawPromotionId ?? "");
+
   const promotionParams = { account_id: accountId, promotion_type: promotionType };
   const itemsParams = {
     account_id: accountId,
@@ -164,29 +166,36 @@ export default function PromotionDetail() {
     limit: 50,
     refresh: refreshing,
   };
-  const promoId = promotionId ?? "";
 
-  const { data: promotion, isLoading: promoLoading } = useGetPromotion(
+  const { data: promotionFromGet, isLoading: promotionLoading } = useGetPromotion(
     promoId,
     promotionParams,
     {
       query: {
         queryKey: getGetPromotionQueryKey(promoId, promotionParams),
-        enabled: !!promotionId && !!accountId && !!promotionType,
+        enabled: !!promoId && !!accountId && !!promotionType,
       },
     },
   );
 
-  const { data: itemsData, isLoading: itemsLoading } = useListPromotionItems(
+  const {
+    data: itemsData,
+    isLoading: itemsLoading,
+    isError: itemsError,
+    refetch: refetchItems,
+  } = useListPromotionItems(
     promoId,
     itemsParams,
     {
       query: {
         queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
-        enabled: !!promotionId && !!accountId && !!promotionType,
+        enabled: !!promoId && !!accountId && !!promotionType,
       },
     },
   );
+
+  const promotion = promotionFromGet ?? itemsData?.promotion ?? null;
+  const promoLoading = promotionLoading && itemsLoading && !promotion;
 
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
     mutation: {
@@ -232,9 +241,9 @@ export default function PromotionDetail() {
   }
 
   function handleBulkActivate() {
-    if (!promotionId || selected.size === 0) return;
+    if (!promoId || selected.size === 0) return;
     bulkActivate({
-      promotionId,
+      promotionId: promoId,
       data: {
         accountId,
         promotionType,
@@ -374,8 +383,21 @@ export default function PromotionDetail() {
           <div className="flex justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
+        ) : itemsError ? (
+          <div className="text-center py-8 space-y-3">
+            <p className="text-muted-foreground text-sm">
+              Não foi possível carregar os anúncios desta campanha.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetchItems()}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : items.length === 0 ? (
-          <p className="text-center text-muted-foreground text-sm py-8">Nenhum item nesta campanha.</p>
+          <p className="text-center text-muted-foreground text-sm py-8">
+            {itemStatus === "candidate"
+              ? "Nenhum anúncio candidato nesta campanha."
+              : "Nenhum item nesta campanha."}
+          </p>
         ) : (
           <div className="space-y-2">
             {items.map((item) => (
@@ -416,11 +438,11 @@ export default function PromotionDetail() {
         )}
       </div>
 
-      {activateTarget && promotionId && (
+      {activateTarget && promoId && (
         <ActivatePromotionDialog
           open={!!activateTarget}
           onOpenChange={(open) => !open && setActivateTarget(null)}
-          promotionId={promotionId}
+          promotionId={promoId}
           promotionType={promotionType}
           accountId={accountId}
           item={activateTarget}

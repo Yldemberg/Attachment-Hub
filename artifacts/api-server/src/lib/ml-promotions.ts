@@ -338,6 +338,22 @@ export async function getPromotionDetail(
   return ml.get<MlPromotion>(accountId, path);
 }
 
+/** Detalhe da campanha; se GET /promotions/{id} falhar, usa a lista do vendedor (ex.: LIGHTNING). */
+export async function resolvePromotionDetail(
+  accountId: string,
+  mlUserId: string,
+  promotionId: string,
+  promotionType: string,
+  options?: { bypassCache?: boolean },
+): Promise<MlPromotion | null> {
+  try {
+    return await getPromotionDetail(accountId, promotionId, promotionType);
+  } catch {
+    const promos = await listSellerPromotions(accountId, mlUserId, options);
+    return promos.find((p) => p.id === promotionId && p.type === promotionType) ?? null;
+  }
+}
+
 export async function listPromotionItems(
   accountId: string,
   promotionId: string,

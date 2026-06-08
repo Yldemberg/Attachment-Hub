@@ -6,7 +6,7 @@ import { accountsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   listSellerPromotions,
-  getPromotionDetail,
+  resolvePromotionDetail,
   listPromotionItems,
   fetchMlItemPromotions,
   mergePromotionItemWithContext,
@@ -282,7 +282,17 @@ router.get("/promotions/:promotionId", ...auth, async (req, res) => {
       return;
     }
 
-    const promo = await getPromotionDetail(acc.id, promotionId, promotion_type);
+    const promo = await resolvePromotionDetail(
+      acc.id,
+      acc.mlUserId,
+      promotionId,
+      promotion_type,
+      { bypassCache: req.query.refresh === "true" },
+    );
+    if (!promo) {
+      res.status(404).json({ error: "Campanha não encontrada" });
+      return;
+    }
     res.json(mapPromotion(promo, acc.id, acc.mlNickname));
   } catch (err) {
     res.status(500).json({ error: mapMlPromotionError(err) });
@@ -318,14 +328,19 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
       return;
     }
 
-    const [promo, items] = await Promise.all([
-      getPromotionDetail(acc.id, promotionId, promotion_type),
-      listPromotionItems(acc.id, promotionId, promotion_type, {
-        status,
-        itemId: item_id,
-        bypassCache: refresh === "true",
-      }),
-    ]);
+    const items = await listPromotionItems(acc.id, promotionId, promotion_type, {
+      status,
+      itemId: item_id,
+      bypassCache: refresh === "true",
+    });
+
+    const promo = await resolvePromotionDetail(
+      acc.id,
+      acc.mlUserId,
+      promotionId,
+      promotion_type,
+      { bypassCache: refresh === "true" },
+    );
 
     let enriched = await enrichItemsWithProducts(acc.id, items);
     if (item_id && enriched.length > 0) {
@@ -353,7 +368,7 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
 
     res.json({
       ...pageResult,
-      promotion: mapPromotion(promo, acc.id, acc.mlNickname),
+      ...(promo ? { promotion: mapPromotion(promo, acc.id, acc.mlNickname) } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: mapMlPromotionError(err) });
