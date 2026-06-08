@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useGetPromotionsSummary,
   useListPromotionInbox,
@@ -55,14 +55,7 @@ const PROMOTION_TYPE_OPTIONS = [
   { value: "SELLER_COUPON_CAMPAIGN", label: "Cupom" },
 ];
 
-const STATUS_OPTIONS = [
-  { value: "all", label: "Todos os status" },
-  { value: "started", label: "Ativas" },
-  { value: "pending", label: "Pendentes" },
-  { value: "finished", label: "Encerradas" },
-];
-
-type Tab = "inbox" | "campaigns" | "active";
+type Tab = "campaigns" | "inbox";
 
 function KpiCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
@@ -227,10 +220,9 @@ function CampaignCard({ promo }: { promo: Promotion }) {
 }
 
 export default function Promotions() {
-  const [tab, setTab] = useState<Tab>("inbox");
+  const [tab, setTab] = useState<Tab>("campaigns");
   const [accountId, setAccountId] = useState<string>("all");
   const [promotionType, setPromotionType] = useState("all");
-  const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
@@ -245,7 +237,6 @@ export default function Promotions() {
 
   const accountFilter = accountId === "all" ? undefined : accountId;
   const typeFilter = promotionType === "all" ? undefined : promotionType;
-  const statusFilter = tab === "active" ? "started" : status === "all" ? undefined : status;
 
   const { data: summary, isLoading: summaryLoading } = useGetPromotionsSummary({
     account_id: accountFilter,
@@ -263,7 +254,7 @@ export default function Promotions() {
   const campaignsParams = {
     account_id: accountFilter,
     promotion_type: typeFilter,
-    status: statusFilter,
+    status: "active" as const,
     page,
     limit: 20,
     refresh: refreshing,
@@ -311,7 +302,17 @@ export default function Promotions() {
   });
 
   const inbox = inboxData?.data ?? [];
-  const campaigns = campaignsData?.data ?? [];
+  const campaigns = useMemo(() => {
+    const list = campaignsData?.data ?? [];
+    if (tab !== "campaigns" || !search.trim()) return list;
+    const q = search.trim().toLowerCase();
+    return list.filter(
+      (p) =>
+        (p.name ?? "").toLowerCase().includes(q) ||
+        (p.typeLabel ?? "").toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q),
+    );
+  }, [campaignsData?.data, search, tab]);
   const pagination = tab === "inbox" ? inboxData?.pagination : campaignsData?.pagination;
   const isLoading = tab === "inbox" ? inboxLoading : campaignsLoading;
 
@@ -372,10 +373,9 @@ export default function Promotions() {
         </div>
 
         {!summaryLoading && summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="Campanhas" value={summary.totalCampaigns} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <KpiCard label="Campanhas ativas" value={summary.activeCampaigns} accent="text-emerald-600" />
             <KpiCard label="Candidatos" value={summary.candidateItems} accent="text-red-600" />
-            <KpiCard label="Ativas" value={summary.activeCampaigns} accent="text-emerald-600" />
             <KpiCard label="Vence hoje" value={summary.expiringToday} accent="text-amber-600" />
           </div>
         )}
@@ -406,19 +406,6 @@ export default function Promotions() {
             </SelectContent>
           </Select>
 
-          {tab !== "inbox" && (
-            <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
           <div className="relative flex-1 min-w-[140px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
@@ -432,9 +419,8 @@ export default function Promotions() {
 
         <div className="flex gap-1 border-b border-border">
           {([
+            ["campaigns", "Campanhas ativas"],
             ["inbox", "Pendências"],
-            ["campaigns", "Campanhas"],
-            ["active", "Ativas"],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -488,7 +474,7 @@ export default function Promotions() {
           )
         ) : campaigns.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            Nenhuma campanha encontrada.
+            Nenhuma campanha ativa no momento.
           </div>
         ) : (
           <div className="space-y-2">

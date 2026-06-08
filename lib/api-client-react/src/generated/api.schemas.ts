@@ -787,7 +787,7 @@ export type ListPromotionsParams = {
   account_id?: string;
   promotion_type?: string;
   /**
-   * Filter by campaign status (started, pending, finished)
+   * Filter by campaign status. Omit or use `active` for open campaigns only (started/pending, not expired). Use `all` to include finished.
    */
   status?: string;
   page?: number;

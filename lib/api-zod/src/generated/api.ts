@@ -980,6 +980,7 @@ export const ListPromotionInboxResponse = zod.object({
 /**
  * @summary List ML promotion campaigns
  */
+export const listPromotionsQueryStatusDefault = `active`;
 export const listPromotionsQueryPageDefault = 1;
 export const listPromotionsQueryLimitDefault = 20;
 export const listPromotionsQueryRefreshDefault = false;
@@ -989,8 +990,10 @@ export const ListPromotionsQueryParams = zod.object({
   promotion_type: zod.coerce.string().optional(),
   status: zod.coerce
     .string()
-    .optional()
-    .describe("Filter by campaign status (started, pending, finished)"),
+    .default(listPromotionsQueryStatusDefault)
+    .describe(
+      "Filter by campaign status. Omit or use `active` for open campaigns only (started\/pending, not expired). Use `all` to include finished.",
+    ),
   page: zod.coerce.number().default(listPromotionsQueryPageDefault),
   limit: zod.coerce.number().default(listPromotionsQueryLimitDefault),
   refresh: zod.coerce.boolean().default(listPromotionsQueryRefreshDefault),

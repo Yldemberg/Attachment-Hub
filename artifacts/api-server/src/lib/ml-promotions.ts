@@ -61,6 +61,29 @@ export type MlPromotion = {
   sub_type?: string | null;
 };
 
+/** Campanha aberta para participação (equivalente ao hub do ML). */
+export function isPromotionCurrentlyOpen(promo: MlPromotion): boolean {
+  if (promo.status === "finished") return false;
+  if (promo.status !== "started" && promo.status !== "pending") return false;
+
+  const now = Date.now();
+  if (promo.finish_date) {
+    const end = new Date(promo.finish_date).getTime();
+    if (!Number.isNaN(end) && end < now) return false;
+  }
+  if (promo.deadline_date) {
+    const deadline = new Date(promo.deadline_date).getTime();
+    if (!Number.isNaN(deadline) && deadline < now) return false;
+  }
+  return true;
+}
+
+export function matchesPromotionStatusFilter(promo: MlPromotion, status?: string): boolean {
+  if (!status || status === "active") return isPromotionCurrentlyOpen(promo);
+  if (status === "all") return true;
+  return promo.status === status;
+}
+
 export type MlPromotionItemStock =
   | number
   | {
@@ -396,9 +419,7 @@ export async function aggregateInboxForAccount(
   options?: { bypassCache?: boolean },
 ): Promise<InboxEntry[]> {
   const promotions = await listSellerPromotions(accountId, mlUserId, options);
-  const activeOrPending = promotions.filter(
-    (p) => p.status === "started" || p.status === "pending",
-  );
+  const activeOrPending = promotions.filter(isPromotionCurrentlyOpen);
 
   const inbox: InboxEntry[] = [];
   const chunkSize = 3;
@@ -473,7 +494,7 @@ export async function buildPromotionSummary(
     try {
       const promos = await listSellerPromotions(acc.id, acc.mlUserId, options);
       totalCampaigns += promos.length;
-      const active = promos.filter((p) => p.status === "started" || p.status === "pending");
+      const active = promos.filter(isPromotionCurrentlyOpen);
       activeCampaigns += active.length;
 
       let accCandidates = 0;

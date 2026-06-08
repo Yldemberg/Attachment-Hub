@@ -20,6 +20,7 @@ import {
   mapMlPromotionError,
   parsePromotionStockBounds,
   resolveMlSuggestedPrice,
+  matchesPromotionStatusFilter,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -224,7 +225,7 @@ router.get("/promotions", ...auth, async (req, res) => {
         });
         for (const promo of promos) {
           if (promotion_type && promo.type !== promotion_type) continue;
-          if (status && promo.status !== status) continue;
+          if (!matchesPromotionStatusFilter(promo, status)) continue;
 
           let candidateCount: number | undefined;
           if (promo.status === "started" || promo.status === "pending") {

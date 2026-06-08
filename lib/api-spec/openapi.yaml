@@ -927,9 +927,10 @@ paths:
             type: string
         - name: status
           in: query
-          description: Filter by campaign status (started, pending, finished)
+          description: Filter by campaign status. Omit or use `active` for open campaigns only (started/pending, not expired). Use `all` to include finished.
           schema:
             type: string
+            default: active
         - name: page
           in: query
           schema:
