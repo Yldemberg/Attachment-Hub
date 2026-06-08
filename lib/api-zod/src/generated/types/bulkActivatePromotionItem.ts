@@ -11,4 +11,6 @@ export interface BulkActivatePromotionItem {
   dealPrice?: number | null;
   topDealPrice?: number | null;
   useSuggested?: boolean;
+  /** @minimum 1 */
+  stock?: number | null;
 }

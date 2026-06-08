@@ -11,6 +11,7 @@ export interface PromotionItem {
   status: string;
   price?: number | null;
   originalPrice?: number | null;
+  maxOriginalPrice?: number | null;
   minDiscountedPrice?: number | null;
   maxDiscountedPrice?: number | null;
   suggestedDiscountedPrice?: number | null;
@@ -18,6 +19,8 @@ export interface PromotionItem {
   discountPercentage?: number | null;
   startDate?: string | null;
   endDate?: string | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;

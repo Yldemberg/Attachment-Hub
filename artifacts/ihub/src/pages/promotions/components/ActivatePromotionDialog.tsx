@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useActivatePromotionItem,
+  useListPromotionItems,
+  useGetPromotion,
   getListPromotionInboxQueryKey,
   getListPromotionItemsQueryKey,
+  getGetPromotionQueryKey,
   getGetPromotionsSummaryQueryKey,
   getListPromotionsQueryKey,
 } from "@workspace/api-client-react";
@@ -14,24 +17,26 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Package } from "lucide-react";
+import { PromotionTypeBadge } from "./PromotionTypeBadge";
+import {
+  calcDiscountAmount,
+  calcDiscountPercent,
+  calcFinalFromDiscount,
+  defaultStockValue,
+  formatPromotionValidity,
+  getPriceBounds,
+  getPromotionActivationConfig,
+  mergeItemFields,
+} from "./promotionActivationConfig";
 
 type ItemLike = PromotionItem | PromotionInboxEntry;
-
-const NO_PRICE_TYPES = [
-  "VOLUME",
-  "MARKETPLACE_CAMPAIGN",
-  "SMART",
-  "PRICE_MATCHING",
-  "PRE_NEGOTIATED",
-];
 
 export function ActivatePromotionDialog({
   open,
@@ -51,25 +56,85 @@ export function ActivatePromotionDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const suggested =
-    "suggestedDiscountedPrice" in (item ?? {})
-      ? item?.suggestedDiscountedPrice
-      : (item as PromotionItem | null)?.suggestedDiscountedPrice;
-  const minPrice =
-    "minDiscountedPrice" in (item ?? {})
-      ? item?.minDiscountedPrice
-      : (item as PromotionItem | null)?.minDiscountedPrice;
-  const maxPrice =
-    "maxDiscountedPrice" in (item ?? {})
-      ? item?.maxDiscountedPrice
-      : (item as PromotionItem | null)?.maxDiscountedPrice;
-  const original =
-    "originalPrice" in (item ?? {})
-      ? item?.originalPrice
-      : (item as PromotionItem | null)?.originalPrice;
+  const itemId = item
+    ? "itemId" in item
+      ? item.itemId
+      : (item as PromotionItem).itemId
+    : "";
 
-  const [dealPrice, setDealPrice] = useState("");
-  const needsPrice = item ? !NO_PRICE_TYPES.includes(promotionType) : true;
+  const promotionName =
+    item && "promotionName" in item ? item.promotionName : null;
+  const promotionTypeLabel =
+    item && "promotionTypeLabel" in item ? item.promotionTypeLabel : null;
+
+  const itemParams = {
+    account_id: accountId,
+    promotion_type: promotionType,
+    item_id: itemId,
+    status: "candidate",
+    limit: 1,
+    refresh: true,
+  };
+  const promotionParams = { account_id: accountId, promotion_type: promotionType };
+
+  const { data: itemsData, isLoading: itemLoading } = useListPromotionItems(
+    promotionId,
+    itemParams,
+    {
+      query: {
+        queryKey: getListPromotionItemsQueryKey(promotionId, itemParams),
+        enabled: open && !!itemId,
+      },
+    },
+  );
+
+  const { data: promotion } = useGetPromotion(promotionId, promotionParams, {
+    query: {
+      queryKey: getGetPromotionQueryKey(promotionId, promotionParams),
+      enabled: open,
+    },
+  });
+
+  const freshItem = itemsData?.data?.[0] ?? null;
+  const merged = useMemo(
+    () => mergeItemFields(item, freshItem),
+    [item, freshItem],
+  );
+
+  const config = getPromotionActivationConfig(promotionType);
+  const priceBounds = getPriceBounds(promotionType, merged);
+  const original = merged.originalPrice;
+
+  const [quantity, setQuantity] = useState("");
+  const [discountPercent, setDiscountPercent] = useState("");
+  const [finalPrice, setFinalPrice] = useState("");
+  const [topDealPrice, setTopDealPrice] = useState("");
+  const [lastEdited, setLastEdited] = useState<"percent" | "price" | null>(null);
+
+  useEffect(() => {
+    if (!open || !item) return;
+
+    const suggested = merged.suggestedDiscountedPrice;
+    const orig = merged.originalPrice;
+
+    setQuantity(defaultStockValue(merged, config));
+
+    if (orig != null && suggested != null) {
+      const pct = calcDiscountPercent(orig, suggested);
+      setDiscountPercent(String(pct));
+      setFinalPrice(suggested.toFixed(2));
+      setLastEdited("percent");
+    } else if (orig != null) {
+      setDiscountPercent("10");
+      setFinalPrice(calcFinalFromDiscount(orig, 10).toFixed(2));
+      setLastEdited("percent");
+    } else {
+      setDiscountPercent("");
+      setFinalPrice("");
+      setLastEdited(null);
+    }
+    setTopDealPrice("");
+  }, [open, item, merged, config]);
 
   const { mutate: activate, isPending } = useActivatePromotionItem({
     mutation: {
@@ -78,9 +143,10 @@ export function ActivatePromotionDialog({
         queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListPromotionItemsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListPromotionItemsQueryKey(promotionId, itemParams),
+        });
         onOpenChange(false);
-        setDealPrice("");
       },
       onError: (err: unknown) => {
         const msg =
@@ -94,34 +160,105 @@ export function ActivatePromotionDialog({
 
   if (!item) return null;
 
-  const itemId = "itemId" in item ? item.itemId : (item as PromotionItem).itemId;
-  const title = item.title ?? itemId;
+  const discountAmount =
+    original != null && discountPercent.trim()
+      ? calcDiscountAmount(original, parseFloat(discountPercent.replace(",", ".")) || 0)
+      : null;
+
+  const validity = formatPromotionValidity(
+    merged.startDate ?? promotion?.startDate,
+    merged.endDate ?? promotion?.finishDate,
+  );
+
+  function handleDiscountChange(raw: string) {
+    setDiscountPercent(raw);
+    setLastEdited("percent");
+    const pct = parseFloat(raw.replace(",", "."));
+    if (original != null && !Number.isNaN(pct)) {
+      setFinalPrice(calcFinalFromDiscount(original, pct).toFixed(2));
+    }
+  }
+
+  function handleFinalPriceChange(raw: string) {
+    setFinalPrice(raw);
+    setLastEdited("price");
+    const price = parseFloat(raw.replace(",", "."));
+    if (original != null && !Number.isNaN(price)) {
+      setDiscountPercent(String(calcDiscountPercent(original, price)));
+    }
+  }
 
   function handleActivate() {
-    const parsed = dealPrice.trim() ? parseFloat(dealPrice.replace(",", ".")) : undefined;
-    if (needsPrice && (parsed == null || Number.isNaN(parsed))) {
+    const parsedPrice = finalPrice.trim()
+      ? parseFloat(finalPrice.replace(",", "."))
+      : undefined;
+    const parsedStock = quantity.trim() ? parseInt(quantity, 10) : undefined;
+    const parsedTop = topDealPrice.trim()
+      ? parseFloat(topDealPrice.replace(",", "."))
+      : undefined;
+
+    if (config.needsPrice && (parsedPrice == null || Number.isNaN(parsedPrice))) {
       toast({
         title: "Preço obrigatório",
-        description: "Informe o preço promocional para este tipo de campanha.",
+        description: "Informe o preço final da promoção.",
         variant: "destructive",
       });
       return;
     }
-    if (parsed != null && minPrice != null && parsed < minPrice) {
-      toast({
-        title: "Preço abaixo do mínimo",
-        description: `O preço mínimo permitido é ${formatCurrency(minPrice)}.`,
-        variant: "destructive",
-      });
-      return;
+
+    if (config.needsStock && !config.stockOptional) {
+      if (parsedStock == null || Number.isNaN(parsedStock) || parsedStock < 1) {
+        toast({
+          title: "Quantidade obrigatória",
+          description: "Informe quantas unidades reservar para esta promoção.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const total = merged.availableQuantity ?? 0;
+      if (total > 0 && parsedStock > total) {
+        toast({
+          title: "Estoque insuficiente",
+          description: `Você tem apenas ${total} unidade(s) disponíveis.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (merged.stockMin != null && parsedStock < merged.stockMin) {
+        toast({
+          title: "Quantidade abaixo do mínimo",
+          description: `Mínimo de ${merged.stockMin} unidade(s) para esta promoção.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (merged.stockMax != null && parsedStock > merged.stockMax) {
+        toast({
+          title: "Quantidade acima do máximo",
+          description: `Máximo de ${merged.stockMax} unidade(s) para esta promoção.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
-    if (parsed != null && maxPrice != null && parsed > maxPrice) {
-      toast({
-        title: "Preço acima do máximo",
-        description: `O preço máximo permitido é ${formatCurrency(maxPrice)}.`,
-        variant: "destructive",
-      });
-      return;
+
+    if (parsedPrice != null) {
+      if (priceBounds.min != null && parsedPrice < priceBounds.min) {
+        toast({
+          title: "Preço abaixo do permitido",
+          description: `O preço mínimo é ${formatCurrency(priceBounds.min)}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (priceBounds.max != null && parsedPrice > priceBounds.max) {
+        toast({
+          title: "Preço acima do permitido",
+          description: `O preço máximo é ${formatCurrency(priceBounds.max)}.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     activate({
@@ -130,69 +267,247 @@ export function ActivatePromotionDialog({
       data: {
         accountId,
         promotionType,
-        dealPrice: parsed,
+        dealPrice: parsedPrice,
+        topDealPrice: config.needsTopDealPrice ? parsedTop : undefined,
+        stock: config.needsStock || (config.stockOptional && parsedStock != null)
+          ? parsedStock
+          : undefined,
       },
     });
   }
 
+  const showStock =
+    config.needsStock || config.stockOptional || merged.stockMin != null || merged.stockMax != null;
+  const showPrice = config.needsPrice;
+  const showTopDeal = config.needsTopDealPrice;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Ativar promoção</DialogTitle>
-          <DialogDescription className="line-clamp-2">{title}</DialogDescription>
+      <DialogContent className="max-w-lg gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
+          <DialogTitle className="text-base font-semibold">
+            Confirme os detalhes da promoção
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {original != null && (
-            <p className="text-sm text-muted-foreground">
-              Preço original: <span className="font-medium text-foreground">{formatCurrency(original)}</span>
-            </p>
-          )}
-          {suggested != null && (
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline"
-              onClick={() => setDealPrice(String(suggested))}
-            >
-              Usar preço sugerido: {formatCurrency(suggested)}
-            </button>
-          )}
-          {(minPrice != null || maxPrice != null) && (
-            <p className="text-xs text-muted-foreground">
-              Faixa permitida:{" "}
-              {minPrice != null ? formatCurrency(minPrice) : "—"} —{" "}
-              {maxPrice != null ? formatCurrency(maxPrice) : "—"}
-            </p>
-          )}
-          {needsPrice && (
-            <div>
-              <Label htmlFor="deal-price">Preço promocional</Label>
-              <Input
-                id="deal-price"
-                type="number"
-                min={0}
-                step="0.01"
-                value={dealPrice}
-                onChange={(e) => setDealPrice(e.target.value)}
-                placeholder={suggested != null ? String(suggested) : "0,00"}
-                className="mt-1"
-              />
+        {itemLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* Product card */}
+            <div className="flex gap-3 p-3 bg-muted/40 rounded-xl border border-border">
+              {merged.thumbnail ? (
+                <img
+                  src={merged.thumbnail}
+                  alt=""
+                  className="size-16 rounded-lg object-cover bg-muted flex-shrink-0"
+                />
+              ) : (
+                <div className="size-16 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                  <Package className="w-7 h-7 text-muted-foreground/40" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
+                  {merged.title ?? itemId}
+                </p>
+                {merged.availableQuantity != null && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Estoque total:{" "}
+                    <span className="font-semibold text-foreground">
+                      {merged.availableQuantity} unidade{merged.availableQuantity !== 1 ? "s" : ""}
+                    </span>
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-          {!needsPrice && (
-            <p className="text-sm text-muted-foreground">
-              Este tipo de campanha não exige definição de preço — confirme para participar.
-            </p>
-          )}
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancelar
-          </Button>
-          <Button onClick={handleActivate} disabled={isPending}>
+            {/* Promotion info */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Promoção:</span>
+                <PromotionTypeBadge
+                  type={promotionType}
+                  label={promotionTypeLabel ?? promotion?.typeLabel ?? undefined}
+                />
+                {(promotionName ?? promotion?.name) && (
+                  <span className="text-xs font-medium text-foreground truncate">
+                    {promotionName ?? promotion?.name}
+                  </span>
+                )}
+              </div>
+              {validity && (
+                <p className="text-xs text-muted-foreground">
+                  Vigência: <span className="text-foreground">{validity}</span>
+                </p>
+              )}
+              {config.hasPriceSuggestion && (
+                <p className="text-xs text-amber-700 font-medium">
+                  Confirme agora e garanta seu lugar!
+                </p>
+              )}
+            </div>
+
+            {/* Quantity */}
+            {showStock && (
+              <div>
+                <Label htmlFor="promo-qty" className="text-sm font-medium">
+                  Quantidade de unidades
+                  {config.needsStock && !config.stockOptional && (
+                    <span className="text-red-600 ml-1">*</span>
+                  )}
+                </Label>
+                {(merged.stockMin != null || merged.stockMax != null) && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Permitido: {merged.stockMin ?? 1}
+                    {merged.stockMax != null ? ` — ${merged.stockMax}` : ""} un.
+                  </p>
+                )}
+                <Input
+                  id="promo-qty"
+                  type="number"
+                  min={merged.stockMin ?? 1}
+                  max={merged.stockMax ?? merged.availableQuantity ?? undefined}
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className="mt-1.5 h-10 text-base font-semibold"
+                />
+              </div>
+            )}
+
+            {/* Price section */}
+            {showPrice && original != null && (
+              <div className="space-y-3 pt-1 border-t border-border">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Preço original</Label>
+                  <p className="text-lg font-semibold text-foreground mt-0.5">
+                    {formatCurrency(original)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="promo-discount" className="text-sm font-medium">
+                      Desconto
+                    </Label>
+                    <div className="relative mt-1.5">
+                      <Input
+                        id="promo-discount"
+                        type="number"
+                        min={0}
+                        max={80}
+                        step="1"
+                        value={discountPercent}
+                        onChange={(e) => handleDiscountChange(e.target.value)}
+                        className="h-10 pr-8 text-base font-semibold"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        %
+                      </span>
+                    </div>
+                    {discountAmount != null && lastEdited === "percent" && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Equivale a {formatCurrency(discountAmount)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="promo-final" className="text-sm font-medium">
+                      Preço final
+                    </Label>
+                    <div className="relative mt-1.5">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+                      <Input
+                        id="promo-final"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={finalPrice}
+                        onChange={(e) => handleFinalPriceChange(e.target.value)}
+                        className="h-10 pl-9 text-base font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {(priceBounds.min != null || priceBounds.max != null) && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Faixa permitida:{" "}
+                    {priceBounds.min != null ? formatCurrency(priceBounds.min) : "—"}
+                    {" — "}
+                    {priceBounds.max != null ? formatCurrency(priceBounds.max) : "—"}
+                  </p>
+                )}
+
+                {config.hasPriceSuggestion && merged.suggestedDiscountedPrice != null && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      const s = merged.suggestedDiscountedPrice!;
+                      setFinalPrice(s.toFixed(2));
+                      if (original != null) {
+                        setDiscountPercent(String(calcDiscountPercent(original, s)));
+                      }
+                      setLastEdited("percent");
+                    }}
+                  >
+                    Usar preço sugerido: {formatCurrency(merged.suggestedDiscountedPrice)}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {showTopDeal && (
+              <div>
+                <Label htmlFor="promo-top" className="text-sm font-medium">
+                  Preço para compradores nível 3–6 (opcional)
+                </Label>
+                <div className="relative mt-1.5">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    R$
+                  </span>
+                  <Input
+                    id="promo-top"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={topDealPrice}
+                    onChange={(e) => setTopDealPrice(e.target.value)}
+                    className="h-10 pl-9"
+                  />
+                </div>
+              </div>
+            )}
+
+            {config.confirmOnly && (
+              <p className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3 border border-border">
+                Esta campanha não exige definição de preço ou quantidade — confirme para participar.
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="px-5 py-4 border-t border-border flex-col sm:flex-col gap-2">
+          <Button
+            onClick={handleActivate}
+            disabled={isPending || itemLoading}
+            className="w-full h-11 text-sm font-semibold"
+          >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirmar"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+            className="w-full text-primary hover:text-primary"
+          >
+            Cancelar
           </Button>
         </DialogFooter>
       </DialogContent>

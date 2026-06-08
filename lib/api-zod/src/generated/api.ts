@@ -956,6 +956,11 @@ export const ListPromotionInboxResponse = zod.object({
       suggestedDiscountedPrice: zod.number().nullish(),
       minDiscountedPrice: zod.number().nullish(),
       maxDiscountedPrice: zod.number().nullish(),
+      maxOriginalPrice: zod.number().nullish(),
+      stockMin: zod.number().nullish(),
+      stockMax: zod.number().nullish(),
+      startDate: zod.string().nullish(),
+      endDate: zod.string().nullish(),
       discountPercent: zod.number().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
@@ -1085,6 +1090,10 @@ export const ListPromotionItemsQueryParams = zod.object({
     .describe(
       "Item status in campaign (candidate, pending, started, finished)",
     ),
+  item_id: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by Mercado Livre item ID"),
   search: zod.coerce.string().optional(),
   page: zod.coerce.number().default(listPromotionItemsQueryPageDefault),
   limit: zod.coerce.number().default(listPromotionItemsQueryLimitDefault),
@@ -1098,6 +1107,7 @@ export const ListPromotionItemsResponse = zod.object({
       status: zod.string(),
       price: zod.number().nullish(),
       originalPrice: zod.number().nullish(),
+      maxOriginalPrice: zod.number().nullish(),
       minDiscountedPrice: zod.number().nullish(),
       maxDiscountedPrice: zod.number().nullish(),
       suggestedDiscountedPrice: zod.number().nullish(),
@@ -1105,6 +1115,8 @@ export const ListPromotionItemsResponse = zod.object({
       discountPercentage: zod.number().nullish(),
       startDate: zod.string().nullish(),
       endDate: zod.string().nullish(),
+      stockMin: zod.number().nullish(),
+      stockMax: zod.number().nullish(),
       productId: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
@@ -1169,6 +1181,7 @@ export const BulkActivatePromotionItemsBody = zod.object({
         useSuggested: zod
           .boolean()
           .default(bulkActivatePromotionItemsBodyItemsItemUseSuggestedDefault),
+        stock: zod.number().min(1).nullish(),
       }),
     )
     .min(1),
@@ -1197,6 +1210,7 @@ export const ActivatePromotionItemBody = zod.object({
   promotionType: zod.string(),
   dealPrice: zod.number().nullish(),
   topDealPrice: zod.number().nullish(),
+  stock: zod.number().min(1).nullish(),
 });
 
 export const ActivatePromotionItemResponse = zod.record(
@@ -1217,6 +1231,7 @@ export const UpdatePromotionItemBody = zod.object({
   promotionType: zod.string(),
   dealPrice: zod.number().nullish(),
   topDealPrice: zod.number().nullish(),
+  stock: zod.number().min(1).nullish(),
 });
 
 export const UpdatePromotionItemResponse = zod.record(

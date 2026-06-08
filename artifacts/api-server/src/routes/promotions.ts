@@ -16,6 +16,7 @@ import {
   deletePromotionItem,
   bulkActivatePromotionItems,
   mapMlPromotionError,
+  parsePromotionStockBounds,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -83,11 +84,13 @@ function mapPromotion(
 }
 
 function mapPromotionItem(item: EnrichedPromotionItem) {
+  const stockBounds = parsePromotionStockBounds(item.stock);
   return {
     itemId: item.id,
     status: item.status,
     price: item.price ?? null,
     originalPrice: item.original_price ?? null,
+    maxOriginalPrice: item.max_original_price ?? null,
     minDiscountedPrice: item.min_discounted_price ?? null,
     maxDiscountedPrice: item.max_discounted_price ?? null,
     suggestedDiscountedPrice: item.suggested_discounted_price ?? null,
@@ -95,6 +98,8 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     discountPercentage: item.discount_percentage ?? null,
     startDate: item.start_date ?? null,
     endDate: item.end_date ?? null,
+    stockMin: stockBounds.stockMin,
+    stockMax: stockBounds.stockMax,
     productId: item.productId ?? null,
     title: item.title ?? null,
     sku: item.sku ?? null,
@@ -243,9 +248,13 @@ router.get("/promotions", ...auth, async (req, res) => {
   }
 });
 
+function paramString(value: string | string[]): string {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 router.get("/promotions/:promotionId", ...auth, async (req, res) => {
   try {
-    const { promotionId } = req.params;
+    const promotionId = paramString(req.params.promotionId);
     const { account_id, promotion_type } = req.query as Record<string, string>;
     if (!account_id || !promotion_type) {
       res.status(400).json({ error: "account_id e promotion_type são obrigatórios" });
@@ -268,11 +277,12 @@ router.get("/promotions/:promotionId", ...auth, async (req, res) => {
 
 router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
   try {
-    const { promotionId } = req.params;
+    const promotionId = paramString(req.params.promotionId);
     const {
       account_id,
       promotion_type,
       status,
+      item_id,
       search = "",
       page = "1",
       limit = "50",
@@ -298,6 +308,7 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
       getPromotionDetail(acc.id, promotionId, promotion_type),
       listPromotionItems(acc.id, promotionId, promotion_type, {
         status,
+        itemId: item_id,
         bypassCache: refresh === "true",
       }),
     ]);
@@ -326,12 +337,14 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
 
 router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) => {
   try {
-    const { promotionId, itemId } = req.params;
-    const { accountId, promotionType, dealPrice, topDealPrice } = req.body as {
+    const promotionId = paramString(req.params.promotionId);
+    const itemId = paramString(req.params.itemId);
+    const { accountId, promotionType, dealPrice, topDealPrice, stock } = req.body as {
       accountId: string;
       promotionType: string;
       dealPrice?: number;
       topDealPrice?: number;
+      stock?: number;
     };
 
     if (!accountId || !promotionType) {
@@ -350,6 +363,7 @@ router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) 
       promotionType,
       dealPrice,
       topDealPrice,
+      stock,
     });
     res.json(result);
   } catch (err) {
@@ -359,12 +373,14 @@ router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) 
 
 router.put("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) => {
   try {
-    const { promotionId, itemId } = req.params;
-    const { accountId, promotionType, dealPrice, topDealPrice } = req.body as {
+    const promotionId = paramString(req.params.promotionId);
+    const itemId = paramString(req.params.itemId);
+    const { accountId, promotionType, dealPrice, topDealPrice, stock } = req.body as {
       accountId: string;
       promotionType: string;
       dealPrice?: number;
       topDealPrice?: number;
+      stock?: number;
     };
 
     if (!accountId || !promotionType) {
@@ -383,6 +399,7 @@ router.put("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) =
       promotionType,
       dealPrice,
       topDealPrice,
+      stock,
     });
     res.json(result);
   } catch (err) {
@@ -392,7 +409,8 @@ router.put("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) =
 
 router.delete("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) => {
   try {
-    const { promotionId, itemId } = req.params;
+    const promotionId = paramString(req.params.promotionId);
+    const itemId = paramString(req.params.itemId);
     const { account_id, promotion_type } = req.query as Record<string, string>;
 
     if (!account_id || !promotion_type) {
@@ -415,7 +433,7 @@ router.delete("/promotions/:promotionId/items/:itemId", ...auth, async (req, res
 
 router.post("/promotions/:promotionId/items/bulk", ...auth, async (req, res) => {
   try {
-    const { promotionId } = req.params;
+    const promotionId = paramString(req.params.promotionId);
     const { accountId, promotionType, items } = req.body as {
       accountId: string;
       promotionType: string;

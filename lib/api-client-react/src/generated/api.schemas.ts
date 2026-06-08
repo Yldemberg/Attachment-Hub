@@ -404,6 +404,7 @@ export interface PromotionItem {
   status: string;
   price?: number | null;
   originalPrice?: number | null;
+  maxOriginalPrice?: number | null;
   minDiscountedPrice?: number | null;
   maxDiscountedPrice?: number | null;
   suggestedDiscountedPrice?: number | null;
@@ -411,6 +412,8 @@ export interface PromotionItem {
   discountPercentage?: number | null;
   startDate?: string | null;
   endDate?: string | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;
@@ -440,6 +443,11 @@ export interface PromotionInboxEntry {
   suggestedDiscountedPrice?: number | null;
   minDiscountedPrice?: number | null;
   maxDiscountedPrice?: number | null;
+  maxOriginalPrice?: number | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
   discountPercent?: number | null;
   title?: string | null;
   sku?: string | null;
@@ -473,6 +481,8 @@ export interface ActivatePromotionItemRequest {
   promotionType: string;
   dealPrice?: number | null;
   topDealPrice?: number | null;
+  /** @minimum 1 */
+  stock?: number | null;
 }
 
 export interface BulkActivatePromotionItem {
@@ -480,6 +490,8 @@ export interface BulkActivatePromotionItem {
   dealPrice?: number | null;
   topDealPrice?: number | null;
   useSuggested?: boolean;
+  /** @minimum 1 */
+  stock?: number | null;
 }
 
 export interface BulkActivatePromotionItemsRequest {
@@ -789,6 +801,10 @@ export type ListPromotionItemsParams = {
    * Item status in campaign (candidate, pending, started, finished)
    */
   status?: string;
+  /**
+   * Filter by Mercado Livre item ID
+   */
+  item_id?: string;
   search?: string;
   page?: number;
   limit?: number;

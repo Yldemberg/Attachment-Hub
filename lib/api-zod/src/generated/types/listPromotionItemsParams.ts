@@ -13,6 +13,10 @@ export type ListPromotionItemsParams = {
    * Item status in campaign (candidate, pending, started, finished)
    */
   status?: string;
+  /**
+   * Filter by Mercado Livre item ID
+   */
+  item_id?: string;
   search?: string;
   page?: number;
   limit?: number;

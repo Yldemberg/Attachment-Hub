@@ -1018,6 +1018,11 @@ paths:
           description: Item status in campaign (candidate, pending, started, finished)
           schema:
             type: string
+        - name: item_id
+          in: query
+          description: Filter by Mercado Livre item ID
+          schema:
+            type: string
         - name: search
           in: query
           schema:
@@ -2265,6 +2270,9 @@ components:
         originalPrice:
           type: number
           nullable: true
+        maxOriginalPrice:
+          type: number
+          nullable: true
         minDiscountedPrice:
           type: number
           nullable: true
@@ -2285,6 +2293,12 @@ components:
           nullable: true
         endDate:
           type: string
+          nullable: true
+        stockMin:
+          type: integer
+          nullable: true
+        stockMax:
+          type: integer
           nullable: true
         productId:
           type: string
@@ -2358,6 +2372,21 @@ components:
           nullable: true
         maxDiscountedPrice:
           type: number
+          nullable: true
+        maxOriginalPrice:
+          type: number
+          nullable: true
+        stockMin:
+          type: integer
+          nullable: true
+        stockMax:
+          type: integer
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
           nullable: true
         discountPercent:
           type: integer
@@ -2434,6 +2463,10 @@ components:
         topDealPrice:
           type: number
           nullable: true
+        stock:
+          type: integer
+          nullable: true
+          minimum: 1
       required: [accountId, promotionType]
 
     BulkActivatePromotionItem:
@@ -2450,6 +2483,10 @@ components:
         useSuggested:
           type: boolean
           default: false
+        stock:
+          type: integer
+          nullable: true
+          minimum: 1
       required: [itemId]
 
     BulkActivatePromotionItemsRequest:

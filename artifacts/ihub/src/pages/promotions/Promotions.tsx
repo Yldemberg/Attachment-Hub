@@ -252,28 +252,41 @@ export default function Promotions() {
     refresh: refreshing,
   });
 
+  const inboxParams = {
+    account_id: accountFilter,
+    promotion_type: typeFilter,
+    search: search.trim() || undefined,
+    page,
+    limit: 20,
+    refresh: refreshing,
+  };
+  const campaignsParams = {
+    account_id: accountFilter,
+    promotion_type: typeFilter,
+    status: statusFilter,
+    page,
+    limit: 20,
+    refresh: refreshing,
+  };
+
   const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(
+    inboxParams,
     {
-      account_id: accountFilter,
-      promotion_type: typeFilter,
-      search: search.trim() || undefined,
-      page,
-      limit: 20,
-      refresh: refreshing,
+      query: {
+        queryKey: getListPromotionInboxQueryKey(inboxParams),
+        enabled: tab === "inbox",
+      },
     },
-    { query: { enabled: tab === "inbox" } },
   );
 
   const { data: campaignsData, isLoading: campaignsLoading } = useListPromotions(
+    campaignsParams,
     {
-      account_id: accountFilter,
-      promotion_type: typeFilter,
-      status: statusFilter,
-      page,
-      limit: 20,
-      refresh: refreshing,
+      query: {
+        queryKey: getListPromotionsQueryKey(campaignsParams),
+        enabled: tab !== "inbox",
+      },
     },
-    { query: { enabled: tab !== "inbox" } },
   );
 
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({

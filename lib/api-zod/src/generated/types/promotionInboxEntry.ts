@@ -21,6 +21,11 @@ export interface PromotionInboxEntry {
   suggestedDiscountedPrice?: number | null;
   minDiscountedPrice?: number | null;
   maxDiscountedPrice?: number | null;
+  maxOriginalPrice?: number | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
   discountPercent?: number | null;
   title?: string | null;
   sku?: string | null;

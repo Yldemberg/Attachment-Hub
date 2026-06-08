@@ -61,11 +61,21 @@ export type MlPromotion = {
   sub_type?: string | null;
 };
 
+export type MlPromotionItemStock =
+  | number
+  | {
+      min?: number | null;
+      max?: number | null;
+      remaining_stock?: number | null;
+    }
+  | null;
+
 export type MlPromotionItem = {
   id: string;
   status: string;
   price?: number | null;
   original_price?: number | null;
+  max_original_price?: number | null;
   min_discounted_price?: number | null;
   max_discounted_price?: number | null;
   suggested_discounted_price?: number | null;
@@ -75,7 +85,20 @@ export type MlPromotionItem = {
   end_date?: string | null;
   sub_type?: string | null;
   currency?: string | null;
+  stock?: MlPromotionItemStock;
 };
+
+export function parsePromotionStockBounds(stock?: MlPromotionItemStock): {
+  stockMin: number | null;
+  stockMax: number | null;
+} {
+  if (stock == null) return { stockMin: null, stockMax: null };
+  if (typeof stock === "number") return { stockMin: 1, stockMax: stock };
+  return {
+    stockMin: stock.min ?? null,
+    stockMax: stock.max ?? null,
+  };
+}
 
 export type EnrichedPromotionItem = MlPromotionItem & {
   productId?: string | null;
@@ -100,6 +123,11 @@ export type InboxEntry = {
   suggestedDiscountedPrice?: number | null;
   minDiscountedPrice?: number | null;
   maxDiscountedPrice?: number | null;
+  maxOriginalPrice?: number | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
   title?: string | null;
   sku?: string | null;
   thumbnail?: string | null;
@@ -126,6 +154,7 @@ export type ActivatePromotionItemBody = {
   promotionType: string;
   dealPrice?: number;
   topDealPrice?: number;
+  stock?: number;
 };
 
 export function invalidatePromotionsCache(accountId?: string): void {
@@ -297,6 +326,7 @@ export async function aggregateInboxForAccount(
           for (const item of enriched) {
             const suggested = item.suggested_discounted_price;
             const original = item.original_price;
+            const stockBounds = parsePromotionStockBounds(item.stock);
             inbox.push({
               itemId: item.id,
               promotionId: promo.id,
@@ -311,6 +341,11 @@ export async function aggregateInboxForAccount(
               suggestedDiscountedPrice: suggested,
               minDiscountedPrice: item.min_discounted_price,
               maxDiscountedPrice: item.max_discounted_price,
+              maxOriginalPrice: item.max_original_price,
+              stockMin: stockBounds.stockMin,
+              stockMax: stockBounds.stockMax,
+              startDate: item.start_date ?? promo.start_date,
+              endDate: item.end_date ?? promo.finish_date,
               title: item.title,
               sku: item.sku,
               thumbnail: item.thumbnail,
@@ -398,6 +433,7 @@ export async function activatePromotionItem(
   };
   if (body.dealPrice != null) payload.deal_price = body.dealPrice;
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
+  if (body.stock != null) payload.stock = body.stock;
 
   const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;
   const result = await ml.post(accountId, path, payload);
@@ -416,6 +452,7 @@ export async function updatePromotionItem(
   };
   if (body.dealPrice != null) payload.deal_price = body.dealPrice;
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
+  if (body.stock != null) payload.stock = body.stock;
 
   const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;
   const result = await ml.put(accountId, path, payload);

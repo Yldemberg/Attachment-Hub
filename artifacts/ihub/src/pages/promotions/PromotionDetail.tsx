@@ -6,6 +6,7 @@ import {
   useBulkActivatePromotionItems,
   getListPromotionItemsQueryKey,
   getListPromotionInboxQueryKey,
+  getGetPromotionQueryKey,
   getGetPromotionsSummaryQueryKey,
   getListPromotionsQueryKey,
 } from "@workspace/api-client-react";
@@ -152,24 +153,38 @@ export default function PromotionDetail() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const promotionParams = { account_id: accountId, promotion_type: promotionType };
+  const itemsParams = {
+    account_id: accountId,
+    promotion_type: promotionType,
+    status: itemStatus,
+    search: searchText.trim() || undefined,
+    page,
+    limit: 50,
+    refresh: refreshing,
+  };
+  const promoId = promotionId ?? "";
+
   const { data: promotion, isLoading: promoLoading } = useGetPromotion(
-    promotionId ?? "",
-    { account_id: accountId, promotion_type: promotionType },
-    { query: { enabled: !!promotionId && !!accountId && !!promotionType } },
+    promoId,
+    promotionParams,
+    {
+      query: {
+        queryKey: getGetPromotionQueryKey(promoId, promotionParams),
+        enabled: !!promotionId && !!accountId && !!promotionType,
+      },
+    },
   );
 
   const { data: itemsData, isLoading: itemsLoading } = useListPromotionItems(
-    promotionId ?? "",
+    promoId,
+    itemsParams,
     {
-      account_id: accountId,
-      promotion_type: promotionType,
-      status: itemStatus,
-      search: searchText.trim() || undefined,
-      page,
-      limit: 50,
-      refresh: refreshing,
+      query: {
+        queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
+        enabled: !!promotionId && !!accountId && !!promotionType,
+      },
     },
-    { query: { enabled: !!promotionId && !!accountId && !!promotionType } },
   );
 
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
@@ -178,7 +193,9 @@ export default function PromotionDetail() {
         const ok = data.results?.filter((r) => r.ok).length ?? 0;
         toast({ title: `${ok} itens ativados com sucesso` });
         setSelected(new Set());
-        queryClient.invalidateQueries({ queryKey: getListPromotionItemsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
+        });
         queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
@@ -203,7 +220,9 @@ export default function PromotionDetail() {
 
   function handleRefresh() {
     setRefreshing(true);
-    queryClient.invalidateQueries({ queryKey: getListPromotionItemsQueryKey() });
+    queryClient.invalidateQueries({
+      queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
+    });
     setTimeout(() => setRefreshing(false), 500);
   }
 
