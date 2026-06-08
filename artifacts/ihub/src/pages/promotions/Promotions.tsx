@@ -3,13 +3,15 @@ import {
   useGetPromotionsSummary,
   useListPromotionInbox,
   useListPromotions,
+  useListPromotionItems,
   useListAccounts,
   useBulkActivatePromotionItems,
   getListPromotionInboxQueryKey,
   getListPromotionsQueryKey,
+  getListPromotionItemsQueryKey,
   getGetPromotionsSummaryQueryKey,
 } from "@workspace/api-client-react";
-import type { PromotionInboxEntry } from "@workspace/api-client-react";
+import type { Promotion, PromotionInboxEntry, PromotionItem } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -41,15 +43,60 @@ import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 
 const ALL_CAMPAIGNS = "all";
 
+type ViewMode = "campaigns" | "candidates";
+
 function parseCampaignValue(value: string): {
-  accountId?: string;
-  promotionId?: string;
-  promotionType?: string;
+  accountId: string;
+  promotionId: string;
+  promotionType: string;
 } | null {
   if (value === ALL_CAMPAIGNS) return null;
   const [accountId, promotionId, promotionType] = value.split("::");
   if (!accountId || !promotionId || !promotionType) return null;
   return { accountId, promotionId, promotionType };
+}
+
+function promotionItemToInboxEntry(
+  item: PromotionItem,
+  campaign: {
+    promotionId: string;
+    promotionType: string;
+    promotionTypeLabel?: string | null;
+    promotionName?: string | null;
+    accountId: string;
+    accountNickname?: string | null;
+    deadlineDate?: string | null;
+  },
+): PromotionInboxEntry {
+  const discountPercent =
+    item.originalPrice != null &&
+    item.suggestedDiscountedPrice != null &&
+    item.originalPrice > 0 &&
+    item.suggestedDiscountedPrice < item.originalPrice
+      ? Math.round(
+          ((item.originalPrice - item.suggestedDiscountedPrice) / item.originalPrice) * 100,
+        )
+      : null;
+
+  return {
+    itemId: item.itemId,
+    promotionId: campaign.promotionId,
+    promotionType: campaign.promotionType,
+    promotionTypeLabel: campaign.promotionTypeLabel,
+    promotionName: campaign.promotionName,
+    itemStatus: item.status,
+    accountId: campaign.accountId,
+    accountNickname: campaign.accountNickname,
+    originalPrice: item.originalPrice,
+    suggestedDiscountedPrice: item.suggestedDiscountedPrice,
+    title: item.title,
+    sku: item.sku,
+    thumbnail: item.thumbnail,
+    permalink: item.permalink,
+    discountPercent,
+    deadlineDate: campaign.deadlineDate,
+    availableQuantity: item.availableQuantity,
+  };
 }
 
 function KpiCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
@@ -61,16 +108,79 @@ function KpiCard({ label, value, accent }: { label: string; value: number; accen
   );
 }
 
-function SkuCampaignCard({
+function CampaignCard({ promo }: { promo: Promotion }) {
+  const deadline = formatDeadline(promo.deadlineDate);
+  const detailHref = `/promotions/${encodeURIComponent(promo.id)}?account_id=${promo.accountId}&promotion_type=${promo.type}`;
+
+  return (
+    <Link href={detailHref}>
+      <div className="bg-card border border-card-border rounded-xl px-4 py-3 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">{promo.name ?? promo.id}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              <PromotionTypeBadge type={promo.type} label={promo.typeLabel ?? undefined} />
+              <span
+                className={cn(
+                  "text-[10px] font-medium px-1.5 py-0.5 rounded-md border",
+                  promo.status === "started"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : promo.status === "pending"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-slate-100 text-slate-500 border-slate-200",
+                )}
+              >
+                {promo.status === "started" ? "Ativa" : promo.status === "pending" ? "Pendente" : "Encerrada"}
+              </span>
+              {(promo.candidateCount ?? 0) > 0 && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200">
+                  {promo.candidateCount} candidatos
+                </span>
+              )}
+            </div>
+            {promo.benefits && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {promo.benefits.meliPercent != null && `ML ${promo.benefits.meliPercent}%`}
+                {promo.benefits.sellerPercent != null && ` · Você ${promo.benefits.sellerPercent}%`}
+                {promo.benefits.buyQuantity != null &&
+                  promo.benefits.payQuantity != null &&
+                  ` · Leve ${promo.benefits.buyQuantity} pague ${promo.benefits.payQuantity}`}
+              </p>
+            )}
+          </div>
+          <div className="text-right flex-shrink-0">
+            {deadline && (
+              <p
+                className={cn(
+                  "text-xs font-medium",
+                  deadline.includes("Vence") ? "text-red-600" : "text-muted-foreground",
+                )}
+              >
+                {deadline}
+              </p>
+            )}
+            {promo.accountNickname && (
+              <p className="text-[10px] text-muted-foreground mt-1">{promo.accountNickname}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function CandidateCard({
   entry,
   selected,
   onToggle,
   onActivate,
+  showCampaignName,
 }: {
   entry: PromotionInboxEntry;
   selected: boolean;
   onToggle: () => void;
   onActivate: () => void;
+  showCampaignName: boolean;
 }) {
   const deadline = formatDeadline(entry.deadlineDate);
   const isUrgent = deadline === "Vence hoje" || deadline === "Vence amanhã";
@@ -95,17 +205,21 @@ function SkuCampaignCard({
       )}
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate">
-          {entry.promotionName ?? entry.promotionTypeLabel ?? entry.promotionType}
-        </p>
-        <p className="text-sm font-medium text-foreground truncate mt-0.5">
+        {showCampaignName && (
+          <p className="text-sm font-semibold text-foreground truncate">
+            {entry.promotionName ?? entry.promotionTypeLabel ?? entry.promotionType}
+          </p>
+        )}
+        <p className={cn("text-sm font-medium text-foreground truncate", showCampaignName && "mt-0.5")}>
           {entry.title ?? entry.itemId}
         </p>
         <p className="text-[11px] font-mono text-muted-foreground truncate">
           {entry.sku ? `SKU ${entry.sku}` : entry.itemId}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 mt-1">
-          <PromotionTypeBadge type={entry.promotionType} label={entry.promotionTypeLabel ?? undefined} />
+          {showCampaignName && (
+            <PromotionTypeBadge type={entry.promotionType} label={entry.promotionTypeLabel ?? undefined} />
+          )}
           {deadline && (
             <span
               className={cn(
@@ -181,12 +295,18 @@ export default function Promotions() {
   const campaignFilter = parseCampaignValue(selectedCampaign);
   const skuQuery = search.trim();
 
+  const viewMode: ViewMode = useMemo(() => {
+    if (selectedCampaign !== ALL_CAMPAIGNS) return "candidates";
+    if (skuQuery.length > 0) return "candidates";
+    return "campaigns";
+  }, [selectedCampaign, skuQuery]);
+
   const { data: summary, isLoading: summaryLoading } = useGetPromotionsSummary({
     account_id: accountFilter,
     refresh: refreshing,
   });
 
-  const campaignsParams = {
+  const campaignsDropdownParams = {
     account_id: accountFilter,
     status: "active" as const,
     page: 1,
@@ -194,14 +314,35 @@ export default function Promotions() {
     refresh: refreshing,
   };
 
-  const { data: campaignsData, isLoading: campaignsLoading } = useListPromotions(campaignsParams, {
-    query: {
-      queryKey: getListPromotionsQueryKey(campaignsParams),
+  const campaignsListParams = {
+    account_id: accountFilter,
+    status: "active" as const,
+    page,
+    limit: 20,
+    refresh: refreshing,
+  };
+
+  const { data: campaignsDropdownData, isLoading: campaignsDropdownLoading } = useListPromotions(
+    campaignsDropdownParams,
+    {
+      query: {
+        queryKey: getListPromotionsQueryKey(campaignsDropdownParams),
+      },
     },
-  });
+  );
+
+  const { data: campaignsListData, isLoading: campaignsListLoading } = useListPromotions(
+    campaignsListParams,
+    {
+      query: {
+        queryKey: getListPromotionsQueryKey(campaignsListParams),
+        enabled: viewMode === "campaigns",
+      },
+    },
+  );
 
   const campaignOptions = useMemo(() => {
-    const campaigns = campaignsData?.data ?? [];
+    const campaigns = campaignsDropdownData?.data ?? [];
     return [
       { value: ALL_CAMPAIGNS, label: "Todos os tipos", hint: undefined as string | undefined },
       ...campaigns.map((p) => ({
@@ -210,12 +351,27 @@ export default function Promotions() {
         hint: p.accountNickname ?? undefined,
       })),
     ];
-  }, [campaignsData?.data]);
+  }, [campaignsDropdownData?.data]);
+
+  const selectedCampaignMeta = useMemo(() => {
+    if (!campaignFilter) return null;
+    const promo = campaignsDropdownData?.data?.find(
+      (p) =>
+        p.accountId === campaignFilter.accountId &&
+        p.id === campaignFilter.promotionId &&
+        p.type === campaignFilter.promotionType,
+    );
+    return {
+      ...campaignFilter,
+      promotionName: promo?.name,
+      promotionTypeLabel: promo?.typeLabel,
+      accountNickname: promo?.accountNickname,
+      deadlineDate: promo?.deadlineDate,
+    };
+  }, [campaignFilter, campaignsDropdownData?.data]);
 
   const inboxParams = {
-    account_id: campaignFilter?.accountId ?? accountFilter,
-    promotion_id: campaignFilter?.promotionId,
-    promotion_type: campaignFilter?.promotionType,
+    account_id: accountFilter,
     search: skuQuery || undefined,
     page,
     limit: 20,
@@ -225,9 +381,65 @@ export default function Promotions() {
   const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(inboxParams, {
     query: {
       queryKey: getListPromotionInboxQueryKey(inboxParams),
-      enabled: skuQuery.length > 0,
+      enabled: viewMode === "candidates" && selectedCampaign === ALL_CAMPAIGNS && skuQuery.length > 0,
     },
   });
+
+  const itemsParams = campaignFilter
+    ? {
+        account_id: campaignFilter.accountId,
+        promotion_type: campaignFilter.promotionType,
+        status: "candidate" as const,
+        search: skuQuery || undefined,
+        page,
+        limit: 20,
+        refresh: refreshing,
+      }
+    : null;
+
+  const { data: itemsData, isLoading: itemsLoading } = useListPromotionItems(
+    campaignFilter?.promotionId ?? "",
+    itemsParams ?? {
+      account_id: "",
+      promotion_type: "",
+      status: "candidate",
+      page: 1,
+      limit: 20,
+    },
+    {
+      query: {
+        queryKey: getListPromotionItemsQueryKey(
+          campaignFilter?.promotionId ?? "",
+          itemsParams ?? { account_id: "", promotion_type: "", page: 1, limit: 20 },
+        ),
+        enabled: viewMode === "candidates" && !!campaignFilter && !!itemsParams,
+      },
+    },
+  );
+
+  const candidateEntries: PromotionInboxEntry[] = useMemo(() => {
+    if (viewMode !== "candidates") return [];
+    if (campaignFilter && selectedCampaignMeta) {
+      return (itemsData?.data ?? []).map((item) =>
+        promotionItemToInboxEntry(item, selectedCampaignMeta),
+      );
+    }
+    return inboxData?.data ?? [];
+  }, [viewMode, campaignFilter, selectedCampaignMeta, itemsData?.data, inboxData?.data]);
+
+  const pagination =
+    viewMode === "campaigns"
+      ? campaignsListData?.pagination
+      : campaignFilter
+        ? itemsData?.pagination
+        : inboxData?.pagination;
+
+  const isLoading =
+    viewMode === "campaigns"
+      ? campaignsListLoading
+      : campaignFilter
+        ? itemsLoading
+        : inboxLoading;
 
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
     mutation: {
@@ -242,6 +454,12 @@ export default function Promotions() {
         setSelected(new Set());
         queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+        queryClient.invalidateQueries({
+          predicate: (q) =>
+            typeof q.queryKey[0] === "string" &&
+            (q.queryKey[0] as string).includes("/api/promotions/") &&
+            (q.queryKey[0] as string).endsWith("/items"),
+        });
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
       },
       onError: () => {
@@ -250,15 +468,17 @@ export default function Promotions() {
     },
   });
 
-  const inbox = inboxData?.data ?? [];
-  const pagination = inboxData?.pagination;
-  const isLoading = skuQuery.length > 0 && inboxLoading;
-
   function handleRefresh() {
     setRefreshing(true);
     queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+    queryClient.invalidateQueries({
+      predicate: (q) =>
+        typeof q.queryKey[0] === "string" &&
+        (q.queryKey[0] as string).includes("/api/promotions/") &&
+        (q.queryKey[0] as string).endsWith("/items"),
+    });
     setTimeout(() => setRefreshing(false), 500);
   }
 
@@ -273,7 +493,7 @@ export default function Promotions() {
   }
 
   function handleBulkActivate() {
-    const entries = inbox.filter((e) => selected.has(`${e.promotionId}:${e.itemId}`));
+    const entries = candidateEntries.filter((e) => selected.has(`${e.promotionId}:${e.itemId}`));
     if (entries.length === 0) return;
 
     const byPromo = new Map<string, PromotionInboxEntry[]>();
@@ -296,6 +516,9 @@ export default function Promotions() {
       });
     }
   }
+
+  const campaigns = campaignsListData?.data ?? [];
+  const showCampaignNameInCards = selectedCampaign === ALL_CAMPAIGNS;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -326,6 +549,7 @@ export default function Promotions() {
               setAccountId(v);
               setSelectedCampaign(ALL_CAMPAIGNS);
               setPage(1);
+              setSelected(new Set());
             }}
           >
             <SelectTrigger className="w-[160px] h-8 text-xs">
@@ -346,8 +570,9 @@ export default function Promotions() {
             onValueChange={(v) => {
               setSelectedCampaign(v);
               setPage(1);
+              setSelected(new Set());
             }}
-            disabled={campaignsLoading}
+            disabled={campaignsDropdownLoading}
           >
             <SelectTrigger className="w-[220px] h-8 text-xs">
               <SelectValue placeholder="Todos os tipos" />
@@ -356,9 +581,7 @@ export default function Promotions() {
               {campaignOptions.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   <span className="truncate">{o.label}</span>
-                  {o.hint && (
-                    <span className="text-muted-foreground ml-1">· {o.hint}</span>
-                  )}
+                  {o.hint && <span className="text-muted-foreground ml-1">· {o.hint}</span>}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -371,14 +594,15 @@ export default function Promotions() {
               onChange={(e) => {
                 setSearch(e.target.value);
                 setPage(1);
+                setSelected(new Set());
               }}
-              placeholder="Buscar por SKU do produto..."
+              placeholder="Buscar por SKU, MLB ou título..."
               className="pl-8 h-8 text-xs"
             />
           </div>
         </div>
 
-        {skuQuery.length > 0 && selected.size > 0 && (
+        {viewMode === "candidates" && selected.size > 0 && (
           <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
             <span className="text-xs text-foreground">{selected.size} selecionados</span>
             <Button size="sm" className="h-7 text-xs ml-auto" onClick={handleBulkActivate} disabled={bulkPending}>
@@ -390,41 +614,58 @@ export default function Promotions() {
           </div>
         )}
 
-        {skuQuery.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground text-sm space-y-2">
-            <p>Digite o SKU de um produto para ver as campanhas disponíveis.</p>
-            <p className="text-xs">
-              {campaignOptions.length > 1
-                ? `${campaignOptions.length - 1} campanha${campaignOptions.length - 1 !== 1 ? "s" : ""} ativa${campaignOptions.length - 1 !== 1 ? "s" : ""} no filtro acima.`
-                : "Nenhuma campanha ativa no momento."}
-            </p>
-          </div>
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : inbox.length === 0 ? (
+        ) : viewMode === "campaigns" ? (
+          campaigns.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              Nenhuma campanha ativa no momento.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {campaigns.map((promo) => (
+                <CampaignCard key={`${promo.accountId}-${promo.id}`} promo={promo} />
+              ))}
+            </div>
+          )
+        ) : candidateEntries.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            Nenhuma campanha disponível para o SKU &quot;{skuQuery}&quot;.
+            {campaignFilter
+              ? skuQuery
+                ? `Nenhum anúncio candidato para "${skuQuery}" nesta campanha.`
+                : "Nenhum anúncio candidato nesta campanha."
+              : `Nenhuma campanha disponível para "${skuQuery}".`}
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {inbox.length} campanha(s) disponível(eis) para o SKU &quot;{skuQuery}&quot;
-            </p>
-            {inbox.map((entry) => (
-              <SkuCampaignCard
+            {skuQuery && (
+              <p className="text-xs text-muted-foreground">
+                {candidateEntries.length} resultado(s)
+                {campaignFilter ? " nesta campanha" : ""} para &quot;{skuQuery}&quot;
+              </p>
+            )}
+            {!skuQuery && campaignFilter && selectedCampaignMeta && (
+              <p className="text-xs text-muted-foreground">
+                {candidateEntries.length} anúncio(s) candidato(s) em{" "}
+                {selectedCampaignMeta.promotionName ?? selectedCampaignMeta.promotionTypeLabel}
+              </p>
+            )}
+            {candidateEntries.map((entry) => (
+              <CandidateCard
                 key={`${entry.promotionId}-${entry.itemId}`}
                 entry={entry}
                 selected={selected.has(`${entry.promotionId}:${entry.itemId}`)}
                 onToggle={() => toggleSelect(entry.itemId, entry.promotionId)}
                 onActivate={() => setActivateTarget(entry)}
+                showCampaignName={showCampaignNameInCards}
               />
             ))}
           </div>
         )}
 
-        {skuQuery.length > 0 && pagination && pagination.totalPages > 1 && (
+        {pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 pt-2">
             <Button
               variant="outline"
