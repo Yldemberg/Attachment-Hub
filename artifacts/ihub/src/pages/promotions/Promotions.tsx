@@ -41,6 +41,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
+import {
+  bulkActivateToastContent,
+  buildBulkActivateItemsFromPrices,
+} from "./components/bulkActivateFeedback";
 
 const ALL_CAMPAIGNS = "all";
 const ALL_CANDIDATES = "all-candidates";
@@ -461,14 +465,10 @@ export default function Promotions() {
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
     mutation: {
       onSuccess: (data) => {
-        const ok = data.results?.filter((r) => r.ok).length ?? 0;
-        const fail = data.results?.filter((r) => !r.ok).length ?? 0;
-        toast({
-          title: "Ativação em massa concluída",
-          description: `${ok} ativados${fail > 0 ? `, ${fail} com erro` : ""}.`,
-          variant: fail > 0 ? "destructive" : "default",
-        });
-        setSelected(new Set());
+        toast(bulkActivateToastContent(data.results));
+        if ((data.results?.filter((r) => r.ok).length ?? 0) > 0) {
+          setSelected(new Set());
+        }
         queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
         queryClient.invalidateQueries({
@@ -480,7 +480,11 @@ export default function Promotions() {
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
       },
       onError: () => {
-        toast({ title: "Erro na ativação em massa", variant: "destructive" });
+        toast({
+          title: "Erro na ativação em massa",
+          description: "Não foi possível comunicar com o servidor. Tente novamente.",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -549,7 +553,7 @@ export default function Promotions() {
         data: {
           accountId: first.accountId,
           promotionType: first.promotionType,
-          items: group.map((e) => ({ itemId: e.itemId, useSuggested: true })),
+          items: buildBulkActivateItemsFromPrices(group),
         },
       });
     }

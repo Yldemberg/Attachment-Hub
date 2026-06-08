@@ -28,6 +28,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
+import {
+  bulkActivateToastContent,
+  buildBulkActivateItemsFromPrices,
+} from "./components/bulkActivateFeedback";
 
 const ITEM_STATUS_TABS = [
   { value: undefined, label: "Todos" },
@@ -200,15 +204,24 @@ export default function PromotionDetail() {
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
     mutation: {
       onSuccess: (data) => {
-        const ok = data.results?.filter((r) => r.ok).length ?? 0;
-        toast({ title: `${ok} itens ativados com sucesso` });
-        setSelected(new Set());
+        const toastContent = bulkActivateToastContent(data.results);
+        toast(toastContent);
+        if ((data.results?.filter((r) => r.ok).length ?? 0) > 0) {
+          setSelected(new Set());
+        }
         queryClient.invalidateQueries({
           queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
         });
         queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+      },
+      onError: () => {
+        toast({
+          title: "Erro na ativação em massa",
+          description: "Não foi possível comunicar com o servidor. Tente novamente.",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -242,12 +255,13 @@ export default function PromotionDetail() {
 
   function handleBulkActivate() {
     if (!promoId || selected.size === 0) return;
+    const selectedItems = items.filter((item) => selected.has(item.itemId));
     bulkActivate({
       promotionId: promoId,
       data: {
         accountId,
         promotionType,
-        items: [...selected].map((itemId) => ({ itemId, useSuggested: true })),
+        items: buildBulkActivateItemsFromPrices(selectedItems),
       },
     });
   }
@@ -364,7 +378,11 @@ export default function PromotionDetail() {
                   onClick={handleBulkActivate}
                   disabled={bulkPending}
                 >
-                  Ativar com preço sugerido
+                  {bulkPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    "Ativar com preço sugerido"
+                  )}
                 </Button>
                 <Button
                   size="sm"

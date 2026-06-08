@@ -608,10 +608,19 @@ export async function bulkActivatePromotionItems(
   accountId: string,
   promotionId: string,
   promotionType: string,
-  items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean }>,
+  items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number }>,
 ): Promise<Array<{ itemId: string; ok: boolean; error?: string }>> {
   const results: Array<{ itemId: string; ok: boolean; error?: string }> = [];
   const chunkSize = 3;
+  const noPriceTypes = new Set([
+    "VOLUME",
+    "MARKETPLACE_CAMPAIGN",
+    "SMART",
+    "PRICE_MATCHING",
+    "PRE_NEGOTIATED",
+    "SELLER_COUPON_CAMPAIGN",
+  ]);
+  const stockRequiredTypes = new Set(["LIGHTNING", "UNHEALTHY_STOCK"]);
 
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunk = items.slice(i, i + chunkSize);
@@ -619,24 +628,64 @@ export async function bulkActivatePromotionItems(
       chunk.map(async (item) => {
         try {
           let dealPrice = item.dealPrice;
-          if (item.useSuggested && dealPrice == null) {
+          let stock = item.stock;
+
+          const needsSuggestedPrice = item.useSuggested && dealPrice == null;
+          const needsStock = stock == null && stockRequiredTypes.has(promotionType);
+
+          if (needsSuggestedPrice || needsStock) {
             const promoItems = await listPromotionItems(accountId, promotionId, promotionType, {
               itemId: item.itemId,
               bypassCache: true,
             });
-            const pi = promoItems.find((x) => x.id === item.itemId);
-            dealPrice = pi?.suggested_discounted_price ?? undefined;
+            let pi = promoItems.find((x) => x.id === item.itemId);
+            if (pi) {
+              try {
+                const contexts = await fetchMlItemPromotions(accountId, item.itemId);
+                const ctx = contexts.find(
+                  (c) =>
+                    c.type === promotionType &&
+                    (c.id === promotionId || c.id == null || c.id === ""),
+                );
+                pi = mergePromotionItemWithContext(pi, ctx);
+              } catch {
+                // enriquecimento opcional
+              }
+
+              if (needsSuggestedPrice) {
+                dealPrice = resolveMlSuggestedPrice(pi) ?? undefined;
+              }
+              if (needsStock) {
+                const bounds = parsePromotionStockBounds(pi.stock);
+                stock = bounds.stockMin ?? 1;
+              }
+            }
           }
-          const noPriceTypes = ["VOLUME", "MARKETPLACE_CAMPAIGN", "SMART", "PRICE_MATCHING", "PRE_NEGOTIATED"];
-          if (dealPrice == null && !noPriceTypes.includes(promotionType)) {
-            results.push({ itemId: item.itemId, ok: false, error: "Preço não informado" });
+
+          if (dealPrice == null && !noPriceTypes.has(promotionType)) {
+            results.push({
+              itemId: item.itemId,
+              ok: false,
+              error: "Preço promocional não disponível para este anúncio",
+            });
             return;
           }
+
+          if (stockRequiredTypes.has(promotionType) && (stock == null || stock < 1)) {
+            results.push({
+              itemId: item.itemId,
+              ok: false,
+              error: "Quantidade de estoque não informada",
+            });
+            return;
+          }
+
           await activatePromotionItem(accountId, item.itemId, {
             promotionId,
             promotionType,
             dealPrice,
             topDealPrice: item.topDealPrice,
+            stock,
           });
           results.push({ itemId: item.itemId, ok: true });
         } catch (err) {
