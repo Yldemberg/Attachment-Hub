@@ -375,6 +375,33 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
   }
 });
 
+router.post("/promotions/:promotionId/items/bulk", ...auth, async (req, res) => {
+  try {
+    const promotionId = paramString(req.params.promotionId);
+    const { accountId, promotionType, items } = req.body as {
+      accountId: string;
+      promotionType: string;
+      items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number }>;
+    };
+
+    if (!accountId || !promotionType || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "accountId, promotionType e items são obrigatórios" });
+      return;
+    }
+
+    const accounts = await getUserAccounts(req.user!.id, accountId);
+    if (!accounts.some((a) => a.id === accountId)) {
+      res.status(404).json({ error: "Conta não encontrada" });
+      return;
+    }
+
+    const results = await bulkActivatePromotionItems(accountId, promotionId, promotionType, items);
+    res.json({ results });
+  } catch (err) {
+    res.status(400).json({ error: mapMlPromotionError(err) });
+  }
+});
+
 router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) => {
   try {
     const promotionId = paramString(req.params.promotionId);
@@ -466,33 +493,6 @@ router.delete("/promotions/:promotionId/items/:itemId", ...auth, async (req, res
 
     const result = await deletePromotionItem(account_id, itemId, promotionId, promotion_type);
     res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: mapMlPromotionError(err) });
-  }
-});
-
-router.post("/promotions/:promotionId/items/bulk", ...auth, async (req, res) => {
-  try {
-    const promotionId = paramString(req.params.promotionId);
-    const { accountId, promotionType, items } = req.body as {
-      accountId: string;
-      promotionType: string;
-      items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean }>;
-    };
-
-    if (!accountId || !promotionType || !Array.isArray(items) || items.length === 0) {
-      res.status(400).json({ error: "accountId, promotionType e items são obrigatórios" });
-      return;
-    }
-
-    const accounts = await getUserAccounts(req.user!.id, accountId);
-    if (!accounts.some((a) => a.id === accountId)) {
-      res.status(404).json({ error: "Conta não encontrada" });
-      return;
-    }
-
-    const results = await bulkActivatePromotionItems(accountId, promotionId, promotionType, items);
-    res.json({ results });
   } catch (err) {
     res.status(400).json({ error: mapMlPromotionError(err) });
   }

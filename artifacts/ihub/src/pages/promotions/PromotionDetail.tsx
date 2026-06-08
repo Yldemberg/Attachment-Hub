@@ -31,6 +31,7 @@ import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 import {
   bulkActivateToastContent,
   buildBulkActivateItemsFromPrices,
+  bulkActivateErrorMessage,
 } from "./components/bulkActivateFeedback";
 
 const ITEM_STATUS_TABS = [
@@ -216,10 +217,10 @@ export default function PromotionDetail() {
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
       },
-      onError: () => {
+      onError: (err) => {
         toast({
           title: "Erro na ativação em massa",
-          description: "Não foi possível comunicar com o servidor. Tente novamente.",
+          description: bulkActivateErrorMessage(err),
           variant: "destructive",
         });
       },

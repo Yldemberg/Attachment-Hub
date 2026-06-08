@@ -48,3 +48,11 @@ export function buildBulkActivateItemsFromPrices(
     useSuggested: entry.suggestedDiscountedPrice == null,
   }));
 }
+
+export function bulkActivateErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = String((err as { message: string }).message);
+    if (msg.trim()) return msg;
+  }
+  return "Não foi possível comunicar com o servidor. Tente novamente.";
+}
