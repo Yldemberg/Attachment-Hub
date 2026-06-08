@@ -5,7 +5,6 @@ import {
   useListPromotions,
   useListPromotionItems,
   useListAccounts,
-  useBulkActivatePromotionItems,
   getListPromotionInboxQueryKey,
   getListPromotionsQueryKey,
   getListPromotionItemsQueryKey,
@@ -43,8 +42,9 @@ import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBa
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 import {
   bulkActivateToastContent,
-  buildBulkActivateItemsFromPrices,
+  buildBulkActivatePayloadItems,
   bulkActivateErrorMessage,
+  activatePromotionItemsSequentially,
 } from "./components/bulkActivateFeedback";
 
 const ALL_CAMPAIGNS = "all";
@@ -295,6 +295,8 @@ export default function Promotions() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activateTarget, setActivateTarget] = useState<PromotionInboxEntry | null>(null);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -463,32 +465,17 @@ export default function Promotions() {
         ? itemsLoading
         : inboxLoading;
 
-  const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
-    mutation: {
-      onSuccess: (data) => {
-        toast(bulkActivateToastContent(data.results));
-        if ((data.results?.filter((r) => r.ok).length ?? 0) > 0) {
-          setSelected(new Set());
-        }
-        queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
-        queryClient.invalidateQueries({
-          predicate: (q) =>
-            typeof q.queryKey[0] === "string" &&
-            (q.queryKey[0] as string).includes("/api/promotions/") &&
-            (q.queryKey[0] as string).endsWith("/items"),
-        });
-        queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
-      },
-      onError: (err) => {
-        toast({
-          title: "Erro na ativação em massa",
-          description: bulkActivateErrorMessage(err),
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  async function invalidateAfterBulkActivate() {
+    await queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
+    await queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+    await queryClient.invalidateQueries({
+      predicate: (q) =>
+        typeof q.queryKey[0] === "string" &&
+        (q.queryKey[0] as string).includes("/api/promotions/") &&
+        (q.queryKey[0] as string).endsWith("/items"),
+    });
+    await queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
+  }
 
   function handleRefresh() {
     setRefreshing(true);
@@ -535,9 +522,9 @@ export default function Promotions() {
     });
   }
 
-  function handleBulkActivate() {
+  async function handleBulkActivate() {
     const entries = candidateEntries.filter((e) => selected.has(entrySelectionKey(e)));
-    if (entries.length === 0) return;
+    if (entries.length === 0 || bulkPending) return;
 
     const byPromo = new Map<string, PromotionInboxEntry[]>();
     for (const e of entries) {
@@ -547,16 +534,44 @@ export default function Promotions() {
       byPromo.set(key, list);
     }
 
-    for (const [, group] of byPromo) {
-      const first = group[0];
-      bulkActivate({
-        promotionId: first.promotionId,
-        data: {
+    setBulkPending(true);
+    setBulkProgress({ done: 0, total: entries.length });
+
+    try {
+      const allResults: Awaited<ReturnType<typeof activatePromotionItemsSequentially>> = [];
+      let processed = 0;
+
+      for (const [, group] of byPromo) {
+        const first = group[0];
+        const payloadItems = buildBulkActivatePayloadItems(group, first.promotionType);
+        const results = await activatePromotionItemsSequentially({
+          promotionId: first.promotionId,
           accountId: first.accountId,
           promotionType: first.promotionType,
-          items: buildBulkActivateItemsFromPrices(group),
-        },
+          items: payloadItems,
+          onProgress: (done) => {
+            setBulkProgress({ done: processed + done, total: entries.length });
+          },
+        });
+        allResults.push(...results);
+        processed += group.length;
+        setBulkProgress({ done: processed, total: entries.length });
+      }
+
+      toast(bulkActivateToastContent(allResults));
+      if (allResults.some((r) => r.ok)) {
+        setSelected(new Set());
+        await invalidateAfterBulkActivate();
+      }
+    } catch (err) {
+      toast({
+        title: "Erro na ativação em massa",
+        description: bulkActivateErrorMessage(err),
+        variant: "destructive",
       });
+    } finally {
+      setBulkPending(false);
+      setBulkProgress(null);
     }
   }
 
@@ -679,7 +694,12 @@ export default function Promotions() {
                   disabled={bulkPending}
                 >
                   {bulkPending ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      {bulkProgress
+                        ? `Ativando ${bulkProgress.done}/${bulkProgress.total}…`
+                        : "Ativando…"}
+                    </>
                   ) : (
                     "Ativar com preço sugerido"
                   )}

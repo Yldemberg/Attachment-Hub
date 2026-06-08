@@ -3,7 +3,6 @@ import { useParams, useLocation, useSearch } from "wouter";
 import {
   useGetPromotion,
   useListPromotionItems,
-  useBulkActivatePromotionItems,
   getListPromotionItemsQueryKey,
   getListPromotionInboxQueryKey,
   getGetPromotionQueryKey,
@@ -30,8 +29,9 @@ import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBa
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 import {
   bulkActivateToastContent,
-  buildBulkActivateItemsFromPrices,
+  buildBulkActivatePayloadItems,
   bulkActivateErrorMessage,
+  activatePromotionItemsSequentially,
 } from "./components/bulkActivateFeedback";
 
 const ITEM_STATUS_TABS = [
@@ -155,6 +155,8 @@ export default function PromotionDetail() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activateTarget, setActivateTarget] = useState<PromotionItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -202,30 +204,14 @@ export default function PromotionDetail() {
   const promotion = promotionFromGet ?? itemsData?.promotion ?? null;
   const promoLoading = promotionLoading && itemsLoading && !promotion;
 
-  const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
-    mutation: {
-      onSuccess: (data) => {
-        const toastContent = bulkActivateToastContent(data.results);
-        toast(toastContent);
-        if ((data.results?.filter((r) => r.ok).length ?? 0) > 0) {
-          setSelected(new Set());
-        }
-        queryClient.invalidateQueries({
-          queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
-        });
-        queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
-      },
-      onError: (err) => {
-        toast({
-          title: "Erro na ativação em massa",
-          description: bulkActivateErrorMessage(err),
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  async function invalidateAfterBulkActivate() {
+    await queryClient.invalidateQueries({
+      queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
+    });
+    await queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
+    await queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
+    await queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+  }
 
   if (!accountId || !promotionType) {
     return (
@@ -254,17 +240,38 @@ export default function PromotionDetail() {
     setTimeout(() => setRefreshing(false), 500);
   }
 
-  function handleBulkActivate() {
-    if (!promoId || selected.size === 0) return;
+  async function handleBulkActivate() {
+    if (!promoId || selected.size === 0 || bulkPending) return;
     const selectedItems = items.filter((item) => selected.has(item.itemId));
-    bulkActivate({
-      promotionId: promoId,
-      data: {
+    const payloadItems = buildBulkActivatePayloadItems(selectedItems, promotionType);
+
+    setBulkPending(true);
+    setBulkProgress({ done: 0, total: payloadItems.length });
+
+    try {
+      const results = await activatePromotionItemsSequentially({
+        promotionId: promoId,
         accountId,
         promotionType,
-        items: buildBulkActivateItemsFromPrices(selectedItems),
-      },
-    });
+        items: payloadItems,
+        onProgress: (done, total) => setBulkProgress({ done, total }),
+      });
+
+      toast(bulkActivateToastContent(results));
+      if (results.some((r) => r.ok)) {
+        setSelected(new Set());
+        await invalidateAfterBulkActivate();
+      }
+    } catch (err) {
+      toast({
+        title: "Erro na ativação em massa",
+        description: bulkActivateErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setBulkPending(false);
+      setBulkProgress(null);
+    }
   }
 
   function toggleSelectAll() {
@@ -380,7 +387,12 @@ export default function PromotionDetail() {
                   disabled={bulkPending}
                 >
                   {bulkPending ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      {bulkProgress
+                        ? `Ativando ${bulkProgress.done}/${bulkProgress.total}…`
+                        : "Ativando…"}
+                    </>
                   ) : (
                     "Ativar com preço sugerido"
                   )}
