@@ -878,6 +878,12 @@ paths:
             type: string
         - name: search
           in: query
+          description: Filter by product SKU, MLB item ID, title or campaign name
+          schema:
+            type: string
+        - name: promotion_id
+          in: query
+          description: Filter by specific campaign ID (use with promotion_type)
           schema:
             type: string
         - name: promotion_type

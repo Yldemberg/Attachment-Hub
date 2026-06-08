@@ -776,7 +776,14 @@ export type GetPromotionsSummaryParams = {
 
 export type ListPromotionInboxParams = {
   account_id?: string;
+  /**
+   * Filter by product SKU, MLB item ID, title or campaign name
+   */
   search?: string;
+  /**
+   * Filter by specific campaign ID (use with promotion_type)
+   */
+  promotion_id?: string;
   promotion_type?: string;
   page?: number;
   limit?: number;

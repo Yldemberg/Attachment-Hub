@@ -932,7 +932,14 @@ export const listPromotionInboxQueryRefreshDefault = false;
 
 export const ListPromotionInboxQueryParams = zod.object({
   account_id: zod.coerce.string().optional(),
-  search: zod.coerce.string().optional(),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by product SKU, MLB item ID, title or campaign name"),
+  promotion_id: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by specific campaign ID (use with promotion_type)"),
   promotion_type: zod.coerce.string().optional(),
   page: zod.coerce.number().default(listPromotionInboxQueryPageDefault),
   limit: zod.coerce.number().default(listPromotionInboxQueryLimitDefault),

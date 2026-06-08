@@ -9,7 +9,7 @@ import {
   getListPromotionsQueryKey,
   getGetPromotionsSummaryQueryKey,
 } from "@workspace/api-client-react";
-import type { PromotionInboxEntry, Promotion } from "@workspace/api-client-react";
+import type { PromotionInboxEntry } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -39,23 +39,18 @@ import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
 
-const PROMOTION_TYPE_OPTIONS = [
-  { value: "all", label: "Todos os tipos" },
-  { value: "DEAL", label: "Campanha tradicional" },
-  { value: "MARKETPLACE_CAMPAIGN", label: "Co-fondeada ML" },
-  { value: "VOLUME", label: "Desconto por volume" },
-  { value: "LIGHTNING", label: "Oferta relâmpago" },
-  { value: "DOD", label: "Oferta do dia" },
-  { value: "SELLER_CAMPAIGN", label: "Campanha própria" },
-  { value: "PRICE_DISCOUNT", label: "Desconto individual" },
-  { value: "PRE_NEGOTIATED", label: "Pré-acordado" },
-  { value: "SMART", label: "Automática" },
-  { value: "PRICE_MATCHING", label: "Preço competitivo" },
-  { value: "UNHEALTHY_STOCK", label: "Liquidação Full" },
-  { value: "SELLER_COUPON_CAMPAIGN", label: "Cupom" },
-];
+const ALL_CAMPAIGNS = "all";
 
-type Tab = "campaigns" | "inbox";
+function parseCampaignValue(value: string): {
+  accountId?: string;
+  promotionId?: string;
+  promotionType?: string;
+} | null {
+  if (value === ALL_CAMPAIGNS) return null;
+  const [accountId, promotionId, promotionType] = value.split("::");
+  if (!accountId || !promotionId || !promotionType) return null;
+  return { accountId, promotionId, promotionType };
+}
 
 function KpiCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
@@ -66,7 +61,7 @@ function KpiCard({ label, value, accent }: { label: string; value: number; accen
   );
 }
 
-function InboxCard({
+function SkuCampaignCard({
   entry,
   selected,
   onToggle,
@@ -100,13 +95,17 @@ function InboxCard({
       )}
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{entry.title ?? entry.itemId}</p>
-        <p className="text-[11px] font-mono text-muted-foreground truncate">{entry.itemId}</p>
+        <p className="text-sm font-semibold text-foreground truncate">
+          {entry.promotionName ?? entry.promotionTypeLabel ?? entry.promotionType}
+        </p>
+        <p className="text-sm font-medium text-foreground truncate mt-0.5">
+          {entry.title ?? entry.itemId}
+        </p>
+        <p className="text-[11px] font-mono text-muted-foreground truncate">
+          {entry.sku ? `SKU ${entry.sku}` : entry.itemId}
+        </p>
         <div className="flex flex-wrap items-center gap-1.5 mt-1">
           <PromotionTypeBadge type={entry.promotionType} label={entry.promotionTypeLabel ?? undefined} />
-          {entry.promotionName && (
-            <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{entry.promotionName}</span>
-          )}
           {deadline && (
             <span
               className={cn(
@@ -163,66 +162,9 @@ function InboxCard({
   );
 }
 
-function CampaignCard({ promo }: { promo: Promotion }) {
-  const deadline = formatDeadline(promo.deadlineDate);
-  const detailHref = `/promotions/${encodeURIComponent(promo.id)}?account_id=${promo.accountId}&promotion_type=${promo.type}`;
-
-  return (
-    <Link href={detailHref}>
-      <div className="bg-card border border-card-border rounded-xl px-4 py-3 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">{promo.name ?? promo.id}</p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-              <PromotionTypeBadge type={promo.type} label={promo.typeLabel ?? undefined} />
-              <span
-                className={cn(
-                  "text-[10px] font-medium px-1.5 py-0.5 rounded-md border",
-                  promo.status === "started"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : promo.status === "pending"
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-slate-100 text-slate-500 border-slate-200",
-                )}
-              >
-                {promo.status === "started" ? "Ativa" : promo.status === "pending" ? "Pendente" : "Encerrada"}
-              </span>
-              {(promo.candidateCount ?? 0) > 0 && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200">
-                  {promo.candidateCount} candidatos
-                </span>
-              )}
-            </div>
-            {promo.benefits && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {promo.benefits.meliPercent != null && `ML ${promo.benefits.meliPercent}%`}
-                {promo.benefits.sellerPercent != null && ` · Você ${promo.benefits.sellerPercent}%`}
-                {promo.benefits.buyQuantity != null &&
-                  promo.benefits.payQuantity != null &&
-                  ` · Leve ${promo.benefits.buyQuantity} pague ${promo.benefits.payQuantity}`}
-              </p>
-            )}
-          </div>
-          <div className="text-right flex-shrink-0">
-            {deadline && (
-              <p className={cn("text-xs font-medium", deadline.includes("Vence") ? "text-red-600" : "text-muted-foreground")}>
-                {deadline}
-              </p>
-            )}
-            {promo.accountNickname && (
-              <p className="text-[10px] text-muted-foreground mt-1">{promo.accountNickname}</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export default function Promotions() {
-  const [tab, setTab] = useState<Tab>("campaigns");
   const [accountId, setAccountId] = useState<string>("all");
-  const [promotionType, setPromotionType] = useState("all");
+  const [selectedCampaign, setSelectedCampaign] = useState(ALL_CAMPAIGNS);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
@@ -236,49 +178,56 @@ export default function Promotions() {
   const accounts = accountsData?.data ?? [];
 
   const accountFilter = accountId === "all" ? undefined : accountId;
-  const typeFilter = promotionType === "all" ? undefined : promotionType;
+  const campaignFilter = parseCampaignValue(selectedCampaign);
+  const skuQuery = search.trim();
 
   const { data: summary, isLoading: summaryLoading } = useGetPromotionsSummary({
     account_id: accountFilter,
     refresh: refreshing,
   });
 
-  const inboxParams = {
-    account_id: accountFilter,
-    promotion_type: typeFilter,
-    search: search.trim() || undefined,
-    page,
-    limit: 20,
-    refresh: refreshing,
-  };
   const campaignsParams = {
     account_id: accountFilter,
-    promotion_type: typeFilter,
     status: "active" as const,
+    page: 1,
+    limit: 100,
+    refresh: refreshing,
+  };
+
+  const { data: campaignsData, isLoading: campaignsLoading } = useListPromotions(campaignsParams, {
+    query: {
+      queryKey: getListPromotionsQueryKey(campaignsParams),
+    },
+  });
+
+  const campaignOptions = useMemo(() => {
+    const campaigns = campaignsData?.data ?? [];
+    return [
+      { value: ALL_CAMPAIGNS, label: "Todos os tipos", hint: undefined as string | undefined },
+      ...campaigns.map((p) => ({
+        value: `${p.accountId}::${p.id}::${p.type}`,
+        label: p.name ?? p.typeLabel ?? p.id,
+        hint: p.accountNickname ?? undefined,
+      })),
+    ];
+  }, [campaignsData?.data]);
+
+  const inboxParams = {
+    account_id: campaignFilter?.accountId ?? accountFilter,
+    promotion_id: campaignFilter?.promotionId,
+    promotion_type: campaignFilter?.promotionType,
+    search: skuQuery || undefined,
     page,
     limit: 20,
     refresh: refreshing,
   };
 
-  const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(
-    inboxParams,
-    {
-      query: {
-        queryKey: getListPromotionInboxQueryKey(inboxParams),
-        enabled: tab === "inbox",
-      },
+  const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(inboxParams, {
+    query: {
+      queryKey: getListPromotionInboxQueryKey(inboxParams),
+      enabled: skuQuery.length > 0,
     },
-  );
-
-  const { data: campaignsData, isLoading: campaignsLoading } = useListPromotions(
-    campaignsParams,
-    {
-      query: {
-        queryKey: getListPromotionsQueryKey(campaignsParams),
-        enabled: tab !== "inbox",
-      },
-    },
-  );
+  });
 
   const { mutate: bulkActivate, isPending: bulkPending } = useBulkActivatePromotionItems({
     mutation: {
@@ -302,19 +251,8 @@ export default function Promotions() {
   });
 
   const inbox = inboxData?.data ?? [];
-  const campaigns = useMemo(() => {
-    const list = campaignsData?.data ?? [];
-    if (tab !== "campaigns" || !search.trim()) return list;
-    const q = search.trim().toLowerCase();
-    return list.filter(
-      (p) =>
-        (p.name ?? "").toLowerCase().includes(q) ||
-        (p.typeLabel ?? "").toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q),
-    );
-  }, [campaignsData?.data, search, tab]);
-  const pagination = tab === "inbox" ? inboxData?.pagination : campaignsData?.pagination;
-  const isLoading = tab === "inbox" ? inboxLoading : campaignsLoading;
+  const pagination = inboxData?.pagination;
+  const isLoading = skuQuery.length > 0 && inboxLoading;
 
   function handleRefresh() {
     setRefreshing(true);
@@ -324,17 +262,18 @@ export default function Promotions() {
     setTimeout(() => setRefreshing(false), 500);
   }
 
-  function toggleSelect(itemId: string) {
+  function toggleSelect(itemId: string, promotionId: string) {
+    const key = `${promotionId}:${itemId}`;
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
   function handleBulkActivate() {
-    const entries = inbox.filter((e) => selected.has(e.itemId));
+    const entries = inbox.filter((e) => selected.has(`${e.promotionId}:${e.itemId}`));
     if (entries.length === 0) return;
 
     const byPromo = new Map<string, PromotionInboxEntry[]>();
@@ -381,7 +320,14 @@ export default function Promotions() {
         )}
 
         <div className="flex flex-wrap gap-2 items-center">
-          <Select value={accountId} onValueChange={(v) => { setAccountId(v); setPage(1); }}>
+          <Select
+            value={accountId}
+            onValueChange={(v) => {
+              setAccountId(v);
+              setSelectedCampaign(ALL_CAMPAIGNS);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-[160px] h-8 text-xs">
               <SelectValue placeholder="Conta" />
             </SelectTrigger>
@@ -395,50 +341,44 @@ export default function Promotions() {
             </SelectContent>
           </Select>
 
-          <Select value={promotionType} onValueChange={(v) => { setPromotionType(v); setPage(1); }}>
-            <SelectTrigger className="w-[180px] h-8 text-xs">
-              <SelectValue />
+          <Select
+            value={selectedCampaign}
+            onValueChange={(v) => {
+              setSelectedCampaign(v);
+              setPage(1);
+            }}
+            disabled={campaignsLoading}
+          >
+            <SelectTrigger className="w-[220px] h-8 text-xs">
+              <SelectValue placeholder="Todos os tipos" />
             </SelectTrigger>
             <SelectContent>
-              {PROMOTION_TYPE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              {campaignOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  <span className="truncate">{o.label}</span>
+                  {o.hint && (
+                    <span className="text-muted-foreground ml-1">· {o.hint}</span>
+                  )}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <div className="relative flex-1 min-w-[140px]">
+          <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Buscar produto ou campanha..."
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Buscar por SKU do produto..."
               className="pl-8 h-8 text-xs"
             />
           </div>
         </div>
 
-        <div className="flex gap-1 border-b border-border">
-          {([
-            ["campaigns", "Campanhas ativas"],
-            ["inbox", "Pendências"],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => { setTab(key); setPage(1); }}
-              className={cn(
-                "px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
-                tab === key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "inbox" && selected.size > 0 && (
+        {skuQuery.length > 0 && selected.size > 0 && (
           <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
             <span className="text-xs text-foreground">{selected.size} selecionados</span>
             <Button size="sm" className="h-7 text-xs ml-auto" onClick={handleBulkActivate} disabled={bulkPending}>
@@ -450,41 +390,41 @@ export default function Promotions() {
           </div>
         )}
 
-        {isLoading ? (
+        {skuQuery.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground text-sm space-y-2">
+            <p>Digite o SKU de um produto para ver as campanhas disponíveis.</p>
+            <p className="text-xs">
+              {campaignOptions.length > 1
+                ? `${campaignOptions.length - 1} campanha${campaignOptions.length - 1 !== 1 ? "s" : ""} ativa${campaignOptions.length - 1 !== 1 ? "s" : ""} no filtro acima.`
+                : "Nenhuma campanha ativa no momento."}
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : tab === "inbox" ? (
-          inbox.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              Nenhum candidato pendente encontrado.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {inbox.map((entry) => (
-                <InboxCard
-                  key={`${entry.promotionId}-${entry.itemId}`}
-                  entry={entry}
-                  selected={selected.has(entry.itemId)}
-                  onToggle={() => toggleSelect(entry.itemId)}
-                  onActivate={() => setActivateTarget(entry)}
-                />
-              ))}
-            </div>
-          )
-        ) : campaigns.length === 0 ? (
+        ) : inbox.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            Nenhuma campanha ativa no momento.
+            Nenhuma campanha disponível para o SKU &quot;{skuQuery}&quot;.
           </div>
         ) : (
           <div className="space-y-2">
-            {campaigns.map((promo) => (
-              <CampaignCard key={`${promo.accountId}-${promo.id}`} promo={promo} />
+            <p className="text-xs text-muted-foreground">
+              {inbox.length} campanha(s) disponível(eis) para o SKU &quot;{skuQuery}&quot;
+            </p>
+            {inbox.map((entry) => (
+              <SkuCampaignCard
+                key={`${entry.promotionId}-${entry.itemId}`}
+                entry={entry}
+                selected={selected.has(`${entry.promotionId}:${entry.itemId}`)}
+                onToggle={() => toggleSelect(entry.itemId, entry.promotionId)}
+                onActivate={() => setActivateTarget(entry)}
+              />
             ))}
           </div>
         )}
 
-        {pagination && pagination.totalPages > 1 && (
+        {skuQuery.length > 0 && pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 pt-2">
             <Button
               variant="outline"

@@ -153,6 +153,7 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
     const {
       account_id,
       search = "",
+      promotion_id,
       promotion_type,
       page = "1",
       limit = "20",
@@ -172,16 +173,18 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
       )
     ).flat();
 
+    if (promotion_id) {
+      inbox = inbox.filter((e) => e.promotionId === promotion_id);
+    }
     if (promotion_type) {
       inbox = inbox.filter((e) => e.promotionType === promotion_type);
     }
     if (search.trim()) {
       inbox = inbox.filter(
         (e) =>
-          matchesSearch(e.title, search) ||
           matchesSearch(e.sku, search) ||
           matchesSearch(e.itemId, search) ||
-          matchesSearch(e.promotionName, search),
+          matchesSearch(e.title, search),
       );
     }
 
