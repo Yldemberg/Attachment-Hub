@@ -101,21 +101,45 @@ export function getPromotionActivationConfig(promotionType: string): PromotionAc
   };
 }
 
-/** Price bounds for validation (sale price must fall within range when ML provides limits). */
+/**
+ * Faixa de preço promocional permitida pelo ML.
+ * - min_discounted_price → preço mínimo (desconto máximo)
+ * - max_discounted_price → preço máximo credível (desconto mínimo)
+ * - max_original_price (LIGHTNING) → piso alternativo quando enviado
+ */
 export function getPriceBounds(
   promotionType: string,
   item: PromotionItemFields,
 ): { min: number | null; max: number | null } {
+  const minDiscounted = item.minDiscountedPrice ?? null;
+  const maxDiscounted = item.maxDiscountedPrice ?? null;
+  const maxOriginal = item.maxOriginalPrice ?? null;
+  const original = item.originalPrice ?? null;
+
+  let min: number | null;
+  let max: number | null;
+
   if (promotionType === "LIGHTNING" || promotionType === "DOD") {
-    return {
-      min: item.maxOriginalPrice ?? item.minDiscountedPrice ?? null,
-      max: item.minDiscountedPrice ?? item.maxDiscountedPrice ?? null,
-    };
+    min = maxOriginal ?? minDiscounted;
+    // Teto: max_discounted_price; nunca reutilizar min_discounted como teto.
+    max = maxDiscounted ?? original;
+  } else {
+    min = minDiscounted;
+    max = maxDiscounted;
   }
-  return {
-    min: item.minDiscountedPrice ?? null,
-    max: item.maxDiscountedPrice ?? null,
-  };
+
+  // Corrige faixa degenerada (ex.: R$ 20,97 — R$ 20,97) quando há preço original maior.
+  if (min != null && max != null && min >= max && original != null && original > min) {
+    max = maxDiscounted ?? original;
+  }
+  if (min != null && max != null && min > max) {
+    const lo = Math.min(min, max);
+    const hi = Math.max(min, max);
+    min = lo;
+    max = hi;
+  }
+
+  return { min, max };
 }
 
 export function calcDiscountPercent(original: number, finalPrice: number): number {
