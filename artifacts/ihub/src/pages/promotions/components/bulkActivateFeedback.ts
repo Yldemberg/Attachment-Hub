@@ -50,6 +50,7 @@ type BulkItemSource = {
   availableQuantity?: number | null;
   stockMin?: number | null;
   stockMax?: number | null;
+  offerId?: string | null;
 };
 
 export function buildBulkActivatePayloadItems(entries: BulkItemSource[], promotionType: string) {
@@ -83,22 +84,49 @@ export function buildBulkActivatePayloadItems(entries: BulkItemSource[], promoti
       itemId: entry.itemId,
       dealPrice: entry.suggestedDiscountedPrice ?? undefined,
       stock: stockStr != null ? parseInt(stockStr, 10) : undefined,
+      offerId: entry.offerId ?? undefined,
     };
   });
 }
 
 export function bulkActivateErrorMessage(err: unknown): string {
   if (err && typeof err === "object") {
-    const apiErr = err as { message?: string; data?: unknown };
-    if (apiErr.data && typeof apiErr.data === "object" && apiErr.data !== null) {
-      const data = apiErr.data as Record<string, unknown>;
-      if (typeof data.error === "string" && data.error.trim()) return data.error;
-      if (data.error && typeof data.error === "object" && "message" in data.error) {
-        const nested = String((data.error as { message: string }).message);
-        if (nested.trim()) return nested;
+    const apiErr = err as { message?: string; data?: unknown; status?: number };
+    const data = apiErr.data;
+    if (data && typeof data === "object" && data !== null) {
+      const record = data as Record<string, unknown>;
+      if (typeof record.error === "string" && record.error.trim()) {
+        if (record.error.includes("Offer id is required") || record.error === "OFFER_ID_REQUIRED") {
+          return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+        }
+        return record.error;
+      }
+      if (typeof record.message === "string" && record.message.trim()) {
+        if (record.message === "Offer id is required") {
+          return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+        }
+        return record.message;
       }
     }
-    if (apiErr.message?.trim()) return apiErr.message;
+    const raw = apiErr.message ?? "";
+    const jsonStart = raw.indexOf("{");
+    if (jsonStart >= 0) {
+      try {
+        const parsed = JSON.parse(raw.slice(jsonStart)) as { message?: string };
+        if (typeof parsed.message === "string" && parsed.message.trim()) {
+          if (parsed.message === "Offer id is required") {
+            return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+          }
+          return parsed.message;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (raw.includes("Offer id is required")) {
+      return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+    }
+    if (raw.trim()) return raw.replace(/^HTTP \d+ [^:]+:\s*/, "");
   }
   return "Não foi possível comunicar com o servidor. Tente novamente.";
 }
@@ -108,7 +136,7 @@ export async function activatePromotionItemsSequentially(params: {
   promotionId: string;
   accountId: string;
   promotionType: string;
-  items: Array<{ itemId: string; dealPrice?: number; stock?: number }>;
+  items: Array<{ itemId: string; dealPrice?: number; stock?: number; offerId?: string }>;
   onProgress?: (done: number, total: number) => void;
 }): Promise<BulkActivatePromotionItemResult[]> {
   const { promotionId, accountId, promotionType, items, onProgress } = params;
@@ -122,6 +150,7 @@ export async function activatePromotionItemsSequentially(params: {
         promotionType,
         dealPrice: item.dealPrice,
         stock: item.stock,
+        offerId: item.offerId,
       });
       results.push({ itemId: item.itemId, ok: true });
     } catch (err) {

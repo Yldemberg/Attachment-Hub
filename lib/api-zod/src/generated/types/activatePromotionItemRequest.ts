@@ -13,4 +13,5 @@ export interface ActivatePromotionItemRequest {
   topDealPrice?: number | null;
   /** @minimum 1 */
   stock?: number | null;
+  offerId?: string | null;
 }

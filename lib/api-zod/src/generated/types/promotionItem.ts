@@ -29,4 +29,5 @@ export interface PromotionItem {
   thumbnail?: string | null;
   permalink?: string | null;
   availableQuantity?: number | null;
+  offerId?: string | null;
 }

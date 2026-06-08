@@ -115,6 +115,7 @@ export type MlPromotionItem = {
   currency?: string | null;
   stock?: MlPromotionItemStock;
   net_proceeds?: MlNetProceeds | null;
+  offer_id?: string | null;
 };
 
 /** Contexto de promoção retornado por GET /seller-promotions/items/{itemId}. */
@@ -131,6 +132,7 @@ export type MlItemPromotionContext = {
   stock?: MlPromotionItemStock;
   start_date?: string | null;
   end_date?: string | null;
+  ref_id?: string | null;
 };
 
 /**
@@ -198,6 +200,7 @@ export function mergePromotionItemWithContext(
     start_date: context.start_date ?? item.start_date,
     end_date: context.end_date ?? item.end_date,
     price: item.price ?? context.price,
+    offer_id: item.offer_id ?? context.ref_id ?? null,
   };
 }
 
@@ -247,6 +250,7 @@ export type InboxEntry = {
   permalink?: string | null;
   availableQuantity?: number | null;
   discountPercent?: number | null;
+  offerId?: string | null;
 };
 
 export type PromotionSummary = {
@@ -268,7 +272,71 @@ export type ActivatePromotionItemBody = {
   dealPrice?: number;
   topDealPrice?: number;
   stock?: number;
+  offerId?: string;
 };
+
+export const PROMOTION_TYPES_REQUIRING_OFFER_ID = new Set([
+  "SMART",
+  "PRE_NEGOTIATED",
+  "PRICE_MATCHING",
+  "UNHEALTHY_STOCK",
+  "BANK",
+]);
+
+export function resolveOfferIdFromMlItem(item: Pick<MlPromotionItem, "offer_id">): string | undefined {
+  const id = item.offer_id?.trim();
+  return id ? id : undefined;
+}
+
+export function findPromotionItemContext(
+  contexts: MlItemPromotionContext[],
+  promotionId: string,
+  promotionType: string,
+): MlItemPromotionContext | undefined {
+  const sameType = contexts.filter((c) => c.type === promotionType);
+  if (sameType.length === 0) return undefined;
+  return (
+    sameType.find((c) => c.id === promotionId) ??
+    sameType.find((c) => c.id == null || c.id === "") ??
+    sameType[0]
+  );
+}
+
+export async function resolvePromotionOfferId(
+  accountId: string,
+  itemId: string,
+  promotionId: string,
+  promotionType: string,
+  seed?: MlPromotionItem | null,
+): Promise<string | undefined> {
+  if (seed) {
+    const fromSeed = resolveOfferIdFromMlItem(seed);
+    if (fromSeed) return fromSeed;
+  }
+
+  try {
+    const [items, contexts] = await Promise.all([
+      listPromotionItems(accountId, promotionId, promotionType, {
+        itemId,
+        bypassCache: true,
+      }),
+      fetchMlItemPromotions(accountId, itemId),
+    ]);
+    const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
+    const fromList = items.find((x) => x.id === itemId);
+    if (fromList) {
+      const merged = mergePromotionItemWithContext(fromList, ctx);
+      const fromMerged = resolveOfferIdFromMlItem(merged);
+      if (fromMerged) return fromMerged;
+    }
+    const refId = ctx?.ref_id?.trim();
+    if (refId) return refId;
+  } catch {
+    // optional
+  }
+
+  return undefined;
+}
 
 export function invalidatePromotionsCache(accountId?: string): void {
   if (!accountId) {
@@ -286,6 +354,21 @@ export function invalidatePromotionsCache(accountId?: string): void {
 
 export function mapMlPromotionError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg === "OFFER_ID_REQUIRED" || msg.includes("Offer id is required")) {
+    return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+  }
+  const mlBody = msg.replace(/^ML API \d+: /, "");
+  try {
+    const parsed = JSON.parse(mlBody) as { message?: string };
+    if (typeof parsed.message === "string" && parsed.message.trim()) {
+      if (parsed.message === "Offer id is required") {
+        return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+      }
+      return parsed.message;
+    }
+  } catch {
+    // not JSON
+  }
   if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE")) {
     return "O preço com desconto não é considerado credível pelo Mercado Livre.";
   }
@@ -479,6 +562,7 @@ export async function aggregateInboxForAccount(
               permalink: item.permalink,
               availableQuantity: item.availableQuantity,
               discountPercent: calcDiscountPercent(original, suggested),
+              offerId: resolveOfferIdFromMlItem(item) ?? null,
             });
           }
         } catch {
@@ -554,10 +638,19 @@ export async function activatePromotionItem(
   itemId: string,
   body: ActivatePromotionItemBody,
 ): Promise<unknown> {
+  const offerId =
+    body.offerId ??
+    (await resolvePromotionOfferId(accountId, itemId, body.promotionId, body.promotionType));
+
+  if (PROMOTION_TYPES_REQUIRING_OFFER_ID.has(body.promotionType) && !offerId) {
+    throw new Error("OFFER_ID_REQUIRED");
+  }
+
   const payload: Record<string, unknown> = {
     promotion_id: body.promotionId,
     promotion_type: body.promotionType,
   };
+  if (offerId) payload.offer_id = offerId;
   if (body.dealPrice != null) payload.deal_price = body.dealPrice;
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
   if (body.stock != null) payload.stock = body.stock;
@@ -608,7 +701,7 @@ export async function bulkActivatePromotionItems(
   accountId: string,
   promotionId: string,
   promotionType: string,
-  items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number }>,
+  items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number; offerId?: string }>,
 ): Promise<Array<{ itemId: string; ok: boolean; error?: string }>> {
   const results: Array<{ itemId: string; ok: boolean; error?: string }> = [];
   const chunkSize = 3;
@@ -633,7 +726,7 @@ export async function bulkActivatePromotionItems(
           const needsSuggestedPrice = item.useSuggested && dealPrice == null;
           const needsStock = stock == null && stockRequiredTypes.has(promotionType);
 
-          if (needsSuggestedPrice || needsStock) {
+            if (needsSuggestedPrice || needsStock) {
             const promoItems = await listPromotionItems(accountId, promotionId, promotionType, {
               itemId: item.itemId,
               bypassCache: true,
@@ -642,11 +735,7 @@ export async function bulkActivatePromotionItems(
             if (pi) {
               try {
                 const contexts = await fetchMlItemPromotions(accountId, item.itemId);
-                const ctx = contexts.find(
-                  (c) =>
-                    c.type === promotionType &&
-                    (c.id === promotionId || c.id == null || c.id === ""),
-                );
+                const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
                 pi = mergePromotionItemWithContext(pi, ctx);
               } catch {
                 // enriquecimento opcional
@@ -661,6 +750,15 @@ export async function bulkActivatePromotionItems(
               }
             }
           }
+
+          const offerId =
+            item.offerId ??
+            (await resolvePromotionOfferId(
+              accountId,
+              item.itemId,
+              promotionId,
+              promotionType,
+            ));
 
           if (dealPrice == null && !noPriceTypes.has(promotionType)) {
             results.push({
@@ -686,6 +784,7 @@ export async function bulkActivatePromotionItems(
             dealPrice,
             topDealPrice: item.topDealPrice,
             stock,
+            offerId,
           });
           results.push({ itemId: item.itemId, ok: true });
         } catch (err) {

@@ -20,6 +20,8 @@ import {
   mapMlPromotionError,
   parsePromotionStockBounds,
   resolveMlSuggestedPrice,
+  resolveOfferIdFromMlItem,
+  findPromotionItemContext,
   matchesPromotionStatusFilter,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
@@ -117,6 +119,7 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     thumbnail: item.thumbnail ?? null,
     permalink: item.permalink ?? null,
     availableQuantity: item.availableQuantity ?? null,
+    offerId: item.offer_id ?? null,
   };
 }
 
@@ -343,16 +346,25 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
     );
 
     let enriched = await enrichItemsWithProducts(acc.id, items);
-    if (item_id && enriched.length > 0) {
-      const contexts = await fetchMlItemPromotions(acc.id, item_id);
-      enriched = enriched.map((row) => {
-        const ctx = contexts.find(
-          (c) =>
-            c.type === promotion_type &&
-            (c.id === promotionId || c.id == null || c.id === ""),
+    const missingOfferId = enriched.filter((row) => !resolveOfferIdFromMlItem(row));
+    if (missingOfferId.length > 0) {
+      const chunkSize = 5;
+      for (let i = 0; i < missingOfferId.length; i += chunkSize) {
+        const chunk = missingOfferId.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (row) => {
+            try {
+              const contexts = await fetchMlItemPromotions(acc.id, row.id);
+              const ctx = findPromotionItemContext(contexts, promotionId, promotion_type);
+              if (!ctx) return;
+              const merged = mergePromotionItemWithContext(row, ctx);
+              row.offer_id = merged.offer_id;
+            } catch {
+              // enriquecimento opcional
+            }
+          }),
         );
-        return mergePromotionItemWithContext(row, ctx);
-      });
+      }
     }
     if (search.trim()) {
       enriched = enriched.filter(
@@ -381,7 +393,7 @@ router.post("/promotions/:promotionId/items/bulk", ...auth, async (req, res) => 
     const { accountId, promotionType, items } = req.body as {
       accountId: string;
       promotionType: string;
-      items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number }>;
+      items: Array<{ itemId: string; dealPrice?: number; topDealPrice?: number; useSuggested?: boolean; stock?: number; offerId?: string }>;
     };
 
     if (!accountId || !promotionType || !Array.isArray(items) || items.length === 0) {
@@ -406,12 +418,13 @@ router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) 
   try {
     const promotionId = paramString(req.params.promotionId);
     const itemId = paramString(req.params.itemId);
-    const { accountId, promotionType, dealPrice, topDealPrice, stock } = req.body as {
+    const { accountId, promotionType, dealPrice, topDealPrice, stock, offerId } = req.body as {
       accountId: string;
       promotionType: string;
       dealPrice?: number;
       topDealPrice?: number;
       stock?: number;
+      offerId?: string;
     };
 
     if (!accountId || !promotionType) {
@@ -431,6 +444,7 @@ router.post("/promotions/:promotionId/items/:itemId", ...auth, async (req, res) 
       dealPrice,
       topDealPrice,
       stock,
+      offerId,
     });
     res.json(result);
   } catch (err) {

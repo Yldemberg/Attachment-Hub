@@ -16,6 +16,7 @@ export type PromotionItemFields = Pick<
   | "discountPercentage"
   | "status"
   | "netProceeds"
+  | "offerId"
 >;
 
 export type PromotionActivationConfig = {
@@ -230,6 +231,7 @@ export function mergeItemFields(
     availableQuantity: src.availableQuantity ?? fresh?.availableQuantity ?? null,
     startDate: fresh?.startDate ?? inbox?.startDate ?? null,
     endDate: fresh?.endDate ?? inbox?.endDate ?? null,
+    offerId: fresh?.offerId ?? src.offerId ?? inbox?.offerId ?? null,
   };
 }
 

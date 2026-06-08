@@ -32,4 +32,5 @@ export interface PromotionInboxEntry {
   thumbnail?: string | null;
   permalink?: string | null;
   availableQuantity?: number | null;
+  offerId?: string | null;
 }

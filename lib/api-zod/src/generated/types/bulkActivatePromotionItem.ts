@@ -13,4 +13,5 @@ export interface BulkActivatePromotionItem {
   useSuggested?: boolean;
   /** @minimum 1 */
   stock?: number | null;
+  offerId?: string | null;
 }

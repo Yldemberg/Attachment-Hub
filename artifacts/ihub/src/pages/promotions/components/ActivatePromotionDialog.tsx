@@ -294,6 +294,7 @@ export function ActivatePromotionDialog({
         stock: config.needsStock || (config.stockOptional && parsedStock != null)
           ? parsedStock
           : undefined,
+        offerId: merged.offerId ?? undefined,
       },
     });
   }

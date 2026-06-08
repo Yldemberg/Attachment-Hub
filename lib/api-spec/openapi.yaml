@@ -2334,6 +2334,9 @@ components:
         availableQuantity:
           type: integer
           nullable: true
+        offerId:
+          type: string
+          nullable: true
       required: [itemId, status]
 
     PromotionItemListResponse:
@@ -2422,6 +2425,9 @@ components:
         availableQuantity:
           type: integer
           nullable: true
+        offerId:
+          type: string
+          nullable: true
       required: [itemId, promotionId, promotionType, itemStatus, accountId]
 
     PromotionInboxListResponse:
@@ -2483,6 +2489,9 @@ components:
           type: integer
           nullable: true
           minimum: 1
+        offerId:
+          type: string
+          nullable: true
       required: [accountId, promotionType]
 
     BulkActivatePromotionItem:
@@ -2503,6 +2512,9 @@ components:
           type: integer
           nullable: true
           minimum: 1
+        offerId:
+          type: string
+          nullable: true
       required: [itemId]
 
     BulkActivatePromotionItemsRequest:

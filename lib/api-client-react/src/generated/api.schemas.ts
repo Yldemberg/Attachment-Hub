@@ -426,6 +426,7 @@ export interface PromotionItem {
   thumbnail?: string | null;
   permalink?: string | null;
   availableQuantity?: number | null;
+  offerId?: string | null;
 }
 
 export interface PromotionItemListResponse {
@@ -460,6 +461,7 @@ export interface PromotionInboxEntry {
   thumbnail?: string | null;
   permalink?: string | null;
   availableQuantity?: number | null;
+  offerId?: string | null;
 }
 
 export interface PromotionInboxListResponse {
@@ -489,6 +491,7 @@ export interface ActivatePromotionItemRequest {
   topDealPrice?: number | null;
   /** @minimum 1 */
   stock?: number | null;
+  offerId?: string | null;
 }
 
 export interface BulkActivatePromotionItem {
@@ -498,6 +501,7 @@ export interface BulkActivatePromotionItem {
   useSuggested?: boolean;
   /** @minimum 1 */
   stock?: number | null;
+  offerId?: string | null;
 }
 
 export interface BulkActivatePromotionItemsRequest {

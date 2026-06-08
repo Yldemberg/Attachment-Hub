@@ -974,6 +974,7 @@ export const ListPromotionInboxResponse = zod.object({
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       availableQuantity: zod.number().nullish(),
+      offerId: zod.string().nullish(),
     }),
   ),
   pagination: zod.object({
@@ -1139,6 +1140,7 @@ export const ListPromotionItemsResponse = zod.object({
       thumbnail: zod.string().nullish(),
       permalink: zod.string().nullish(),
       availableQuantity: zod.number().nullish(),
+      offerId: zod.string().nullish(),
     }),
   ),
   pagination: zod.object({
@@ -1198,6 +1200,7 @@ export const BulkActivatePromotionItemsBody = zod.object({
           .boolean()
           .default(bulkActivatePromotionItemsBodyItemsItemUseSuggestedDefault),
         stock: zod.number().min(1).nullish(),
+        offerId: zod.string().nullish(),
       }),
     )
     .min(1),
@@ -1227,6 +1230,7 @@ export const ActivatePromotionItemBody = zod.object({
   dealPrice: zod.number().nullish(),
   topDealPrice: zod.number().nullish(),
   stock: zod.number().min(1).nullish(),
+  offerId: zod.string().nullish(),
 });
 
 export const ActivatePromotionItemResponse = zod.record(
@@ -1248,6 +1252,7 @@ export const UpdatePromotionItemBody = zod.object({
   dealPrice: zod.number().nullish(),
   topDealPrice: zod.number().nullish(),
   stock: zod.number().min(1).nullish(),
+  offerId: zod.string().nullish(),
 });
 
 export const UpdatePromotionItemResponse = zod.record(

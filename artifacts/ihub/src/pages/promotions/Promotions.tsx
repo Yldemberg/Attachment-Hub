@@ -107,6 +107,7 @@ function promotionItemToInboxEntry(
     discountPercent,
     deadlineDate: campaign.deadlineDate,
     availableQuantity: item.availableQuantity,
+    offerId: item.offerId,
   };
 }
 
