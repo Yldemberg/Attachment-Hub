@@ -552,6 +552,44 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /products/{id}/duplicate:
+    post:
+      operationId: duplicateProduct
+      tags: [products]
+      summary: Duplicate a listing to another Mercado Livre account
+      description: >
+        Copia título/família, categoria, preço, estoque, fotos, atributos, garantia e descrição do anúncio
+        de origem e publica um novo anúncio na conta de destino.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DuplicateProductRequest"
+      responses:
+        "201":
+          description: Listing duplicated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateProductResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /products/{id}/listing-detail:
     get:
       operationId: getProductListingDetail
@@ -2170,6 +2208,25 @@ components:
         url:
           type: string
       required: [id, url]
+
+    DuplicateProductRequest:
+      type: object
+      properties:
+        targetAccountId:
+          type: string
+          description: Conta Mercado Livre de destino (pode ser a mesma do anúncio de origem).
+      required: [targetAccountId]
+
+    DuplicateProductResponse:
+      type: object
+      properties:
+        product:
+          $ref: "#/components/schemas/Product"
+        sourceProductId:
+          type: string
+        sourceMlItemId:
+          type: string
+      required: [product, sourceProductId, sourceMlItemId]
 
     ProductListingDetail:
       type: object

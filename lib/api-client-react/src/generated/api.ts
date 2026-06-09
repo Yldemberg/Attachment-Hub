@@ -27,6 +27,8 @@ import type {
   CreateProductRequest,
   DashboardSummary,
   DeleteProduct200,
+  DuplicateProductRequest,
+  DuplicateProductResponse,
   ErrorResponse,
   GetConnectUrl200,
   GetDashboardSummaryParams,
@@ -1829,6 +1831,101 @@ export const useDeleteProduct = <
   TContext
 > => {
   return useMutation(getDeleteProductMutationOptions(options));
+};
+
+/**
+ * Copia título/família, categoria, preço, estoque, fotos, atributos, garantia e descrição do anúncio de origem e publica um novo anúncio na conta de destino.
+
+ * @summary Duplicate a listing to another Mercado Livre account
+ */
+export const getDuplicateProductUrl = (id: string) => {
+  return `/api/products/${id}/duplicate`;
+};
+
+export const duplicateProduct = async (
+  id: string,
+  duplicateProductRequest: DuplicateProductRequest,
+  options?: RequestInit,
+): Promise<DuplicateProductResponse> => {
+  return customFetch<DuplicateProductResponse>(getDuplicateProductUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(duplicateProductRequest),
+  });
+};
+
+export const getDuplicateProductMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof duplicateProduct>>,
+    TError,
+    { id: string; data: BodyType<DuplicateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof duplicateProduct>>,
+  TError,
+  { id: string; data: BodyType<DuplicateProductRequest> },
+  TContext
+> => {
+  const mutationKey = ["duplicateProduct"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof duplicateProduct>>,
+    { id: string; data: BodyType<DuplicateProductRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return duplicateProduct(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DuplicateProductMutationResult = NonNullable<
+  Awaited<ReturnType<typeof duplicateProduct>>
+>;
+export type DuplicateProductMutationBody = BodyType<DuplicateProductRequest>;
+export type DuplicateProductMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Duplicate a listing to another Mercado Livre account
+ */
+export const useDuplicateProduct = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof duplicateProduct>>,
+    TError,
+    { id: string; data: BodyType<DuplicateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof duplicateProduct>>,
+  TError,
+  { id: string; data: BodyType<DuplicateProductRequest> },
+  TContext
+> => {
+  return useMutation(getDuplicateProductMutationOptions(options));
 };
 
 /**

@@ -20,6 +20,7 @@ import {
   closeMlItem,
   upsertProductFromMlItem,
   getMlListingDetail,
+  duplicateMlListing,
   MlListingError,
   type CreateMlListingInput,
   type UpdateMlListingInput,
@@ -478,6 +479,57 @@ router.get("/products/:id", ...auth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get product");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.post("/products/:id/duplicate", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { targetAccountId } = req.body as { targetAccountId?: string };
+    if (!targetAccountId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe targetAccountId" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, targetAccountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta de destino inválida" } });
+      return;
+    }
+
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const { productId: newProductId } = await duplicateMlListing(
+      product.accountId,
+      product.mlItemId,
+      targetAccountId,
+    );
+
+    const [created] = await db.select().from(productsTable).where(eq(productsTable.id, newProductId));
+    if (!created) {
+      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+      return;
+    }
+
+    res.status(201).json({
+      product: await formatProductResponse(created),
+      sourceProductId: product.id,
+      sourceMlItemId: product.mlItemId,
+    });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to duplicate product");
   }
 });
 

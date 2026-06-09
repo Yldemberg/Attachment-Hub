@@ -243,6 +243,17 @@ export interface UploadProductPictureResponse {
   url: string;
 }
 
+export interface DuplicateProductRequest {
+  /** Conta Mercado Livre de destino (pode ser a mesma do anúncio de origem). */
+  targetAccountId: string;
+}
+
+export interface DuplicateProductResponse {
+  product: Product;
+  sourceProductId: string;
+  sourceMlItemId: string;
+}
+
 export type ProductListingDetailPicturesItem = {
   id: string;
   url: string;

@@ -21,6 +21,8 @@ export * from "./createProductRequestCondition";
 export * from "./dashboardSummary";
 export * from "./deleteProduct200";
 export * from "./deleteProduct200Status";
+export * from "./duplicateProductRequest";
+export * from "./duplicateProductResponse";
 export * from "./errorResponse";
 export * from "./errorResponseError";
 export * from "./getConnectUrl200";

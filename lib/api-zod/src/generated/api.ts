@@ -622,6 +622,23 @@ export const DeleteProductResponse = zod.object({
 });
 
 /**
+ * Copia título/família, categoria, preço, estoque, fotos, atributos, garantia e descrição do anúncio de origem e publica um novo anúncio na conta de destino.
+
+ * @summary Duplicate a listing to another Mercado Livre account
+ */
+export const DuplicateProductParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DuplicateProductBody = zod.object({
+  targetAccountId: zod
+    .string()
+    .describe(
+      "Conta Mercado Livre de destino (pode ser a mesma do anúncio de origem).",
+    ),
+});
+
+/**
  * @summary Get live listing data from Mercado Livre for edit form
  */
 export const GetProductListingDetailParams = zod.object({

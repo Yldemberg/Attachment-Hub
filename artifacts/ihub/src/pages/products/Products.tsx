@@ -5,6 +5,7 @@ import {
   useUpdateProductStock,
   useUpdateProductListingStatus,
   useDeleteProduct,
+  useDuplicateProduct,
   useSyncSkuStock,
   getListProductsQueryKey,
   getListNotificationsQueryKey,
@@ -29,6 +30,7 @@ import {
   Plus,
   FileEdit,
   Trash2,
+  Copy,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -59,6 +61,7 @@ import {
   areProductListQueriesEquivalent,
 } from "@/lib/products-list-persistence";
 import { CloseListingDialog } from "./components/CloseListingDialog";
+import { DuplicateListingDialog } from "./components/DuplicateListingDialog";
 
 interface Product {
   id: string;
@@ -122,6 +125,7 @@ function ProductCard({
   p,
   onEdit,
   onEditListing,
+  onDuplicate,
   onCloseListing,
   onListingStatusChange,
   statusMutationPending,
@@ -130,6 +134,7 @@ function ProductCard({
   p: Product;
   onEdit: () => void;
   onEditListing: () => void;
+  onDuplicate: () => void;
   onCloseListing: () => void;
   onListingStatusChange: (next: "active" | "paused") => void;
   statusMutationPending: boolean;
@@ -175,6 +180,7 @@ function ProductCard({
   const canToggleListingStatus = p.status === "active" || p.status === "paused";
   const canCloseListing = p.status === "active" || p.status === "paused";
   const canEditListing = p.status !== "closed";
+  const canDuplicate = !isFull && !p.catalogListing;
 
   const thumbCls =
     "size-[4.5rem] rounded-lg flex-shrink-0 bg-muted object-cover";
@@ -319,6 +325,16 @@ function ProductCard({
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
           )}
+          {canDuplicate && (
+            <button
+              type="button"
+              onClick={onDuplicate}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors"
+              title="Replicar anúncio"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
           {canEditListing && (
             <button
               type="button"
@@ -432,6 +448,13 @@ export default function Products() {
     title: string;
     mlItemId?: string | null;
   } | null>(null);
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    productId: string;
+    accountId: string;
+    title: string;
+    mlItemId?: string | null;
+  } | null>(null);
+  const [duplicateTargetAccountId, setDuplicateTargetAccountId] = useState("");
 
   const params = {
     page,
@@ -684,6 +707,29 @@ export default function Products() {
         toast({
           variant: "destructive",
           title: "Erro ao alterar status",
+          description: msg,
+        });
+      },
+    },
+  });
+
+  const { mutate: duplicateListing, isPending: duplicatingListing } = useDuplicateProduct({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        setDuplicateDialog(null);
+        toast({
+          title: "Anúncio replicado",
+          description: `Novo anúncio ${data.product.mlItemId ?? ""} criado com sucesso.`,
+        });
+      },
+      onError: (err) => {
+        const msg =
+          (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
+          "Não foi possível replicar o anúncio.";
+        toast({
+          variant: "destructive",
+          title: "Erro ao replicar",
           description: msg,
         });
       },
@@ -989,6 +1035,15 @@ export default function Products() {
                       p={p}
                       onEdit={() => openStockDialog(p)}
                       onEditListing={() => navigate(`/products/${p.id}/edit`)}
+                      onDuplicate={() => {
+                        setDuplicateTargetAccountId(p.accountId ?? accounts[0]?.id ?? "");
+                        setDuplicateDialog({
+                          productId: p.id,
+                          accountId: p.accountId ?? "",
+                          title: p.title ?? p.id,
+                          mlItemId: p.mlItemId,
+                        });
+                      }}
                       onCloseListing={() =>
                         setCloseDialog({
                           productId: p.id,
@@ -1140,6 +1195,27 @@ export default function Products() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DuplicateListingDialog
+        open={!!duplicateDialog}
+        onOpenChange={(o) => {
+          if (!o) setDuplicateDialog(null);
+        }}
+        title={duplicateDialog?.title ?? ""}
+        mlItemId={duplicateDialog?.mlItemId}
+        sourceAccountId={duplicateDialog?.accountId}
+        accounts={accounts}
+        targetAccountId={duplicateTargetAccountId}
+        onTargetAccountChange={setDuplicateTargetAccountId}
+        isPending={duplicatingListing}
+        onConfirm={() => {
+          if (!duplicateDialog || !duplicateTargetAccountId) return;
+          duplicateListing({
+            id: duplicateDialog.productId,
+            data: { targetAccountId: duplicateTargetAccountId },
+          });
+        }}
+      />
 
       <CloseListingDialog
         open={!!closeDialog}

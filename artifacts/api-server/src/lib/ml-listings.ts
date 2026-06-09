@@ -52,6 +52,12 @@ export type MlListingVariationInput = {
   picture_ids?: string[];
 };
 
+export type MlSaleTermInput = {
+  id: string;
+  value_name?: string;
+  value_id?: string;
+};
+
 export type CreateMlListingInput = {
   title: string;
   /** Required for User Products sellers (tag user_product_seller). Falls back to title. */
@@ -62,9 +68,19 @@ export type CreateMlListingInput = {
   condition: "new" | "used";
   listingTypeId: string;
   pictures: string[];
+  /** Public image URLs — used when replicating across accounts (POST pictures with source). */
+  pictureSources?: string[];
   attributes: MlListingAttributeInput[];
   description?: string;
+  saleTerms?: MlSaleTermInput[];
   variations?: MlListingVariationInput[];
+};
+
+type MlItemForDuplicate = MlItem & {
+  condition?: string;
+  family_name?: string;
+  pictures?: Array<{ id?: string; secure_url?: string; url?: string }>;
+  sale_terms?: Array<{ id: string; value_name?: string | null; value_id?: string | null }>;
 };
 
 export type UpdateMlListingInput = {
@@ -314,9 +330,23 @@ function buildCreateItemPayload(
     buying_mode: "buy_it_now",
     condition: input.condition,
     listing_type_id: input.listingTypeId,
-    pictures: input.pictures.map((id) => ({ id })),
     attributes: input.attributes,
   };
+
+  if (input.pictureSources?.length) {
+    payload.pictures = input.pictureSources.map((source) => ({ source }));
+  } else if (input.pictures.length) {
+    payload.pictures = input.pictures.map((id) => ({ id }));
+  }
+
+  if (input.saleTerms?.length) {
+    payload.sale_terms = input.saleTerms.map((term) => {
+      const row: Record<string, string> = { id: term.id };
+      if (term.value_id) row.value_id = term.value_id;
+      if (term.value_name) row.value_name = term.value_name;
+      return row;
+    });
+  }
 
   if (isUpSeller) {
     const familyName = (input.familyName ?? input.title).trim();
@@ -343,7 +373,9 @@ function buildCreateItemPayload(
 export async function createMlItem(accountId: string, input: CreateMlListingInput): Promise<MlItem> {
   if (!input.title.trim()) throw new MlListingError("Informe o título do anúncio.", "MISSING_TITLE");
   if (!input.categoryId) throw new MlListingError("Selecione uma categoria.", "MISSING_CATEGORY");
-  if (!input.pictures.length) throw new MlListingError("Adicione ao menos uma foto.", "MISSING_PICTURES");
+  if (!input.pictures.length && !input.pictureSources?.length) {
+    throw new MlListingError("Adicione ao menos uma foto.", "MISSING_PICTURES");
+  }
   if (!input.variations?.length && input.price <= 0) {
     throw new MlListingError("Informe um preço válido.", "INVALID_PRICE");
   }
@@ -404,6 +436,104 @@ export async function updateMlItem(
     if (err instanceof MlListingError) throw err;
     throw parseMlApiError(err);
   }
+}
+
+function mapItemAttributesForCreate(
+  attributes:
+    | Array<{ id?: string; value_name?: string | null; value_id?: string | null }>
+    | null
+    | undefined,
+): MlListingAttributeInput[] {
+  return (attributes ?? [])
+    .filter((a) => a.id && a.id !== "ITEM_CONDITION" && a.value_name?.trim())
+    .map((a) => ({
+      id: a.id!,
+      value_name: a.value_name!.trim(),
+      ...(a.value_id ? { value_id: a.value_id } : {}),
+    }));
+}
+
+function mapItemSaleTermsForCreate(
+  saleTerms: MlItemForDuplicate["sale_terms"],
+): MlSaleTermInput[] {
+  return (saleTerms ?? [])
+    .filter((t) => t.value_name?.trim() || t.value_id)
+    .map((t) => ({
+      id: t.id,
+      ...(t.value_name?.trim() ? { value_name: t.value_name.trim() } : {}),
+      ...(t.value_id ? { value_id: t.value_id } : {}),
+    }));
+}
+
+function extractPictureSources(item: MlItemForDuplicate): string[] {
+  return (item.pictures ?? [])
+    .map((p) => p.secure_url ?? p.url ?? "")
+    .filter((url) => url.length > 0);
+}
+
+export async function buildCreateInputFromMlItem(
+  accountId: string,
+  mlItemId: string,
+): Promise<CreateMlListingInput> {
+  const item = await ml.get<MlItemForDuplicate>(
+    accountId,
+    `/items/${encodeURIComponent(mlItemId)}`,
+  );
+
+  if (item.shipping?.logistic_type === "fulfillment") {
+    throw new MlListingError(
+      "Anúncios Full (Fulfillment) não podem ser replicados pelo iHub.",
+      "FULL_ITEM",
+    );
+  }
+  if (item.catalog_listing === true) {
+    throw new MlListingError(
+      "Anúncios de catálogo compartilhado não podem ser replicados. Crie um anúncio tradicional.",
+      "CATALOG_LISTING",
+    );
+  }
+
+  const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
+  if (hasVariations) {
+    throw new MlListingError(
+      "Anúncios com variações ainda não podem ser replicados automaticamente.",
+      "VARIATIONS_NOT_SUPPORTED",
+    );
+  }
+
+  const pictureSources = extractPictureSources(item);
+  if (!pictureSources.length) {
+    throw new MlListingError("O anúncio de origem não possui fotos para replicar.", "MISSING_PICTURES");
+  }
+
+  const description = await getMlItemDescription(accountId, mlItemId);
+  const condition = item.condition === "used" ? "used" : "new";
+
+  return {
+    title: item.title?.trim() || mlItemId,
+    familyName: item.family_name?.trim() || item.title?.trim() || mlItemId,
+    categoryId: item.category_id,
+    price: item.price,
+    availableQuantity: item.available_quantity,
+    condition,
+    listingTypeId: item.listing_type_id,
+    pictures: [],
+    pictureSources,
+    attributes: mapItemAttributesForCreate(item.attributes),
+    description: description.trim() || undefined,
+    saleTerms: mapItemSaleTermsForCreate(item.sale_terms),
+  };
+}
+
+export async function duplicateMlListing(
+  sourceAccountId: string,
+  mlItemId: string,
+  targetAccountId: string,
+): Promise<{ item: MlItem; productId: string }> {
+  const input = await buildCreateInputFromMlItem(sourceAccountId, mlItemId);
+  const created = await createMlItem(targetAccountId, input);
+  const productId = await upsertProductFromMlItem(targetAccountId, created);
+  return { item: created, productId };
 }
 
 export async function closeMlItem(accountId: string, itemId: string): Promise<MlItem> {

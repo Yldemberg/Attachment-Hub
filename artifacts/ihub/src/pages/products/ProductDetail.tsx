@@ -3,13 +3,15 @@ import {
   useGetProduct,
   useUpdateStockBySku,
   useDeleteProduct,
+  useDuplicateProduct,
+  useListAccounts,
   getGetProductQueryKey,
   getListProductsQueryKey,
 } from "@workspace/api-client-react";
 import { formatCurrency, formatDateTime, stockBgColor } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, ExternalLink, FileEdit, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, FileEdit, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
 import { useToast } from "@/hooks/use-toast";
 import { CloseListingDialog } from "./components/CloseListingDialog";
+import { DuplicateListingDialog } from "./components/DuplicateListingDialog";
 
 interface ProductVariation {
   id: number;
@@ -39,6 +42,7 @@ interface Product {
   regularAmount?: number | null;
   status?: string | null;
   isFull?: boolean | null;
+  catalogListing?: boolean | null;
   thumbnail?: string | null;
   mlItemId?: string | null;
   permalink?: string | null;
@@ -72,6 +76,8 @@ export default function ProductDetail() {
   const [newQty, setNewQty] = useState("");
   const [saved, setSaved] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateTargetAccountId, setDuplicateTargetAccountId] = useState("");
 
   const { data: product, isLoading } = useGetProduct(id, {
     query: { queryKey: getGetProductQueryKey(id) },
@@ -85,6 +91,32 @@ export default function ProductDetail() {
         setNewQty("");
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+      },
+    },
+  });
+
+  const { data: accountsData } = useListAccounts();
+  const accounts =
+    (accountsData as { data?: { id: string; mlNickname?: string | null; mlUserId?: string | null }[] } | null)
+      ?.data ?? [];
+
+  const { mutate: duplicateListing, isPending: duplicating } = useDuplicateProduct({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        setDuplicateOpen(false);
+        toast({
+          title: "Anúncio replicado",
+          description: `Novo anúncio ${data.product.mlItemId ?? ""} criado com sucesso.`,
+        });
+        if (data.product.id) navigate(`/products/${data.product.id}`);
+      },
+      onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
+        toast({
+          variant: "destructive",
+          title: "Erro ao replicar",
+          description: err.payload?.error?.message ?? err.message ?? "Não foi possível replicar o anúncio.",
+        });
       },
     },
   });
@@ -140,6 +172,7 @@ export default function ProductDetail() {
   const variations: ProductVariation[] = Array.isArray(p.variationsJson) ? p.variationsJson : [];
   const canEdit = p.status !== "closed";
   const canClose = p.status === "active" || p.status === "paused";
+  const canDuplicate = !p.isFull && !p.catalogListing;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -165,6 +198,20 @@ export default function ProductDetail() {
               <div className="flex items-start justify-between gap-2">
                 <h1 className="text-lg font-bold text-foreground leading-tight">{p.title}</h1>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {canDuplicate && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => {
+                        setDuplicateTargetAccountId(p.accountId ?? accounts[0]?.id ?? "");
+                        setDuplicateOpen(true);
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Replicar
+                    </Button>
+                  )}
                   {canEdit && (
                     <Button
                       variant="outline"
@@ -341,6 +388,22 @@ export default function ProductDetail() {
           </div>
         )}
       </div>
+
+      <DuplicateListingDialog
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        title={p.title ?? p.id}
+        mlItemId={p.mlItemId}
+        sourceAccountId={p.accountId}
+        accounts={accounts}
+        targetAccountId={duplicateTargetAccountId}
+        onTargetAccountChange={setDuplicateTargetAccountId}
+        isPending={duplicating}
+        onConfirm={() => {
+          if (!duplicateTargetAccountId || !id) return;
+          duplicateListing({ id, data: { targetAccountId: duplicateTargetAccountId } });
+        }}
+      />
 
       <CloseListingDialog
         open={closeOpen}
