@@ -202,6 +202,9 @@ export const CreateProductRequestCondition = {
 export interface CreateProductRequest {
   accountId: string;
   title: string;
+  /** Nome da família do produto. Obrigatório para vendedores no modelo User Products do Mercado Livre (tag user_product_seller). Use uma descrição genérica do produto; o ML gera o título automaticamente.
+   */
+  familyName?: string;
   categoryId: string;
   price?: number;
   availableQuantity: number;
@@ -219,6 +222,8 @@ export interface CreateProductRequest {
 
 export interface UpdateProductRequest {
   title?: string;
+  /** Nome da família do produto (modelo User Products do Mercado Livre). */
+  familyName?: string;
   price?: number;
   availableQuantity?: number;
   pictures?: string[];

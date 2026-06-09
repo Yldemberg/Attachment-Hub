@@ -2089,6 +2089,11 @@ components:
           type: string
         title:
           type: string
+        familyName:
+          type: string
+          description: >
+            Nome da família do produto. Obrigatório para vendedores no modelo User Products do Mercado Livre
+            (tag user_product_seller). Use uma descrição genérica do produto; o ML gera o título automaticamente.
         categoryId:
           type: string
         price:
@@ -2125,6 +2130,9 @@ components:
       properties:
         title:
           type: string
+        familyName:
+          type: string
+          description: Nome da família do produto (modelo User Products do Mercado Livre).
         price:
           type: number
         availableQuantity:

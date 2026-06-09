@@ -9,6 +9,8 @@ import type { MlListingAttributeInput } from "./mlListingAttributeInput";
 
 export interface UpdateProductRequest {
   title?: string;
+  /** Nome da família do produto (modelo User Products do Mercado Livre). */
+  familyName?: string;
   price?: number;
   availableQuantity?: number;
   pictures?: string[];

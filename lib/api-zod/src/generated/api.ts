@@ -273,6 +273,12 @@ export const createProductBodyPicturesMax = 12;
 export const CreateProductBody = zod.object({
   accountId: zod.string(),
   title: zod.string(),
+  familyName: zod
+    .string()
+    .optional()
+    .describe(
+      "Nome da família do produto. Obrigatório para vendedores no modelo User Products do Mercado Livre (tag user_product_seller). Use uma descrição genérica do produto; o ML gera o título automaticamente.\n",
+    ),
   categoryId: zod.string(),
   price: zod.number().optional(),
   availableQuantity: zod.number(),
@@ -527,6 +533,12 @@ export const UpdateProductParams = zod.object({
 
 export const UpdateProductBody = zod.object({
   title: zod.string().optional(),
+  familyName: zod
+    .string()
+    .optional()
+    .describe(
+      "Nome da família do produto (modelo User Products do Mercado Livre).",
+    ),
   price: zod.number().optional(),
   availableQuantity: zod.number().optional(),
   pictures: zod.array(zod.string()).optional(),

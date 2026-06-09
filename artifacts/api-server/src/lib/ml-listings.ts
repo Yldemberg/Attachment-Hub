@@ -1,5 +1,6 @@
 import { getDb } from "./db";
-import { productsTable } from "@workspace/db/schema";
+import { productsTable, accountsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import {
   ml,
   getMlAccessToken,
@@ -53,6 +54,8 @@ export type MlListingVariationInput = {
 
 export type CreateMlListingInput = {
   title: string;
+  /** Required for User Products sellers (tag user_product_seller). Falls back to title. */
+  familyName?: string;
   categoryId: string;
   price: number;
   availableQuantity: number;
@@ -66,6 +69,7 @@ export type CreateMlListingInput = {
 
 export type UpdateMlListingInput = {
   title?: string;
+  familyName?: string;
   price?: number;
   availableQuantity?: number;
   pictures?: string[];
@@ -109,16 +113,21 @@ function parseMlApiError(err: unknown): MlListingError {
     "item.pictures.invalid": "Imagens inválidas. Envie ao menos uma foto.",
     "item.attributes.missing": "Preencha todos os atributos obrigatórios da categoria.",
     "item.listing_type_id.invalid": "Tipo de anúncio inválido para esta conta.",
-    "body.invalid": "Dados do anúncio inválidos. Revise os campos e tente novamente.",
+    "body.invalid": "Dados inválidos. Verifique os campos obrigatórios, incluindo nome da família do produto.",
     forbidden: "Sem permissão para esta operação no Mercado Livre.",
     not_found: "Anúncio não encontrado no Mercado Livre.",
   };
 
-  const message =
+  let message =
     ptMessages[code] ??
     firstCause?.message ??
     body.message ??
     "O Mercado Livre rejeitou a operação. Verifique os dados e tente novamente.";
+
+  if (/family_name/i.test(message) || /\[family_name\]/i.test(raw)) {
+    message =
+      "Informe o nome da família do produto. Contas no modelo User Products do Mercado Livre exigem esse campo em vez do título.";
+  }
 
   const statusMatch = raw.match(/ML API (\d+)/);
   const status = statusMatch ? parseInt(statusMatch[1]!, 10) : 502;
@@ -273,10 +282,33 @@ export async function getMlListingDetail(accountId: string, itemId: string): Pro
   };
 }
 
-function buildCreateItemPayload(input: CreateMlListingInput): Record<string, unknown> {
+/** Sellers migrated to Mercado Livre User Products must send family_name and omit title. */
+export async function isUserProductSeller(accountId: string): Promise<boolean> {
+  const db = getDb();
+  const [account] = await db
+    .select({ mlUserId: accountsTable.mlUserId })
+    .from(accountsTable)
+    .where(eq(accountsTable.id, accountId))
+    .limit(1);
+  if (!account?.mlUserId) return false;
+  try {
+    const user = await ml.get<{ tags?: string[] }>(
+      accountId,
+      `/users/${encodeURIComponent(account.mlUserId)}`,
+    );
+    return Array.isArray(user.tags) && user.tags.includes("user_product_seller");
+  } catch (err) {
+    logger.warn({ err, accountId }, "Failed to check user_product_seller tag");
+    return false;
+  }
+}
+
+function buildCreateItemPayload(
+  input: CreateMlListingInput,
+  isUpSeller: boolean,
+): Record<string, unknown> {
   const hasVariations = Array.isArray(input.variations) && input.variations.length > 0;
   const payload: Record<string, unknown> = {
-    title: input.title.trim(),
     category_id: input.categoryId,
     currency_id: "BRL",
     buying_mode: "buy_it_now",
@@ -285,6 +317,13 @@ function buildCreateItemPayload(input: CreateMlListingInput): Record<string, unk
     pictures: input.pictures.map((id) => ({ id })),
     attributes: input.attributes,
   };
+
+  if (isUpSeller) {
+    const familyName = (input.familyName ?? input.title).trim();
+    payload.family_name = familyName;
+  } else {
+    payload.title = input.title.trim();
+  }
 
   if (hasVariations) {
     payload.variations = input.variations!.map((v) => ({
@@ -310,7 +349,14 @@ export async function createMlItem(accountId: string, input: CreateMlListingInpu
   }
 
   try {
-    const payload = buildCreateItemPayload(input);
+    const isUpSeller = await isUserProductSeller(accountId);
+    if (isUpSeller && !(input.familyName ?? input.title).trim()) {
+      throw new MlListingError(
+        "Informe o nome da família do produto (obrigatório no modelo User Products do Mercado Livre).",
+        "MISSING_FAMILY_NAME",
+      );
+    }
+    const payload = buildCreateItemPayload(input, isUpSeller);
     const created = await ml.post<MlItem>(accountId, "/items", payload);
     if (input.description?.trim()) {
       await setMlItemDescription(accountId, created.id, input.description);
@@ -329,7 +375,11 @@ export async function updateMlItem(
   options?: { isFull?: boolean; soldQuantity?: number },
 ): Promise<MlItem> {
   const payload: Record<string, unknown> = {};
-  if (input.title !== undefined) payload.title = input.title.trim();
+  if (input.familyName !== undefined) {
+    payload.family_name = input.familyName.trim();
+  } else if (input.title !== undefined) {
+    payload.title = input.title.trim();
+  }
   if (input.price !== undefined) payload.price = input.price;
   if (input.availableQuantity !== undefined && !options?.isFull) {
     payload.available_quantity = input.availableQuantity;

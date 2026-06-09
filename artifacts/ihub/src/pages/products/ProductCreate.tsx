@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useListAccounts,
@@ -36,6 +36,8 @@ export default function ProductCreate() {
   const [step, setStep] = useState(1);
   const [accountId, setAccountId] = useState("");
   const [title, setTitle] = useState("");
+  const [familyName, setFamilyName] = useState("");
+  const [familyNameManual, setFamilyNameManual] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [attributes, setAttributes] = useState<ListingFormAttribute[]>([]);
@@ -45,6 +47,10 @@ export default function ProductCreate() {
   const [condition, setCondition] = useState<"new" | "used">("new");
   const [listingTypeId, setListingTypeId] = useState("gold_special");
   const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    if (!familyNameManual) setFamilyName(title);
+  }, [title, familyNameManual]);
 
   const { data: accountsData } = useListAccounts();
   const accounts = accountsData?.data ?? [];
@@ -112,7 +118,13 @@ export default function ProductCreate() {
   };
 
   const canGoNext = (): boolean => {
-    if (step === 1) return accountId.length > 0 && title.trim().length >= 3;
+    if (step === 1) {
+      return (
+        accountId.length > 0 &&
+        title.trim().length >= 3 &&
+        (familyName.trim() || title.trim()).length >= 3
+      );
+    }
     if (step === 2) return categoryId.length > 0;
     if (step === 3) return validateRequiredAttributes(categoryAttributes, attributes) === null;
     if (step === 4) {
@@ -149,6 +161,7 @@ export default function ProductCreate() {
       data: {
         accountId,
         title: title.trim(),
+        familyName: (familyName.trim() || title.trim()),
         categoryId,
         price: Number(price),
         availableQuantity: Number(availableQuantity),
@@ -220,7 +233,25 @@ export default function ProductCreate() {
                   placeholder="Ex.: Tênis Nike Air Max 42 Preto"
                   className="h-9"
                 />
-                <p className="text-[11px] text-muted-foreground">Mínimo 3 caracteres. Use palavras-chave relevantes.</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Usado para sugerir categoria e como referência do produto. Mínimo 3 caracteres.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nome da família do produto</Label>
+                <Input
+                  value={familyName}
+                  onChange={(e) => {
+                    setFamilyNameManual(true);
+                    setFamilyName(e.target.value);
+                  }}
+                  placeholder="Ex.: Tênis Nike Air Max"
+                  className="h-9"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Obrigatório no Mercado Livre (modelo User Products). Use uma descrição genérica do produto;
+                  o ML gera o título final do anúncio a partir deste nome e dos atributos.
+                </p>
               </div>
             </>
           )}
@@ -372,8 +403,9 @@ export default function ProductCreate() {
                   />
                 ) : null}
                 <div>
-                  <p className="font-medium text-foreground">{title}</p>
+                  <p className="font-medium text-foreground">{familyName.trim() || title}</p>
                   <p className="text-muted-foreground text-xs mt-0.5">{categoryName}</p>
+                  <p className="text-muted-foreground text-[11px] mt-0.5">Referência: {title}</p>
                   <p className="text-amber-600 font-bold mt-1">{formatCurrency(Number(price))}</p>
                 </div>
               </div>

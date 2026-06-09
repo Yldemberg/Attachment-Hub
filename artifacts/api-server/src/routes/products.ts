@@ -417,6 +417,7 @@ router.post("/products", ...auth, async (req, res) => {
 
     const input: CreateMlListingInput = {
       title: body.title,
+      familyName: body.familyName,
       categoryId: body.categoryId,
       price: body.price,
       availableQuantity: body.availableQuantity,
@@ -544,6 +545,7 @@ router.put("/products/:id", ...auth, async (req, res) => {
     const body = req.body as UpdateMlListingInput;
     const input: UpdateMlListingInput = {
       title: body.title,
+      familyName: body.familyName,
       price: body.price,
       availableQuantity: body.availableQuantity,
       pictures: body.pictures,
