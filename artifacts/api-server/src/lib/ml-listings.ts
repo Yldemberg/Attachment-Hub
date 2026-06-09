@@ -174,6 +174,13 @@ export async function getCategoryAttributes(
   }));
 }
 
+function pictureExtensionForMime(mimeType: string): string {
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  if (mimeType.includes("gif")) return "gif";
+  return "jpg";
+}
+
 export async function uploadPicture(
   accountId: string,
   imageBase64: string,
@@ -185,11 +192,13 @@ export async function uploadPicture(
     throw new MlListingError("Imagem muito grande. Máximo 10 MB.", "FILE_TOO_LARGE", 400);
   }
 
+  const ext = pictureExtensionForMime(mimeType);
+  const filename = `picture.${ext}`;
   const form = new FormData();
   const blob = new Blob([buffer], { type: mimeType });
-  form.append("file", blob, "picture.jpg");
+  form.append("file", blob, filename);
 
-  const res = await fetch(`${ML_BASE_URL}/pictures`, {
+  const res = await fetch(`${ML_BASE_URL}/pictures/items/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -200,8 +209,20 @@ export async function uploadPicture(
     throw parseMlApiError(new Error(`ML API ${res.status}: ${text}`));
   }
 
-  const data = (await res.json()) as { id: string; secure_url?: string; url?: string };
-  return { id: data.id, url: data.secure_url ?? data.url ?? "" };
+  const data = (await res.json()) as {
+    id: string;
+    secure_url?: string;
+    url?: string;
+    variations?: Array<{ secure_url?: string; url?: string }>;
+  };
+  const firstVariation = data.variations?.[0];
+  const url =
+    data.secure_url ??
+    data.url ??
+    firstVariation?.secure_url ??
+    firstVariation?.url ??
+    "";
+  return { id: data.id, url };
 }
 
 export async function getMlItemDescription(accountId: string, itemId: string): Promise<string> {

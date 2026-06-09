@@ -97,11 +97,18 @@ export default function ProductCreate() {
   });
 
   const handleUpload = async (file: File): Promise<UploadedPicture> => {
+    if (!accountId) {
+      throw new Error("Selecione a conta Mercado Livre no passo 1.");
+    }
     const imageBase64 = await readFileAsBase64(file);
     const result = await uploadPicture({
       data: { accountId, imageBase64, mimeType: file.type || "image/jpeg" },
     });
     return { id: result.id, url: result.url };
+  };
+
+  const handleUploadError = (message: string) => {
+    toast({ variant: "destructive", title: "Falha no upload", description: message });
   };
 
   const canGoNext = (): boolean => {
@@ -285,6 +292,7 @@ export default function ProductCreate() {
                   onUpload={handleUpload}
                   uploading={uploadingPicture}
                   disabled={!accountId}
+                  onError={handleUploadError}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

@@ -190,6 +190,9 @@ export default function ProductEdit() {
               onPicturesChange={setPictures}
               onUpload={handleUpload}
               uploading={uploadingPicture}
+              onError={(message) =>
+                toast({ variant: "destructive", title: "Falha no upload", description: message })
+              }
             />
           </div>
 

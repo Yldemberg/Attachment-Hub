@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UploadedPicture } from "./listing-constants";
@@ -12,6 +12,7 @@ type Props = {
   onUpload: (file: File) => Promise<UploadedPicture>;
   uploading?: boolean;
   disabled?: boolean;
+  onError?: (message: string) => void;
 };
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -27,28 +28,67 @@ function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return /\.(jpe?g|png|gif|webp|bmp)$/i.test(file.name);
+}
+
+function uploadErrorMessage(err: unknown): string {
+  const apiErr = err as { payload?: { error?: { message?: string } }; message?: string };
+  return (
+    apiErr.payload?.error?.message ??
+    apiErr.message ??
+    "Não foi possível enviar a imagem. Tente outro arquivo."
+  );
+}
+
 export { readFileAsBase64, MAX_PICTURES };
 
-export function PictureUploader({ pictures, onPicturesChange, onUpload, uploading, disabled }: Props) {
+export function PictureUploader({
+  pictures,
+  onPicturesChange,
+  onUpload,
+  uploading,
+  disabled,
+  onError,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [localUploading, setLocalUploading] = useState(false);
+  const isBusy = uploading || localUploading;
 
   const handleFiles = async (files: FileList | null) => {
-    if (!files?.length || disabled) return;
+    if (!files?.length || disabled || isBusy) return;
     const remaining = MAX_PICTURES - pictures.length;
     const toProcess = Array.from(files).slice(0, remaining);
 
-    for (const file of toProcess) {
-      if (file.size > MAX_SIZE_MB * 1024 * 1024) continue;
-      if (!file.type.startsWith("image/")) continue;
-      const previewUrl = URL.createObjectURL(file);
-      try {
-        const uploaded = await onUpload(file);
-        onPicturesChange([...pictures, { ...uploaded, previewUrl }]);
-      } catch {
-        URL.revokeObjectURL(previewUrl);
+    setLocalUploading(true);
+    let current = [...pictures];
+
+    try {
+      for (const file of toProcess) {
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+          onError?.(`A imagem ${file.name} excede ${MAX_SIZE_MB} MB.`);
+          continue;
+        }
+        if (!isImageFile(file)) {
+          onError?.(`Formato não suportado: ${file.name}. Use JPG, PNG ou WEBP.`);
+          continue;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const uploaded = await onUpload(file);
+          current = [...current, { ...uploaded, previewUrl }];
+          onPicturesChange(current);
+        } catch (err) {
+          URL.revokeObjectURL(previewUrl);
+          onError?.(uploadErrorMessage(err));
+        }
       }
+    } finally {
+      setLocalUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
-    if (inputRef.current) inputRef.current.value = "";
   };
 
   const removePicture = (index: number) => {
@@ -83,10 +123,10 @@ export function PictureUploader({ pictures, onPicturesChange, onUpload, uploadin
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="size-20 rounded-lg border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            disabled={isBusy}
+            className="size-20 rounded-lg border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
           >
-            {uploading ? (
+            {isBusy ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <>
@@ -100,7 +140,7 @@ export function PictureUploader({ pictures, onPicturesChange, onUpload, uploadin
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
         multiple
         className="hidden"
         onChange={(e) => void handleFiles(e.target.files)}
@@ -109,7 +149,14 @@ export function PictureUploader({ pictures, onPicturesChange, onUpload, uploadin
         Até {MAX_PICTURES} fotos, máximo {MAX_SIZE_MB} MB cada. A primeira será a capa.
       </p>
       {pictures.length === 0 && (
-        <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()} disabled={uploading || disabled}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => inputRef.current?.click()}
+          disabled={isBusy || disabled}
+        >
+          {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
           Selecionar imagens
         </Button>
       )}
