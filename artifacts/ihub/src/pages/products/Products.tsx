@@ -4,6 +4,7 @@ import {
   useListAccounts,
   useUpdateProductStock,
   useUpdateProductListingStatus,
+  useDeleteProduct,
   useSyncSkuStock,
   getListProductsQueryKey,
   getListNotificationsQueryKey,
@@ -25,6 +26,9 @@ import {
   AlertTriangle,
   AlertCircle,
   Pencil,
+  Plus,
+  FileEdit,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -43,7 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Link, useSearchParams, useSearch } from "wouter";
+import { Link, useLocation, useSearchParams, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -54,6 +58,7 @@ import {
   serializeProductsListFilters,
   areProductListQueriesEquivalent,
 } from "@/lib/products-list-persistence";
+import { CloseListingDialog } from "./components/CloseListingDialog";
 
 interface Product {
   id: string;
@@ -116,12 +121,16 @@ function stockTextColor(qty: number | null | undefined): string {
 function ProductCard({
   p,
   onEdit,
+  onEditListing,
+  onCloseListing,
   onListingStatusChange,
   statusMutationPending,
   accountNickname,
 }: {
   p: Product;
   onEdit: () => void;
+  onEditListing: () => void;
+  onCloseListing: () => void;
   onListingStatusChange: (next: "active" | "paused") => void;
   statusMutationPending: boolean;
   accountNickname?: string | null;
@@ -164,6 +173,8 @@ function ProductCard({
             : (p.status ?? "—");
 
   const canToggleListingStatus = p.status === "active" || p.status === "paused";
+  const canCloseListing = p.status === "active" || p.status === "paused";
+  const canEditListing = p.status !== "closed";
 
   const thumbCls =
     "size-[4.5rem] rounded-lg flex-shrink-0 bg-muted object-cover";
@@ -308,6 +319,16 @@ function ProductCard({
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
           )}
+          {canEditListing && (
+            <button
+              type="button"
+              onClick={onEditListing}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-accent border border-border hover:border-primary/40 transition-colors"
+              title="Editar anúncio"
+            >
+              <FileEdit className="w-3.5 h-3.5" />
+            </button>
+          )}
           {!isFull && (
             <button
               type="button"
@@ -316,6 +337,16 @@ function ProductCard({
               title="Editar estoque"
             >
               <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {canCloseListing && (
+            <button
+              type="button"
+              onClick={onCloseListing}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-border hover:border-destructive/40 transition-colors"
+              title="Encerrar anúncio"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -365,6 +396,7 @@ function SkeletonCard() {
 }
 
 export default function Products() {
+  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -395,6 +427,11 @@ export default function Products() {
   );
   const [newQuantity, setNewQuantity] = useState("");
   const [listingPickerOpen, setListingPickerOpen] = useState(false);
+  const [closeDialog, setCloseDialog] = useState<{
+    productId: string;
+    title: string;
+    mlItemId?: string | null;
+  } | null>(null);
 
   const params = {
     page,
@@ -653,6 +690,29 @@ export default function Products() {
     },
   });
 
+  const { mutate: closeListing, isPending: closingListing } = useDeleteProduct({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        setCloseDialog(null);
+        toast({
+          title: "Anúncio encerrado",
+          description: "O anúncio foi encerrado no Mercado Livre.",
+        });
+      },
+      onError: (err) => {
+        const msg =
+          (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
+          "Não foi possível encerrar o anúncio.";
+        toast({
+          variant: "destructive",
+          title: "Erro ao encerrar",
+          description: msg,
+        });
+      },
+    },
+  });
+
   const handleStockUpdate = () => {
     if (!stockDialog || !newQuantity) return;
     const qty = Number(newQuantity);
@@ -688,7 +748,13 @@ export default function Products() {
               {total} anúncio{total === 1 ? "" : "s"} encontrado{total === 1 ? "" : "s"}
             </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <Link href="/products/new">
+              <Button size="sm" className="h-7 text-xs gap-1">
+                <Plus className="w-3.5 h-3.5" />
+                Criar anúncio
+              </Button>
+            </Link>
             {ROWS_OPTIONS.map((n) => (
               <button
                 key={n}
@@ -922,6 +988,14 @@ export default function Products() {
                     <ProductCard
                       p={p}
                       onEdit={() => openStockDialog(p)}
+                      onEditListing={() => navigate(`/products/${p.id}/edit`)}
+                      onCloseListing={() =>
+                        setCloseDialog({
+                          productId: p.id,
+                          title: p.title ?? p.id,
+                          mlItemId: p.mlItemId,
+                        })
+                      }
                       onListingStatusChange={(next) => {
                         if (p.status === next) return;
                         updateListingStatus({ id: p.id, data: { status: next } });
@@ -1066,6 +1140,19 @@ export default function Products() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CloseListingDialog
+        open={!!closeDialog}
+        onOpenChange={(o) => {
+          if (!o) setCloseDialog(null);
+        }}
+        title={closeDialog?.title ?? ""}
+        mlItemId={closeDialog?.mlItemId}
+        isPending={closingListing}
+        onConfirm={() => {
+          if (closeDialog) closeListing({ id: closeDialog.productId });
+        }}
+      />
     </div>
   );
 }

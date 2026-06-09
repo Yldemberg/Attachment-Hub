@@ -143,6 +143,123 @@ export interface UpdateProductListingStatusRequest {
   status: UpdateProductListingStatusRequestStatus;
 }
 
+export interface MlCategoryPrediction {
+  categoryId: string;
+  categoryName: string;
+  domainId?: string | null;
+  domainName?: string | null;
+}
+
+export type MlCategoryAttributeTags = {
+  required?: boolean;
+  catalog_required?: boolean;
+  fixed?: boolean;
+  read_only?: boolean;
+} | null;
+
+export type MlCategoryAttributeValuesItem = {
+  id: string;
+  name: string;
+};
+
+export type MlCategoryAttributeAllowedUnitsItem = {
+  id: string;
+  name: string;
+};
+
+export interface MlCategoryAttribute {
+  id: string;
+  name: string;
+  valueType: string;
+  tags?: MlCategoryAttributeTags;
+  values?: MlCategoryAttributeValuesItem[] | null;
+  allowedUnits?: MlCategoryAttributeAllowedUnitsItem[] | null;
+  defaultUnit?: string | null;
+  hint?: string | null;
+}
+
+export interface MlListingAttributeInput {
+  id: string;
+  value_name: string;
+  value_id?: string | null;
+}
+
+export interface MlListingVariationInput {
+  attribute_combinations: MlListingAttributeInput[];
+  price: number;
+  available_quantity: number;
+  picture_ids?: string[];
+}
+
+export type CreateProductRequestCondition =
+  (typeof CreateProductRequestCondition)[keyof typeof CreateProductRequestCondition];
+
+export const CreateProductRequestCondition = {
+  new: "new",
+  used: "used",
+} as const;
+
+export interface CreateProductRequest {
+  accountId: string;
+  title: string;
+  categoryId: string;
+  price?: number;
+  availableQuantity: number;
+  condition: CreateProductRequestCondition;
+  listingTypeId: string;
+  /**
+   * @minItems 1
+   * @maxItems 12
+   */
+  pictures: string[];
+  attributes: MlListingAttributeInput[];
+  description?: string | null;
+  variations?: MlListingVariationInput[] | null;
+}
+
+export interface UpdateProductRequest {
+  title?: string;
+  price?: number;
+  availableQuantity?: number;
+  pictures?: string[];
+  attributes?: MlListingAttributeInput[];
+  description?: string | null;
+}
+
+export interface UploadProductPictureRequest {
+  accountId: string;
+  /** Base64-encoded image data (without data URL prefix) */
+  imageBase64: string;
+  mimeType?: string;
+}
+
+export interface UploadProductPictureResponse {
+  id: string;
+  url: string;
+}
+
+export type ProductListingDetailPicturesItem = {
+  id: string;
+  url: string;
+};
+
+export type ProductListingDetailAttributesItem = {
+  id: string;
+  name?: string | null;
+  value_name?: string | null;
+  value_id?: string | null;
+};
+
+export interface ProductListingDetail {
+  product: Product;
+  description: string;
+  pictures: ProductListingDetailPicturesItem[];
+  attributes: ProductListingDetailAttributesItem[];
+  listingTypeId?: string | null;
+  condition?: string | null;
+  categoryId?: string | null;
+}
+
 export type UpdateStockResponseResultsItem = {
   productId: string;
   mlItemId: string;
@@ -682,6 +799,23 @@ export const ListProductsListingFilter = {
   catalog: "catalog",
 } as const;
 
+export type PredictProductCategoryParams = {
+  account_id: string;
+  title: string;
+};
+
+export type PredictProductCategory200 = {
+  data: MlCategoryPrediction[];
+};
+
+export type GetProductCategoryAttributesParams = {
+  account_id: string;
+};
+
+export type GetProductCategoryAttributes200 = {
+  data: MlCategoryAttribute[];
+};
+
 export type GetLowStockProductsParams = {
   threshold?: number;
   account_id?: string;
@@ -689,6 +823,19 @@ export type GetLowStockProductsParams = {
 
 export type GetLowStockProducts200 = {
   data: Product[];
+};
+
+export type DeleteProduct200Status =
+  (typeof DeleteProduct200Status)[keyof typeof DeleteProduct200Status];
+
+export const DeleteProduct200Status = {
+  closed: "closed",
+} as const;
+
+export type DeleteProduct200 = {
+  success: boolean;
+  productId: string;
+  status: DeleteProduct200Status;
 };
 
 export type UpdateProductListingStatus200Status =

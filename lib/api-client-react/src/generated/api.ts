@@ -24,7 +24,9 @@ import type {
   BadRequestResponse,
   BulkActivatePromotionItemsRequest,
   BulkActivatePromotionItemsResponse,
+  CreateProductRequest,
   DashboardSummary,
+  DeleteProduct200,
   ErrorResponse,
   GetConnectUrl200,
   GetDashboardSummaryParams,
@@ -32,6 +34,8 @@ import type {
   GetLowStockProductsParams,
   GetMercadoPagoPaymentParams,
   GetMlExtraCostsParams,
+  GetProductCategoryAttributes200,
+  GetProductCategoryAttributesParams,
   GetPromotionParams,
   GetPromotionsSummaryParams,
   GetSalesChartParams,
@@ -63,8 +67,11 @@ import type {
   NotificationListResponse,
   Order,
   OrderListResponse,
+  PredictProductCategory200,
+  PredictProductCategoryParams,
   Product,
   ProductListResponse,
+  ProductListingDetail,
   Promotion,
   PromotionInboxListResponse,
   PromotionItemListResponse,
@@ -83,11 +90,14 @@ import type {
   UnauthorizedResponse,
   UpdateProductListingStatus200,
   UpdateProductListingStatusRequest,
+  UpdateProductRequest,
   UpdateProductStock200,
   UpdatePromotionItem200,
   UpdateStockBySkuParams,
   UpdateStockRequest,
   UpdateStockResponse,
+  UploadProductPictureRequest,
+  UploadProductPictureResponse,
   UpsertMpCredentialsRequest,
   UserProfile,
 } from "./api.schemas";
@@ -1033,6 +1043,419 @@ export function useListProducts<
 }
 
 /**
+ * @summary Create a traditional Mercado Livre listing
+ */
+export const getCreateProductUrl = () => {
+  return `/api/products`;
+};
+
+export const createProduct = async (
+  createProductRequest: CreateProductRequest,
+  options?: RequestInit,
+): Promise<Product> => {
+  return customFetch<Product>(getCreateProductUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createProductRequest),
+  });
+};
+
+export const getCreateProductMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProduct>>,
+    TError,
+    { data: BodyType<CreateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createProduct>>,
+  TError,
+  { data: BodyType<CreateProductRequest> },
+  TContext
+> => {
+  const mutationKey = ["createProduct"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createProduct>>,
+    { data: BodyType<CreateProductRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createProduct(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateProductMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createProduct>>
+>;
+export type CreateProductMutationBody = BodyType<CreateProductRequest>;
+export type CreateProductMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Create a traditional Mercado Livre listing
+ */
+export const useCreateProduct = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProduct>>,
+    TError,
+    { data: BodyType<CreateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createProduct>>,
+  TError,
+  { data: BodyType<CreateProductRequest> },
+  TContext
+> => {
+  return useMutation(getCreateProductMutationOptions(options));
+};
+
+/**
+ * @summary Predict Mercado Livre category from title
+ */
+export const getPredictProductCategoryUrl = (
+  params: PredictProductCategoryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/products/categories/predict?${stringifiedParams}`
+    : `/api/products/categories/predict`;
+};
+
+export const predictProductCategory = async (
+  params: PredictProductCategoryParams,
+  options?: RequestInit,
+): Promise<PredictProductCategory200> => {
+  return customFetch<PredictProductCategory200>(
+    getPredictProductCategoryUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getPredictProductCategoryQueryKey = (
+  params?: PredictProductCategoryParams,
+) => {
+  return [
+    `/api/products/categories/predict`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getPredictProductCategoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof predictProductCategory>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: PredictProductCategoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof predictProductCategory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getPredictProductCategoryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof predictProductCategory>>
+  > = ({ signal }) =>
+    predictProductCategory(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof predictProductCategory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type PredictProductCategoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof predictProductCategory>>
+>;
+export type PredictProductCategoryQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Predict Mercado Livre category from title
+ */
+
+export function usePredictProductCategory<
+  TData = Awaited<ReturnType<typeof predictProductCategory>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params: PredictProductCategoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof predictProductCategory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getPredictProductCategoryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get category attributes for listing form
+ */
+export const getGetProductCategoryAttributesUrl = (
+  categoryId: string,
+  params: GetProductCategoryAttributesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/products/categories/${categoryId}/attributes?${stringifiedParams}`
+    : `/api/products/categories/${categoryId}/attributes`;
+};
+
+export const getProductCategoryAttributes = async (
+  categoryId: string,
+  params: GetProductCategoryAttributesParams,
+  options?: RequestInit,
+): Promise<GetProductCategoryAttributes200> => {
+  return customFetch<GetProductCategoryAttributes200>(
+    getGetProductCategoryAttributesUrl(categoryId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetProductCategoryAttributesQueryKey = (
+  categoryId: string,
+  params?: GetProductCategoryAttributesParams,
+) => {
+  return [
+    `/api/products/categories/${categoryId}/attributes`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetProductCategoryAttributesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProductCategoryAttributes>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  categoryId: string,
+  params: GetProductCategoryAttributesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProductCategoryAttributes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetProductCategoryAttributesQueryKey(categoryId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getProductCategoryAttributes>>
+  > = ({ signal }) =>
+    getProductCategoryAttributes(categoryId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!categoryId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProductCategoryAttributes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProductCategoryAttributesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProductCategoryAttributes>>
+>;
+export type GetProductCategoryAttributesQueryError =
+  ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Get category attributes for listing form
+ */
+
+export function useGetProductCategoryAttributes<
+  TData = Awaited<ReturnType<typeof getProductCategoryAttributes>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  categoryId: string,
+  params: GetProductCategoryAttributesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProductCategoryAttributes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProductCategoryAttributesQueryOptions(
+    categoryId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Upload picture for a new or updated listing
+ */
+export const getUploadProductPictureUrl = () => {
+  return `/api/products/pictures`;
+};
+
+export const uploadProductPicture = async (
+  uploadProductPictureRequest: UploadProductPictureRequest,
+  options?: RequestInit,
+): Promise<UploadProductPictureResponse> => {
+  return customFetch<UploadProductPictureResponse>(
+    getUploadProductPictureUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(uploadProductPictureRequest),
+    },
+  );
+};
+
+export const getUploadProductPictureMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadProductPicture>>,
+    TError,
+    { data: BodyType<UploadProductPictureRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadProductPicture>>,
+  TError,
+  { data: BodyType<UploadProductPictureRequest> },
+  TContext
+> => {
+  const mutationKey = ["uploadProductPicture"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadProductPicture>>,
+    { data: BodyType<UploadProductPictureRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadProductPicture(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadProductPictureMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadProductPicture>>
+>;
+export type UploadProductPictureMutationBody =
+  BodyType<UploadProductPictureRequest>;
+export type UploadProductPictureMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Upload picture for a new or updated listing
+ */
+export const useUploadProductPicture = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadProductPicture>>,
+    TError,
+    { data: BodyType<UploadProductPictureRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadProductPicture>>,
+  TError,
+  { data: BodyType<UploadProductPictureRequest> },
+  TContext
+> => {
+  return useMutation(getUploadProductPictureMutationOptions(options));
+};
+
+/**
  * @summary Get products with low stock
  */
 export const getGetLowStockProductsUrl = (
@@ -1216,6 +1639,281 @@ export function useGetProduct<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetProductQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update an existing Mercado Livre listing
+ */
+export const getUpdateProductUrl = (id: string) => {
+  return `/api/products/${id}`;
+};
+
+export const updateProduct = async (
+  id: string,
+  updateProductRequest: UpdateProductRequest,
+  options?: RequestInit,
+): Promise<Product> => {
+  return customFetch<Product>(getUpdateProductUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateProductRequest),
+  });
+};
+
+export const getUpdateProductMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProduct>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProduct>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateProduct"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProduct>>,
+    { id: string; data: BodyType<UpdateProductRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProduct(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProductMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProduct>>
+>;
+export type UpdateProductMutationBody = BodyType<UpdateProductRequest>;
+export type UpdateProductMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Update an existing Mercado Livre listing
+ */
+export const useUpdateProduct = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProduct>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProduct>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateProductMutationOptions(options));
+};
+
+/**
+ * Sets listing status to closed on Mercado Livre (ML does not permanently delete listings).
+ * @summary Close a Mercado Livre listing
+ */
+export const getDeleteProductUrl = (id: string) => {
+  return `/api/products/${id}`;
+};
+
+export const deleteProduct = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteProduct200> => {
+  return customFetch<DeleteProduct200>(getDeleteProductUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProductMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProduct>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProduct>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteProduct"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProduct>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteProduct(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProductMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProduct>>
+>;
+
+export type DeleteProductMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Close a Mercado Livre listing
+ */
+export const useDeleteProduct = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProduct>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProduct>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteProductMutationOptions(options));
+};
+
+/**
+ * @summary Get live listing data from Mercado Livre for edit form
+ */
+export const getGetProductListingDetailUrl = (id: string) => {
+  return `/api/products/${id}/listing-detail`;
+};
+
+export const getProductListingDetail = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ProductListingDetail> => {
+  return customFetch<ProductListingDetail>(getGetProductListingDetailUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetProductListingDetailQueryKey = (id: string) => {
+  return [`/api/products/${id}/listing-detail`] as const;
+};
+
+export const getGetProductListingDetailQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProductListingDetail>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProductListingDetail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetProductListingDetailQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getProductListingDetail>>
+  > = ({ signal }) =>
+    getProductListingDetail(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProductListingDetail>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProductListingDetailQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProductListingDetail>>
+>;
+export type GetProductListingDetailQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Get live listing data from Mercado Livre for edit form
+ */
+
+export function useGetProductListingDetail<
+  TData = Awaited<ReturnType<typeof getProductListingDetail>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProductListingDetail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProductListingDetailQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

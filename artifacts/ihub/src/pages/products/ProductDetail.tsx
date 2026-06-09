@@ -2,17 +2,21 @@ import { useParams, useLocation } from "wouter";
 import {
   useGetProduct,
   useUpdateStockBySku,
+  useDeleteProduct,
   getGetProductQueryKey,
+  getListProductsQueryKey,
 } from "@workspace/api-client-react";
 import { formatCurrency, formatDateTime, stockBgColor } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, ExternalLink, Package, RefreshCw, Tag } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileEdit, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
+import { useToast } from "@/hooks/use-toast";
+import { CloseListingDialog } from "./components/CloseListingDialog";
 
 interface ProductVariation {
   id: number;
@@ -64,8 +68,10 @@ export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [newQty, setNewQty] = useState("");
   const [saved, setSaved] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
 
   const { data: product, isLoading } = useGetProduct(id, {
     query: { queryKey: getGetProductQueryKey(id) },
@@ -79,6 +85,24 @@ export default function ProductDetail() {
         setNewQty("");
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+      },
+    },
+  });
+
+  const { mutate: closeListing, isPending: closing } = useDeleteProduct({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetProductQueryKey(id) });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        setCloseOpen(false);
+        toast({ title: "Anúncio encerrado", description: "O anúncio foi encerrado no Mercado Livre." });
+      },
+      onError: (err: Error) => {
+        toast({
+          variant: "destructive",
+          title: "Erro ao encerrar",
+          description: err.message || "Não foi possível encerrar o anúncio.",
+        });
       },
     },
   });
@@ -114,6 +138,8 @@ export default function ProductDetail() {
   const hasPromo =
     listPrice != null && salePrice != null && listPrice > salePrice;
   const variations: ProductVariation[] = Array.isArray(p.variationsJson) ? p.variationsJson : [];
+  const canEdit = p.status !== "closed";
+  const canClose = p.status === "active" || p.status === "paused";
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -139,6 +165,28 @@ export default function ProductDetail() {
               <div className="flex items-start justify-between gap-2">
                 <h1 className="text-lg font-bold text-foreground leading-tight">{p.title}</h1>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {canEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => navigate(`/products/${id}/edit`)}
+                    >
+                      <FileEdit className="w-3.5 h-3.5" />
+                      Editar
+                    </Button>
+                  )}
+                  {canClose && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                      onClick={() => setCloseOpen(true)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Encerrar
+                    </Button>
+                  )}
                   {p.permalink && (
                     <button
                       type="button"
@@ -293,6 +341,15 @@ export default function ProductDetail() {
           </div>
         )}
       </div>
+
+      <CloseListingDialog
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        title={p.title ?? p.id}
+        mlItemId={p.mlItemId}
+        isPending={closing}
+        onConfirm={() => closeListing({ id: id! })}
+      />
     </div>
   );
 }

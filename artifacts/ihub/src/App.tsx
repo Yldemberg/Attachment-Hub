@@ -11,6 +11,8 @@ import Register from "@/pages/auth/Register";
 import Dashboard from "@/pages/Dashboard";
 import Products from "@/pages/products/Products";
 import ProductDetail from "@/pages/products/ProductDetail";
+import ProductCreate from "@/pages/products/ProductCreate";
+import ProductEdit from "@/pages/products/ProductEdit";
 import Orders from "@/pages/orders/Orders";
 import OrderDetail from "@/pages/orders/OrderDetail";
 import Questions from "@/pages/Questions";
@@ -55,6 +57,24 @@ function AppRoutes() {
             <Dashboard />
           </AppLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/products/new">
+        <ProtectedRoute>
+          <AppLayout>
+            <ProductCreate />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/products/:id/edit">
+        {() => (
+          <ProtectedRoute>
+            <AppLayout>
+              <ProductEdit />
+            </AppLayout>
+          </ProtectedRoute>
+        )}
       </Route>
 
       <Route path="/products/:id">

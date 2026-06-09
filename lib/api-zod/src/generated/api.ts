@@ -266,6 +266,130 @@ export const ListProductsResponse = zod.object({
 });
 
 /**
+ * @summary Create a traditional Mercado Livre listing
+ */
+export const createProductBodyPicturesMax = 12;
+
+export const CreateProductBody = zod.object({
+  accountId: zod.string(),
+  title: zod.string(),
+  categoryId: zod.string(),
+  price: zod.number().optional(),
+  availableQuantity: zod.number(),
+  condition: zod.enum(["new", "used"]),
+  listingTypeId: zod.string(),
+  pictures: zod.array(zod.string()).min(1).max(createProductBodyPicturesMax),
+  attributes: zod.array(
+    zod.object({
+      id: zod.string(),
+      value_name: zod.string(),
+      value_id: zod.string().nullish(),
+    }),
+  ),
+  description: zod.string().nullish(),
+  variations: zod
+    .array(
+      zod.object({
+        attribute_combinations: zod.array(
+          zod.object({
+            id: zod.string(),
+            value_name: zod.string(),
+            value_id: zod.string().nullish(),
+          }),
+        ),
+        price: zod.number(),
+        available_quantity: zod.number(),
+        picture_ids: zod.array(zod.string()).optional(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Predict Mercado Livre category from title
+ */
+export const PredictProductCategoryQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+  title: zod.coerce.string(),
+});
+
+export const PredictProductCategoryResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      categoryId: zod.string(),
+      categoryName: zod.string(),
+      domainId: zod.string().nullish(),
+      domainName: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get category attributes for listing form
+ */
+export const GetProductCategoryAttributesParams = zod.object({
+  categoryId: zod.coerce.string(),
+});
+
+export const GetProductCategoryAttributesQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+});
+
+export const GetProductCategoryAttributesResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      valueType: zod.string(),
+      tags: zod
+        .object({
+          required: zod.boolean().optional(),
+          catalog_required: zod.boolean().optional(),
+          fixed: zod.boolean().optional(),
+          read_only: zod.boolean().optional(),
+        })
+        .nullish(),
+      values: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+          }),
+        )
+        .nullish(),
+      allowedUnits: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+          }),
+        )
+        .nullish(),
+      defaultUnit: zod.string().nullish(),
+      hint: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Upload picture for a new or updated listing
+ */
+export const uploadProductPictureBodyMimeTypeDefault = `image/jpeg`;
+
+export const UploadProductPictureBody = zod.object({
+  accountId: zod.string(),
+  imageBase64: zod
+    .string()
+    .describe("Base64-encoded image data (without data URL prefix)"),
+  mimeType: zod.string().default(uploadProductPictureBodyMimeTypeDefault),
+});
+
+export const UploadProductPictureResponse = zod.object({
+  id: zod.string(),
+  url: zod.string(),
+});
+
+/**
  * @summary Get products with low stock
  */
 export const getLowStockProductsQueryThresholdDefault = 5;
@@ -392,6 +516,177 @@ export const GetProductResponse = zod.object({
       mlUserId: zod.string().nullish(),
     })
     .nullish(),
+});
+
+/**
+ * @summary Update an existing Mercado Livre listing
+ */
+export const UpdateProductParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateProductBody = zod.object({
+  title: zod.string().optional(),
+  price: zod.number().optional(),
+  availableQuantity: zod.number().optional(),
+  pictures: zod.array(zod.string()).optional(),
+  attributes: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        value_name: zod.string(),
+        value_id: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+  description: zod.string().nullish(),
+});
+
+export const UpdateProductResponse = zod.object({
+  id: zod.string(),
+  accountId: zod.string(),
+  mlItemId: zod.string(),
+  title: zod.string().nullish(),
+  sku: zod.string().nullish(),
+  price: zod.number().nullish(),
+  originalPrice: zod.number().nullish(),
+  amount: zod
+    .number()
+    .nullish()
+    .describe(
+      "Somente na resposta de GET \/products: preço atual via GET \/items\/{id}\/prices (prices[].amount). Outras rotas não consultam \/prices.\n",
+    ),
+  regularAmount: zod
+    .number()
+    .nullish()
+    .describe(
+      "Somente em GET \/products: preço regular (prices[].regular_amount) quando há promoção.\n",
+    ),
+  availableQuantity: zod.number(),
+  soldQuantity: zod.number(),
+  status: zod.string().nullish(),
+  listingType: zod.string().nullish(),
+  logisticType: zod.string().nullish(),
+  isFull: zod.boolean(),
+  isFlex: zod.boolean(),
+  catalogListing: zod
+    .boolean()
+    .describe(
+      "True quando o anúncio vem de catálogo compartilhado do ML (GET \/items → catalog_listing).\n",
+    ),
+  videoId: zod
+    .string()
+    .nullish()
+    .describe(
+      "Presente em GET \/products: ID do vídeo\/clip do anúncio quando GET \/items retorna video_id; null quando não há clip ou a consulta ao ML falha.\n",
+    ),
+  thumbnail: zod.string().nullish(),
+  permalink: zod.string().nullish(),
+  mlCategoryId: zod.string().nullish(),
+  lastSyncedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+  account: zod
+    .object({
+      id: zod.string(),
+      mlNickname: zod.string().nullish(),
+      mlUserId: zod.string().nullish(),
+    })
+    .nullish(),
+});
+
+/**
+ * Sets listing status to closed on Mercado Livre (ML does not permanently delete listings).
+ * @summary Close a Mercado Livre listing
+ */
+export const DeleteProductParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteProductResponse = zod.object({
+  success: zod.boolean(),
+  productId: zod.string(),
+  status: zod.enum(["closed"]),
+});
+
+/**
+ * @summary Get live listing data from Mercado Livre for edit form
+ */
+export const GetProductListingDetailParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetProductListingDetailResponse = zod.object({
+  product: zod.object({
+    id: zod.string(),
+    accountId: zod.string(),
+    mlItemId: zod.string(),
+    title: zod.string().nullish(),
+    sku: zod.string().nullish(),
+    price: zod.number().nullish(),
+    originalPrice: zod.number().nullish(),
+    amount: zod
+      .number()
+      .nullish()
+      .describe(
+        "Somente na resposta de GET \/products: preço atual via GET \/items\/{id}\/prices (prices[].amount). Outras rotas não consultam \/prices.\n",
+      ),
+    regularAmount: zod
+      .number()
+      .nullish()
+      .describe(
+        "Somente em GET \/products: preço regular (prices[].regular_amount) quando há promoção.\n",
+      ),
+    availableQuantity: zod.number(),
+    soldQuantity: zod.number(),
+    status: zod.string().nullish(),
+    listingType: zod.string().nullish(),
+    logisticType: zod.string().nullish(),
+    isFull: zod.boolean(),
+    isFlex: zod.boolean(),
+    catalogListing: zod
+      .boolean()
+      .describe(
+        "True quando o anúncio vem de catálogo compartilhado do ML (GET \/items → catalog_listing).\n",
+      ),
+    videoId: zod
+      .string()
+      .nullish()
+      .describe(
+        "Presente em GET \/products: ID do vídeo\/clip do anúncio quando GET \/items retorna video_id; null quando não há clip ou a consulta ao ML falha.\n",
+      ),
+    thumbnail: zod.string().nullish(),
+    permalink: zod.string().nullish(),
+    mlCategoryId: zod.string().nullish(),
+    lastSyncedAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date(),
+    updatedAt: zod.coerce.date(),
+    account: zod
+      .object({
+        id: zod.string(),
+        mlNickname: zod.string().nullish(),
+        mlUserId: zod.string().nullish(),
+      })
+      .nullish(),
+  }),
+  description: zod.string(),
+  pictures: zod.array(
+    zod.object({
+      id: zod.string(),
+      url: zod.string(),
+    }),
+  ),
+  attributes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string().nullish(),
+      value_name: zod.string().nullish(),
+      value_id: zod.string().nullish(),
+    }),
+  ),
+  listingTypeId: zod.string().nullish(),
+  condition: zod.string().nullish(),
+  categoryId: zod.string().nullish(),
 });
 
 /**

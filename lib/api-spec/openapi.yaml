@@ -309,6 +309,130 @@ paths:
                 $ref: "#/components/schemas/ProductListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a traditional Mercado Livre listing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/categories/predict:
+    get:
+      operationId: predictProductCategory
+      tags: [products]
+      summary: Predict Mercado Livre category from title
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: title
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Category predictions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MlCategoryPrediction"
+                required: [data]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /products/categories/{categoryId}/attributes:
+    get:
+      operationId: getProductCategoryAttributes
+      tags: [products]
+      summary: Get category attributes for listing form
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Category attributes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MlCategoryAttribute"
+                required: [data]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /products/pictures:
+    post:
+      operationId: uploadProductPicture
+      tags: [products]
+      summary: Upload picture for a new or updated listing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadProductPictureRequest"
+      responses:
+        "200":
+          description: Picture uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadProductPictureResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /products/low-stock:
     get:
@@ -359,6 +483,91 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Product"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update an existing Mercado Livre listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Close a Mercado Livre listing
+      description: Sets listing status to closed on Mercado Livre (ML does not permanently delete listings).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Listing closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  productId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [closed]
+                required: [success, productId, status]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /products/{id}/listing-detail:
+    get:
+      operationId: getProductListingDetail
+      tags: [products]
+      summary: Get live listing data from Mercado Livre for edit form
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Live listing detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductListingDetail"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1777,6 +1986,227 @@ components:
           type: string
           enum: [active, paused]
       required: [status]
+
+    MlCategoryPrediction:
+      type: object
+      properties:
+        categoryId:
+          type: string
+        categoryName:
+          type: string
+        domainId:
+          type: string
+          nullable: true
+        domainName:
+          type: string
+          nullable: true
+      required: [categoryId, categoryName]
+
+    MlCategoryAttribute:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        valueType:
+          type: string
+        tags:
+          type: object
+          nullable: true
+          properties:
+            required:
+              type: boolean
+            catalog_required:
+              type: boolean
+            fixed:
+              type: boolean
+            read_only:
+              type: boolean
+        values:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+            required: [id, name]
+        allowedUnits:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+            required: [id, name]
+        defaultUnit:
+          type: string
+          nullable: true
+        hint:
+          type: string
+          nullable: true
+      required: [id, name, valueType]
+
+    MlListingAttributeInput:
+      type: object
+      properties:
+        id:
+          type: string
+        value_name:
+          type: string
+        value_id:
+          type: string
+          nullable: true
+      required: [id, value_name]
+
+    MlListingVariationInput:
+      type: object
+      properties:
+        attribute_combinations:
+          type: array
+          items:
+            $ref: "#/components/schemas/MlListingAttributeInput"
+        price:
+          type: number
+        available_quantity:
+          type: integer
+        picture_ids:
+          type: array
+          items:
+            type: string
+      required: [attribute_combinations, price, available_quantity]
+
+    CreateProductRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        title:
+          type: string
+        categoryId:
+          type: string
+        price:
+          type: number
+        availableQuantity:
+          type: integer
+        condition:
+          type: string
+          enum: [new, used]
+        listingTypeId:
+          type: string
+        pictures:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 12
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MlListingAttributeInput"
+        description:
+          type: string
+          nullable: true
+        variations:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/MlListingVariationInput"
+      required: [accountId, title, categoryId, availableQuantity, condition, listingTypeId, pictures, attributes]
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        price:
+          type: number
+        availableQuantity:
+          type: integer
+        pictures:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MlListingAttributeInput"
+        description:
+          type: string
+          nullable: true
+
+    UploadProductPictureRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        imageBase64:
+          type: string
+          description: Base64-encoded image data (without data URL prefix)
+        mimeType:
+          type: string
+          default: image/jpeg
+      required: [accountId, imageBase64]
+
+    UploadProductPictureResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+      required: [id, url]
+
+    ProductListingDetail:
+      type: object
+      properties:
+        product:
+          $ref: "#/components/schemas/Product"
+        description:
+          type: string
+        pictures:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              url:
+                type: string
+            required: [id, url]
+        attributes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+                nullable: true
+              value_name:
+                type: string
+                nullable: true
+              value_id:
+                type: string
+                nullable: true
+            required: [id]
+        listingTypeId:
+          type: string
+          nullable: true
+        condition:
+          type: string
+          nullable: true
+        categoryId:
+          type: string
+          nullable: true
+      required: [product, description, pictures, attributes]
 
     UpdateStockResponse:
       type: object

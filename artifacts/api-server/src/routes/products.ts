@@ -11,6 +11,19 @@ import {
   resolveProductPricesFromMlPricesApi,
   MlItem,
 } from "../lib/mercadolivre";
+import {
+  predictCategory,
+  getCategoryAttributes,
+  uploadPicture,
+  createMlItem,
+  updateMlItem,
+  closeMlItem,
+  upsertProductFromMlItem,
+  getMlListingDetail,
+  MlListingError,
+  type CreateMlListingInput,
+  type UpdateMlListingInput,
+} from "../lib/ml-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 
 const router = Router();
@@ -104,6 +117,40 @@ async function enrichRowsWithCatalogListing(
     out.push(...part);
   }
   return out;
+}
+
+async function assertUserOwnsAccount(userId: string, accountId: string): Promise<boolean> {
+  const ids = await getUserAccountIds(userId, accountId);
+  return ids.length > 0;
+}
+
+function handleMlListingRouteError(
+  err: unknown,
+  res: import("express").Response,
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  context: string,
+): void {
+  if (err instanceof MlListingError) {
+    res.status(err.statusCode).json({ error: { code: err.code, message: err.message } });
+    return;
+  }
+  log.error({ err }, context);
+  res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+}
+
+async function formatProductResponse(product: ProductRow) {
+  const db = getDb();
+  const [account] = await db
+    .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+    .from(accountsTable)
+    .where(eq(accountsTable.id, product.accountId));
+
+  return {
+    ...product,
+    price: product.price !== null ? Number(product.price) : null,
+    originalPrice: product.originalPrice !== null ? Number(product.originalPrice) : null,
+    account: account ?? null,
+  };
 }
 
 async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
@@ -296,6 +343,107 @@ router.get("/products/low-stock", ...auth, async (req, res) => {
   }
 });
 
+router.get("/products/categories/predict", ...auth, async (req, res) => {
+  try {
+    const { account_id, title } = req.query as Record<string, string>;
+    if (!account_id || !title?.trim()) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe account_id e title" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, account_id))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+    const data = await predictCategory(account_id, title);
+    res.json({ data });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to predict category");
+  }
+});
+
+router.get("/products/categories/:categoryId/attributes", ...auth, async (req, res) => {
+  try {
+    const { account_id } = req.query as Record<string, string>;
+    const categoryId = req.params.categoryId as string;
+    if (!account_id) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe account_id" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, account_id))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+    const data = await getCategoryAttributes(account_id, categoryId);
+    res.json({ data });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to get category attributes");
+  }
+});
+
+router.post("/products/pictures", ...auth, async (req, res) => {
+  try {
+    const { accountId, imageBase64, mimeType } = req.body as {
+      accountId?: string;
+      imageBase64?: string;
+      mimeType?: string;
+    };
+    if (!accountId || !imageBase64) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId e imageBase64" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+    const result = await uploadPicture(accountId, imageBase64, mimeType ?? "image/jpeg");
+    res.json(result);
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to upload picture");
+  }
+});
+
+router.post("/products", ...auth, async (req, res) => {
+  try {
+    const body = req.body as CreateMlListingInput & { accountId?: string };
+    const accountId = body.accountId;
+    if (!accountId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const input: CreateMlListingInput = {
+      title: body.title,
+      categoryId: body.categoryId,
+      price: body.price,
+      availableQuantity: body.availableQuantity,
+      condition: body.condition,
+      listingTypeId: body.listingTypeId,
+      pictures: body.pictures ?? [],
+      attributes: body.attributes ?? [],
+      description: body.description,
+      variations: body.variations,
+    };
+
+    const created = await createMlItem(accountId, input);
+    const productId = await upsertProductFromMlItem(accountId, created);
+
+    const db = getDb();
+    const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
+    if (!product) {
+      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+      return;
+    }
+
+    res.status(201).json(await formatProductResponse(product));
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to create product");
+  }
+});
+
 router.get("/products/:id", ...auth, async (req, res) => {
   try {
     const db = getDb();
@@ -329,6 +477,130 @@ router.get("/products/:id", ...auth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get product");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.get("/products/:id/listing-detail", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const detail = await getMlListingDetail(product.accountId, product.mlItemId);
+    const conditionAttr = detail.attributes.find((a) => a.id === "ITEM_CONDITION");
+    res.json({
+      product: await formatProductResponse(product),
+      description: detail.description,
+      pictures: detail.pictures,
+      attributes: detail.attributes,
+      listingTypeId: detail.item.listing_type_id ?? null,
+      condition: conditionAttr?.value_name?.toLowerCase().includes("usado") ? "used" : "new",
+      categoryId: detail.item.category_id ?? product.mlCategoryId,
+    });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to get listing detail");
+  }
+});
+
+router.put("/products/:id", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    if (product.status === "closed") {
+      res.status(400).json({
+        error: { code: "CLOSED_LISTING", message: "Não é possível editar anúncios encerrados" },
+      });
+      return;
+    }
+
+    const body = req.body as UpdateMlListingInput;
+    const input: UpdateMlListingInput = {
+      title: body.title,
+      price: body.price,
+      availableQuantity: body.availableQuantity,
+      pictures: body.pictures,
+      attributes: body.attributes,
+      description: body.description,
+    };
+
+    const updated = await updateMlItem(product.accountId, product.mlItemId, input, {
+      isFull: product.isFull,
+      soldQuantity: product.soldQuantity,
+    });
+    await upsertProductFromMlItem(product.accountId, updated);
+
+    const [refreshed] = await db.select().from(productsTable).where(eq(productsTable.id, product.id));
+    if (!refreshed) {
+      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+      return;
+    }
+
+    res.json(await formatProductResponse(refreshed));
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to update product");
+  }
+});
+
+router.delete("/products/:id", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const accountIds = await getUserAccountIds(req.user!.id);
+    if (accountIds.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
+
+    if (!product) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    if (product.status === "closed") {
+      res.status(400).json({
+        error: { code: "ALREADY_CLOSED", message: "Este anúncio já está encerrado" },
+      });
+      return;
+    }
+
+    const closed = await closeMlItem(product.accountId, product.mlItemId);
+    await upsertProductFromMlItem(product.accountId, closed);
+
+    res.json({ success: true, productId: product.id, status: "closed" as const });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to close product");
   }
 });
 
