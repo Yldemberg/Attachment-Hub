@@ -6,6 +6,5 @@ export * from "./products";
 export * from "./orders";
 export * from "./questions";
 export * from "./notifications";
-export * from "./vacation-mode-pauses";
 export * from "./relations";
 export * from "./oauth-states";

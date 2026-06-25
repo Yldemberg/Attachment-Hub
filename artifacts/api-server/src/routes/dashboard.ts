@@ -19,7 +19,6 @@ import { buildSalesReportExportRow, type SalesReportDbDetailRow } from "../lib/s
 import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 import { resolveOrderNetReceivedAmount } from "../lib/mercadopago";
 import { fetchMlExtraCostsAggregated } from "../lib/ml-billing";
-import { getVacationModeState, setVacationMode } from "../lib/vacation-mode";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -38,34 +37,6 @@ function inclusiveDaySpan(dateFrom: string, dateTo: string): number {
 }
 
 const MAX_REPORT_SPAN_DAYS = 366;
-
-router.get("/dashboard/vacation-mode", ...auth, async (req, res) => {
-  try {
-    const state = await getVacationModeState(req.user!.id);
-    res.json(state);
-  } catch (err) {
-    req.log.error({ err }, "Failed to get vacation mode state");
-    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
-  }
-});
-
-router.put("/dashboard/vacation-mode", ...auth, async (req, res) => {
-  try {
-    const { enabled } = req.body as { enabled?: boolean };
-    if (typeof enabled !== "boolean") {
-      res.status(400).json({
-        error: { code: "BAD_REQUEST", message: "Informe enabled como boolean" },
-      });
-      return;
-    }
-
-    const result = await setVacationMode(req.user!.id, enabled);
-    res.json(result);
-  } catch (err) {
-    req.log.error({ err }, "Failed to set vacation mode");
-    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
-  }
-});
 
 router.get("/dashboard/summary", ...auth, async (req, res) => {
   try {

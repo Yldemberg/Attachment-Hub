@@ -7,14 +7,12 @@ import { productsTable } from "./products";
 import { ordersTable } from "./orders";
 import { questionsTable } from "./questions";
 import { notificationsTable } from "./notifications";
-import { vacationModePausesTable } from "./vacation-mode-pauses";
 
 export const profilesRelations = relations(profilesTable, ({ many }) => ({
   accounts: many(accountsTable),
   notifications: many(notificationsTable),
   skuMandateInventories: many(skuMandateInventoryTable),
   inventorySkuFinancials: many(inventorySkuFinancialsTable),
-  vacationModePauses: many(vacationModePausesTable),
 }));
 
 export const accountsRelations = relations(accountsTable, ({ one, many }) => ({
@@ -41,12 +39,11 @@ export const inventorySkuFinancialsRelations = relations(inventorySkuFinancialsT
   }),
 }));
 
-export const productsRelations = relations(productsTable, ({ one, many }) => ({
+export const productsRelations = relations(productsTable, ({ one }) => ({
   account: one(accountsTable, {
     fields: [productsTable.accountId],
     references: [accountsTable.id],
   }),
-  vacationModePauses: many(vacationModePausesTable),
 }));
 
 export const ordersRelations = relations(ordersTable, ({ one }) => ({
@@ -67,16 +64,5 @@ export const notificationsRelations = relations(notificationsTable, ({ one }) =>
   profile: one(profilesTable, {
     fields: [notificationsTable.userId],
     references: [profilesTable.id],
-  }),
-}));
-
-export const vacationModePausesRelations = relations(vacationModePausesTable, ({ one }) => ({
-  profile: one(profilesTable, {
-    fields: [vacationModePausesTable.userId],
-    references: [profilesTable.id],
-  }),
-  product: one(productsTable, {
-    fields: [vacationModePausesTable.productId],
-    references: [productsTable.id],
   }),
 }));

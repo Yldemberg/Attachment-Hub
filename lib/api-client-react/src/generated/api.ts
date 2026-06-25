@@ -86,7 +86,6 @@ import type {
   SalesChartResponse,
   SalesReportResponse,
   SearchInventoryParams,
-  SetVacationModeRequest,
   SkuSyncRequest,
   SkuSyncResponse,
   SyncAccount202,
@@ -103,8 +102,6 @@ import type {
   UploadProductPictureResponse,
   UpsertMpCredentialsRequest,
   UserProfile,
-  VacationModeResult,
-  VacationModeState,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -4644,169 +4641,6 @@ export function useGetDashboardSummary<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-/**
- * Retorna se o Modo Férias está ativo e quantos anúncios cross-docking estão ativos ou pausados em todas as contas do usuário.
- * @summary Estado do Modo Férias
- */
-export const getGetVacationModeUrl = () => {
-  return `/api/dashboard/vacation-mode`;
-};
-
-export const getVacationMode = async (
-  options?: RequestInit,
-): Promise<VacationModeState> => {
-  return customFetch<VacationModeState>(getGetVacationModeUrl(), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetVacationModeQueryKey = () => {
-  return [`/api/dashboard/vacation-mode`] as const;
-};
-
-export const getGetVacationModeQueryOptions = <
-  TData = Awaited<ReturnType<typeof getVacationMode>>,
-  TError = ErrorType<UnauthorizedResponse>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getVacationMode>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetVacationModeQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getVacationMode>>> = ({
-    signal,
-  }) => getVacationMode({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getVacationMode>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetVacationModeQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getVacationMode>>
->;
-export type GetVacationModeQueryError = ErrorType<UnauthorizedResponse>;
-
-/**
- * @summary Estado do Modo Férias
- */
-
-export function useGetVacationMode<
-  TData = Awaited<ReturnType<typeof getVacationMode>>,
-  TError = ErrorType<UnauthorizedResponse>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getVacationMode>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetVacationModeQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * ON pausa em massa anúncios cross-docking ativos em todas as contas (Full não é alterado). OFF reativa todos os cross-docking pausados.
- * @summary Ativar ou desativar Modo Férias
- */
-export const getSetVacationModeUrl = () => {
-  return `/api/dashboard/vacation-mode`;
-};
-
-export const setVacationMode = async (
-  setVacationModeRequest: SetVacationModeRequest,
-  options?: RequestInit,
-): Promise<VacationModeResult> => {
-  return customFetch<VacationModeResult>(getSetVacationModeUrl(), {
-    ...options,
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(setVacationModeRequest),
-  });
-};
-
-export const getSetVacationModeMutationOptions = <
-  TError = ErrorType<UnauthorizedResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setVacationMode>>,
-    TError,
-    { data: BodyType<SetVacationModeRequest> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof setVacationMode>>,
-  TError,
-  { data: BodyType<SetVacationModeRequest> },
-  TContext
-> => {
-  const mutationKey = ["setVacationMode"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof setVacationMode>>,
-    { data: BodyType<SetVacationModeRequest> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return setVacationMode(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type SetVacationModeMutationResult = NonNullable<
-  Awaited<ReturnType<typeof setVacationMode>>
->;
-export type SetVacationModeMutationBody = BodyType<SetVacationModeRequest>;
-export type SetVacationModeMutationError = ErrorType<UnauthorizedResponse>;
-
-/**
- * @summary Ativar ou desativar Modo Férias
- */
-export const useSetVacationMode = <
-  TError = ErrorType<UnauthorizedResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setVacationMode>>,
-    TError,
-    { data: BodyType<SetVacationModeRequest> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof setVacationMode>>,
-  TError,
-  { data: BodyType<SetVacationModeRequest> },
-  TContext
-> => {
-  return useMutation(getSetVacationModeMutationOptions(options));
-};
 
 /**
  * Product Ads, envios Full e armazenamento Full acumulados no mês calendário selecionado (padrão: mês atual). Use period_key para consultar meses anteriores (formato YYYY-MM-01).

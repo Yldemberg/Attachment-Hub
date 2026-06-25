@@ -7,19 +7,13 @@ import {
   useListAccounts,
   useListQuestions,
   useAnswerQuestion,
-  useGetVacationMode,
-  useSetVacationMode,
   getGetDashboardSummaryQueryKey,
   getGetSalesChartQueryKey,
   getGetMlExtraCostsQueryKey,
   getGetLowStockProductsQueryKey,
   getListQuestionsQueryKey,
   getGetQuestionQueryKey,
-  getGetVacationModeQueryKey,
-  getListProductsQueryKey,
   ListQuestionsStatus,
-  type VacationModeResult,
-  ApiError,
 } from "@workspace/api-client-react";
 import {
   AreaChart,
@@ -40,8 +34,6 @@ import {
   Send,
   TrendingUp,
   Receipt,
-  Loader2,
-  Palmtree,
 } from "lucide-react";
 import {
   Select,
@@ -52,18 +44,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -202,94 +182,6 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("30d");
   const [accountId, setAccountId] = useState<string | undefined>();
   const [extraCostsPeriodKey, setExtraCostsPeriodKey] = useState(currentMonthPeriodKey);
-  const [vacationConfirmOpen, setVacationConfirmOpen] = useState(false);
-  const [pendingVacationEnabled, setPendingVacationEnabled] = useState<boolean | null>(null);
-
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const { data: vacationMode, isLoading: loadingVacationMode } = useGetVacationMode({
-    query: { queryKey: getGetVacationModeQueryKey() },
-  });
-  const vacationEnabled = (vacationMode as { enabled?: boolean } | null)?.enabled ?? false;
-  const activeCrossCount =
-    (vacationMode as { activeCrossDockingCount?: number } | null)?.activeCrossDockingCount ?? 0;
-  const pausedCrossCount =
-    (vacationMode as { pausedCrossDockingCount?: number } | null)?.pausedCrossDockingCount ?? 0;
-
-  const { mutate: setVacationModeMut, isPending: settingVacationMode } = useSetVacationMode({
-    mutation: {
-      onSuccess: (result, variables) => {
-        const data = result as VacationModeResult;
-        const requestedEnabled = variables.data.enabled;
-        queryClient.invalidateQueries({ queryKey: getGetVacationModeQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-
-        if (requestedEnabled) {
-          const paused = data.paused ?? 0;
-          if (data.failed > 0) {
-            toast({
-              variant: "destructive",
-              title: "Modo Férias ativado com falhas",
-              description: `${paused} anúncio(s) pausado(s), ${data.failed} falha(s).`,
-            });
-          } else {
-            toast({
-              title: "Modo Férias ativado",
-              description:
-                paused > 0
-                  ? `${paused} anúncio(s) cross-docking pausado(s) em todas as contas.`
-                  : "Nenhum anúncio cross-docking ativo para pausar.",
-            });
-          }
-        } else {
-          const activated = data.activated ?? 0;
-          const skipped = data.skipped ?? 0;
-          if (data.failed > 0) {
-            toast({
-              variant: "destructive",
-              title: "Modo Férias desativado com falhas",
-              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s).${skipped > 0 ? ` ${skipped} do snapshot ignorado(s).` : ""}`,
-            });
-          } else if (activated > 0) {
-            toast({
-              title: "Modo Férias desativado",
-              description:
-                skipped > 0
-                  ? `${activated} anúncio(s) pausados pelo Modo Férias reativado(s). ${skipped} ignorado(s) (já ativos ou encerrados).`
-                  : `${activated} anúncio(s) pausados pelo Modo Férias reativado(s).`,
-            });
-          } else {
-            toast({
-              title: "Modo Férias desativado",
-              description:
-                skipped > 0
-                  ? `Nenhum anúncio do snapshot para reativar. ${skipped} ignorado(s) (já ativos ou encerrados).`
-                  : "Nenhum anúncio pausado pelo Modo Férias para reativar.",
-            });
-          }
-        }
-        setVacationConfirmOpen(false);
-        setPendingVacationEnabled(null);
-      },
-      onError: (err) => {
-        const msg =
-          err instanceof ApiError
-            ? ((err.data as { error?: { message?: string } } | null)?.error?.message ?? err.message)
-            : "Não foi possível alterar o Modo Férias.";
-        toast({
-          variant: "destructive",
-          title: "Erro no Modo Férias",
-          description: msg,
-        });
-        setVacationConfirmOpen(false);
-        setPendingVacationEnabled(null);
-      },
-      onSettled: () => {
-        queryClient.invalidateQueries({ queryKey: getGetVacationModeQueryKey() });
-      },
-    },
-  });
 
   const { data: accountsData } = useListAccounts();
   const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
@@ -393,36 +285,12 @@ export default function Dashboard() {
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
             <p className="text-muted-foreground text-sm mt-0.5">Visão geral de todas as suas contas</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-xl border border-card-border bg-card px-3 py-2">
-              <Palmtree
-                className={`h-4 w-4 shrink-0 ${vacationEnabled ? "text-amber-600" : "text-muted-foreground"}`}
-              />
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-foreground leading-tight">Modo Férias</p>
-                <p className="text-[10px] text-muted-foreground leading-tight hidden sm:block">
-                  Pausa cross-docking em todas as contas
-                </p>
-              </div>
-              {loadingVacationMode || settingVacationMode ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-              ) : (
-                <Switch
-                  checked={vacationEnabled}
-                  disabled={settingVacationMode}
-                  aria-label="Modo Férias"
-                  onCheckedChange={(checked) => {
-                    setPendingVacationEnabled(checked);
-                    setVacationConfirmOpen(true);
-                  }}
-                />
-              )}
-            </div>
+          <div className="flex items-center gap-2">
             {accounts.length > 0 && (
               <Select value={accountId ?? "all"} onValueChange={(v) => setAccountId(v === "all" ? undefined : v)}>
                 <SelectTrigger className="w-44 text-sm h-8">
@@ -440,59 +308,6 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-
-        <AlertDialog
-          open={vacationConfirmOpen}
-          onOpenChange={(open) => {
-            setVacationConfirmOpen(open);
-            if (!open) setPendingVacationEnabled(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {pendingVacationEnabled ? "Ativar Modo Férias?" : "Desativar Modo Férias?"}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {pendingVacationEnabled ? (
-                  <>
-                    Isso pausará <span className="font-medium text-foreground">{activeCrossCount}</span> anúncio(s)
-                    cross-docking ativo(s) em todas as suas contas. Anúncios Full, Flex e demais modalidades não
-                    serão alterados.
-                  </>
-                ) : (
-                  <>
-                    Isso reativará <span className="font-medium text-foreground">{pausedCrossCount}</span> anúncio(s)
-                    pausados pelo Modo Férias ainda pausados. Anúncios pausados manualmente, já ativos
-                    ou encerrados não serão alterados.
-                  </>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={settingVacationMode}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={settingVacationMode || pendingVacationEnabled === null}
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (pendingVacationEnabled === null) return;
-                  setVacationModeMut({ data: { enabled: pendingVacationEnabled } });
-                }}
-              >
-                {settingVacationMode ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando…
-                  </>
-                ) : pendingVacationEnabled ? (
-                  "Ativar Modo Férias"
-                ) : (
-                  "Desativar Modo Férias"
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {kpis.map((kpi) => {

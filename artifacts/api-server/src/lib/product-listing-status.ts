@@ -1,8 +1,10 @@
 import { eq, and, inArray } from "drizzle-orm";
-import { productsTable } from "@workspace/db/schema";
+import { productsTable, type Product } from "@workspace/db/schema";
 import { getDb } from "./db";
 import { getUserAccountIds } from "./account-scope";
-import { setProductListingStatus, type ListingStatus } from "./cross-docking-listings";
+import { ml } from "./mercadolivre";
+
+export type ListingStatus = "active" | "paused";
 
 export class ProductListingStatusError extends Error {
   constructor(
@@ -14,7 +16,19 @@ export class ProductListingStatusError extends Error {
   }
 }
 
-/** Mesma lógica de PATCH /products/:id/status — usada na tela Produtos e no Modo Férias. */
+async function setProductListingStatus(
+  product: Pick<Product, "id" | "accountId" | "mlItemId">,
+  status: ListingStatus,
+): Promise<void> {
+  const db = getDb();
+  await ml.put(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`, { status });
+  await db
+    .update(productsTable)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(productsTable.id, product.id));
+}
+
+/** Mesma lógica de PATCH /products/:id/status — usada na tela Produtos. */
 export async function changeProductListingStatus(
   userId: string,
   productId: string,
