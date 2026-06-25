@@ -19,6 +19,7 @@ import {
   getListProductsQueryKey,
   ListQuestionsStatus,
   type VacationModeResult,
+  ApiError,
 } from "@workspace/api-client-react";
 import {
   AreaChart,
@@ -218,12 +219,13 @@ export default function Dashboard() {
 
   const { mutate: setVacationModeMut, isPending: settingVacationMode } = useSetVacationMode({
     mutation: {
-      onSuccess: (result) => {
+      onSuccess: (result, variables) => {
         const data = result as VacationModeResult;
+        const requestedEnabled = variables.data.enabled;
         queryClient.invalidateQueries({ queryKey: getGetVacationModeQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
 
-        if (data.enabled) {
+        if (requestedEnabled) {
           const paused = data.paused ?? 0;
           if (data.failed > 0) {
             toast({
@@ -246,7 +248,7 @@ export default function Dashboard() {
             toast({
               variant: "destructive",
               title: "Modo Férias desativado com falhas",
-              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s).`,
+              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s). Alguns anúncios podem continuar pausados no Mercado Livre.`,
             });
           } else {
             toast({
@@ -263,8 +265,9 @@ export default function Dashboard() {
       },
       onError: (err) => {
         const msg =
-          (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
-          "Não foi possível alterar o Modo Férias.";
+          err instanceof ApiError
+            ? ((err.data as { error?: { message?: string } } | null)?.error?.message ?? err.message)
+            : "Não foi possível alterar o Modo Férias.";
         toast({
           variant: "destructive",
           title: "Erro no Modo Férias",
@@ -272,6 +275,9 @@ export default function Dashboard() {
         });
         setVacationConfirmOpen(false);
         setPendingVacationEnabled(null);
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: getGetVacationModeQueryKey() });
       },
     },
   });

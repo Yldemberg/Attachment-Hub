@@ -137,20 +137,18 @@ export async function setVacationMode(userId: string, enabled: boolean): Promise
     };
   }
 
-  const { succeeded, failed, errors } = await bulkSetCrossDockingStatus(userId, "active", "paused");
+  await db
+    .update(profilesTable)
+    .set({ vacationModeEnabled: false, updatedAt: new Date() })
+    .where(eq(profilesTable.id, userId));
 
-  if (failed === 0) {
-    await db
-      .update(profilesTable)
-      .set({ vacationModeEnabled: false, updatedAt: new Date() })
-      .where(eq(profilesTable.id, userId));
-  }
+  const { succeeded, failed, errors } = await bulkSetCrossDockingStatus(userId, "active", "paused");
 
   const state = await getVacationModeState(userId);
 
   return {
     ...state,
-    enabled: failed === 0 ? false : state.enabled,
+    enabled: false,
     activated: succeeded,
     failed,
     errors,
