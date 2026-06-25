@@ -1721,6 +1721,51 @@ export const GetDashboardSummaryResponse = zod.object({
 });
 
 /**
+ * Retorna se o Modo Férias está ativo e quantos anúncios cross-docking estão ativos ou pausados em todas as contas do usuário.
+ * @summary Estado do Modo Férias
+ */
+export const GetVacationModeResponse = zod.object({
+  enabled: zod.boolean(),
+  activeCrossDockingCount: zod.number(),
+  pausedCrossDockingCount: zod.number(),
+});
+
+/**
+ * ON pausa em massa anúncios cross-docking ativos em todas as contas (Full não é alterado). OFF reativa todos os cross-docking pausados.
+ * @summary Ativar ou desativar Modo Férias
+ */
+export const SetVacationModeBody = zod.object({
+  enabled: zod.boolean(),
+});
+
+export const SetVacationModeResponse = zod
+  .object({
+    enabled: zod.boolean(),
+    activeCrossDockingCount: zod.number(),
+    pausedCrossDockingCount: zod.number(),
+  })
+  .and(
+    zod.object({
+      paused: zod
+        .number()
+        .optional()
+        .describe("Anúncios pausados ao ligar o Modo Férias."),
+      activated: zod
+        .number()
+        .optional()
+        .describe("Anúncios reativados ao desligar o Modo Férias."),
+      failed: zod.number(),
+      errors: zod.array(
+        zod.object({
+          productId: zod.string(),
+          mlItemId: zod.string(),
+          message: zod.string(),
+        }),
+      ),
+    }),
+  );
+
+/**
  * Product Ads, envios Full e armazenamento Full acumulados no mês calendário selecionado (padrão: mês atual). Use period_key para consultar meses anteriores (formato YYYY-MM-01).
  * @summary Custos extras cobrados pelo Mercado Livre
  */

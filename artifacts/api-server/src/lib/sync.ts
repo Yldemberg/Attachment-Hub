@@ -25,6 +25,8 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { applyMandateStockFromWebhookOrder } from "./order-mandate-stock";
+import { isCrossDockingListing, setProductListingStatus } from "./cross-docking-listings";
+import { isVacationModeEnabledForAccount } from "./vacation-mode";
 
 const ALL_ML_STATUSES = ["active", "paused", "closed", "under_review"];
 
@@ -158,6 +160,29 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
             lastSyncedAt: values.lastSyncedAt,
           },
         });
+
+      if (
+        item.status === "active" &&
+        isCrossDockingListing({ logisticType: values.logisticType, isFull: values.isFull }) &&
+        (await isVacationModeEnabledForAccount(accountId))
+      ) {
+        try {
+          const [row] = await db
+            .select({ id: productsTable.id })
+            .from(productsTable)
+            .where(
+              and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, item.id)),
+            );
+          if (row) {
+            await setProductListingStatus(
+              { id: row.id, accountId, mlItemId: item.id },
+              "paused",
+            );
+          }
+        } catch (err) {
+          logger.warn({ err, accountId, mlItemId: item.id }, "Vacation mode auto-pause failed during sync");
+        }
+      }
     }
   }
 }

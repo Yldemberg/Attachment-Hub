@@ -665,6 +665,31 @@ export interface DashboardSummary {
   activeAccounts: number;
 }
 
+export interface VacationModeError {
+  productId: string;
+  mlItemId: string;
+  message: string;
+}
+
+export interface VacationModeState {
+  enabled: boolean;
+  activeCrossDockingCount: number;
+  pausedCrossDockingCount: number;
+}
+
+export interface SetVacationModeRequest {
+  enabled: boolean;
+}
+
+export type VacationModeResult = VacationModeState & {
+  /** Anúncios pausados ao ligar o Modo Férias. */
+  paused?: number;
+  /** Anúncios reativados ao desligar o Modo Férias. */
+  activated?: number;
+  failed: number;
+  errors: VacationModeError[];
+};
+
 export interface MlBillingPeriodOption {
   /** Chave do mês calendário (YYYY-MM-01). */
   key: string;

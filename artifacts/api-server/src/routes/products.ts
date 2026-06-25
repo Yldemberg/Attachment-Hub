@@ -26,6 +26,7 @@ import {
   type UpdateMlListingInput,
 } from "../lib/ml-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
+import { setProductListingStatus } from "../lib/cross-docking-listings";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -696,12 +697,7 @@ router.patch("/products/:id/status", ...auth, async (req, res) => {
       return;
     }
 
-    await ml.put(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`, { status });
-
-    await db
-      .update(productsTable)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(productsTable.id, product.id));
+    await setProductListingStatus(product, status);
 
     res.json({ success: true, productId: product.id, status });
   } catch (err) {
