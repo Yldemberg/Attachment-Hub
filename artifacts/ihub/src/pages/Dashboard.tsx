@@ -256,7 +256,7 @@ export default function Dashboard() {
               title: "Modo Férias desativado",
               description:
                 skipped > 0
-                  ? `${activated} anúncio(s) pausados pelo Modo Férias reativado(s). ${skipped} ignorado(s) (sem estoque ou não pausados).`
+                  ? `${activated} anúncio(s) pausados pelo Modo Férias reativado(s). ${skipped} ignorado(s) (já ativos ou encerrados).`
                   : `${activated} anúncio(s) pausados pelo Modo Férias reativado(s).`,
             });
           } else {
@@ -264,7 +264,7 @@ export default function Dashboard() {
               title: "Modo Férias desativado",
               description:
                 skipped > 0
-                  ? `Nenhum anúncio do snapshot com estoque para reativar. ${skipped} ignorado(s).`
+                  ? `Nenhum anúncio do snapshot para reativar. ${skipped} ignorado(s) (já ativos ou encerrados).`
                   : "Nenhum anúncio pausado pelo Modo Férias para reativar.",
             });
           }
@@ -463,8 +463,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     Isso reativará <span className="font-medium text-foreground">{pausedCrossCount}</span> anúncio(s)
-                    pausados pelo Modo Férias com estoque. Anúncios pausados manualmente, sem estoque ou encerrados
-                    não serão alterados.
+                    pausados pelo Modo Férias ainda pausados. Anúncios pausados manualmente, já ativos
+                    ou encerrados não serão alterados.
                   </>
                 )}
               </AlertDialogDescription>

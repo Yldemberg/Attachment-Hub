@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   productsTable,
   profilesTable,
@@ -7,13 +7,8 @@ import {
 } from "@workspace/db/schema";
 import { getDb } from "./db";
 import { getUserAccountIds } from "./account-scope";
-import {
-  crossDockingSqlCondition,
-  isReactivatableListing,
-  setProductListingStatus,
-} from "./cross-docking-listings";
-
-const CHUNK_SIZE = 3;
+import { isCrossDockingListing } from "./cross-docking-listings";
+import { changeProductListingStatus } from "./product-listing-status";
 
 export type VacationModeError = {
   productId: string;
@@ -24,14 +19,13 @@ export type VacationModeError = {
 export type VacationModeState = {
   enabled: boolean;
   activeCrossDockingCount: number;
-  /** Pausados pelo Modo Férias (snapshot) elegíveis para reativação. */
+  /** Pausados pelo Modo Férias (snapshot) ainda pausados — elegíveis para reativação. */
   pausedCrossDockingCount: number;
 };
 
 export type VacationModeResult = VacationModeState & {
   paused?: number;
   activated?: number;
-  /** Snapshot ignorado na reativação (sem estoque ou não mais pausados). */
   skipped?: number;
   failed: number;
   errors: VacationModeError[];
@@ -39,29 +33,22 @@ export type VacationModeResult = VacationModeState & {
 
 type SnapshotProductRow = {
   id: string;
-  accountId: string;
   mlItemId: string;
   status: string | null;
-  availableQuantity: number | null;
-  variationsJson: unknown;
 };
 
-async function countCrossDockingActive(accountIds: string[]): Promise<number> {
-  const db = getDb();
-  if (accountIds.length === 0) return 0;
+async function loadActiveCrossDocking(accountIds: string[]) {
+  if (accountIds.length === 0) return [];
 
-  const [row] = await db
-    .select({ count: sql<number>`cast(count(*) as int)` })
+  const db = getDb();
+  const rows = await db
+    .select()
     .from(productsTable)
     .where(
-      and(
-        inArray(productsTable.accountId, accountIds),
-        eq(productsTable.status, "active"),
-        crossDockingSqlCondition(),
-      ),
+      and(inArray(productsTable.accountId, accountIds), eq(productsTable.status, "active")),
     );
 
-  return row?.count ?? 0;
+  return rows.filter(isCrossDockingListing);
 }
 
 async function loadSnapshotProducts(userId: string): Promise<SnapshotProductRow[]> {
@@ -69,20 +56,12 @@ async function loadSnapshotProducts(userId: string): Promise<SnapshotProductRow[
   return db
     .select({
       id: productsTable.id,
-      accountId: productsTable.accountId,
       mlItemId: productsTable.mlItemId,
       status: productsTable.status,
-      availableQuantity: productsTable.availableQuantity,
-      variationsJson: productsTable.variationsJson,
     })
     .from(vacationModePausesTable)
     .innerJoin(productsTable, eq(vacationModePausesTable.productId, productsTable.id))
     .where(eq(vacationModePausesTable.userId, userId));
-}
-
-async function countReactivatableSnapshot(userId: string): Promise<number> {
-  const rows = await loadSnapshotProducts(userId);
-  return rows.filter(isReactivatableListing).length;
 }
 
 export async function clearVacationModePauses(userId: string): Promise<void> {
@@ -100,18 +79,6 @@ export async function recordVacationModePause(userId: string, productId: string)
     });
 }
 
-async function removeVacationModePause(userId: string, productId: string): Promise<void> {
-  const db = getDb();
-  await db
-    .delete(vacationModePausesTable)
-    .where(
-      and(
-        eq(vacationModePausesTable.userId, userId),
-        eq(vacationModePausesTable.productId, productId),
-      ),
-    );
-}
-
 export async function getVacationModeState(userId: string): Promise<VacationModeState> {
   const db = getDb();
   const accountIds = await getUserAccountIds(userId);
@@ -121,22 +88,21 @@ export async function getVacationModeState(userId: string): Promise<VacationMode
     .from(profilesTable)
     .where(eq(profilesTable.id, userId));
 
-  const [activeCrossDockingCount, pausedCrossDockingCount] = await Promise.all([
-    countCrossDockingActive(accountIds),
-    countReactivatableSnapshot(userId),
+  const [activeProducts, snapshotRows] = await Promise.all([
+    loadActiveCrossDocking(accountIds),
+    loadSnapshotProducts(userId),
   ]);
 
   return {
     enabled: profile?.vacationModeEnabled ?? false,
-    activeCrossDockingCount,
-    pausedCrossDockingCount,
+    activeCrossDockingCount: activeProducts.length,
+    pausedCrossDockingCount: snapshotRows.filter((p) => p.status === "paused").length,
   };
 }
 
 async function bulkPauseActiveCrossDocking(
   userId: string,
 ): Promise<{ succeeded: number; failed: number; errors: VacationModeError[] }> {
-  const db = getDb();
   const accountIds = await getUserAccountIds(userId);
   if (accountIds.length === 0) {
     return { succeeded: 0, failed: 0, errors: [] };
@@ -144,41 +110,22 @@ async function bulkPauseActiveCrossDocking(
 
   await clearVacationModePauses(userId);
 
-  const products = await db
-    .select({
-      id: productsTable.id,
-      accountId: productsTable.accountId,
-      mlItemId: productsTable.mlItemId,
-    })
-    .from(productsTable)
-    .where(
-      and(
-        inArray(productsTable.accountId, accountIds),
-        eq(productsTable.status, "active"),
-        crossDockingSqlCondition(),
-      ),
-    );
-
+  const products = await loadActiveCrossDocking(accountIds);
   const errors: VacationModeError[] = [];
   let succeeded = 0;
 
-  for (let i = 0; i < products.length; i += CHUNK_SIZE) {
-    const chunk = products.slice(i, i + CHUNK_SIZE);
-    await Promise.all(
-      chunk.map(async (product) => {
-        try {
-          await setProductListingStatus(product, "paused");
-          await recordVacationModePause(userId, product.id);
-          succeeded++;
-        } catch (err) {
-          errors.push({
-            productId: product.id,
-            mlItemId: product.mlItemId,
-            message: err instanceof Error ? err.message : "Erro desconhecido",
-          });
-        }
-      }),
-    );
+  for (const product of products) {
+    try {
+      await changeProductListingStatus(userId, product.id, "paused");
+      await recordVacationModePause(userId, product.id);
+      succeeded++;
+    } catch (err) {
+      errors.push({
+        productId: product.id,
+        mlItemId: product.mlItemId,
+        message: err instanceof Error ? err.message : "Erro desconhecido",
+      });
+    }
   }
 
   return { succeeded, failed: errors.length, errors };
@@ -188,29 +135,23 @@ async function bulkReactivateSnapshot(
   userId: string,
 ): Promise<{ succeeded: number; failed: number; errors: VacationModeError[]; skipped: number }> {
   const snapshotRows = await loadSnapshotProducts(userId);
-  const toActivate = snapshotRows.filter(isReactivatableListing);
+  const toActivate = snapshotRows.filter((p) => p.status === "paused");
   const skipped = snapshotRows.length - toActivate.length;
 
   const errors: VacationModeError[] = [];
   let succeeded = 0;
 
-  for (let i = 0; i < toActivate.length; i += CHUNK_SIZE) {
-    const chunk = toActivate.slice(i, i + CHUNK_SIZE);
-    await Promise.all(
-      chunk.map(async (product) => {
-        try {
-          await setProductListingStatus(product, "active");
-          await removeVacationModePause(userId, product.id);
-          succeeded++;
-        } catch (err) {
-          errors.push({
-            productId: product.id,
-            mlItemId: product.mlItemId,
-            message: err instanceof Error ? err.message : "Erro desconhecido",
-          });
-        }
-      }),
-    );
+  for (const product of toActivate) {
+    try {
+      await changeProductListingStatus(userId, product.id, "active");
+      succeeded++;
+    } catch (err) {
+      errors.push({
+        productId: product.id,
+        mlItemId: product.mlItemId,
+        message: err instanceof Error ? err.message : "Erro desconhecido",
+      });
+    }
   }
 
   await clearVacationModePauses(userId);

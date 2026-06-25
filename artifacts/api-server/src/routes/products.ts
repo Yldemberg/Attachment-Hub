@@ -26,7 +26,10 @@ import {
   type UpdateMlListingInput,
 } from "../lib/ml-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
-import { setProductListingStatus } from "../lib/cross-docking-listings";
+import {
+  changeProductListingStatus,
+  ProductListingStatusError,
+} from "../lib/product-listing-status";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -661,7 +664,6 @@ router.delete("/products/:id", ...auth, async (req, res) => {
 
 router.patch("/products/:id/status", ...auth, async (req, res) => {
   try {
-    const db = getDb();
     const { status } = req.body as { status?: string };
 
     if (status !== "active" && status !== "paused") {
@@ -671,42 +673,24 @@ router.patch("/products/:id/status", ...auth, async (req, res) => {
       return;
     }
 
-    const accountIds = await getUserAccountIds(req.user!.id);
-    if (accountIds.length === 0) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
-      return;
-    }
-
-    const [product] = await db
-      .select()
-      .from(productsTable)
-      .where(and(eq(productsTable.id, req.params.id as string), inArray(productsTable.accountId, accountIds)));
-
-    if (!product) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
-      return;
-    }
-
-    if (product.status !== "active" && product.status !== "paused") {
-      res.status(400).json({
-        error: {
-          code: "INVALID_STATUS",
-          message: "Só é possível ativar ou pausar anúncios ativos ou pausados",
-        },
-      });
-      return;
-    }
-
-    await setProductListingStatus(product, status);
-
-    res.json({ success: true, productId: product.id, status });
+    const result = await changeProductListingStatus(req.user!.id, req.params.id as string, status);
+    res.json({ success: true, ...result });
   } catch (err) {
-    req.log.error({ err }, "Failed to update product listing status");
-    const msg = err instanceof Error ? err.message : "Internal server error";
-    if (msg.startsWith("ML API")) {
-      res.status(502).json({ error: { code: "ML_API_ERROR", message: msg } });
-      return;
+    if (err instanceof ProductListingStatusError) {
+      if (err.code === "NOT_FOUND") {
+        res.status(404).json({ error: { code: "NOT_FOUND", message: err.message } });
+        return;
+      }
+      if (err.code === "INVALID_STATUS") {
+        res.status(400).json({ error: { code: "INVALID_STATUS", message: err.message } });
+        return;
+      }
+      if (err.code === "ML_API_ERROR") {
+        res.status(502).json({ error: { code: "ML_API_ERROR", message: err.message } });
+        return;
+      }
     }
+    req.log.error({ err }, "Failed to update product listing status");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

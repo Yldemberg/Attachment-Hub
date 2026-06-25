@@ -5,16 +5,13 @@ import { ml } from "./mercadolivre";
 
 export type ListingStatus = "active" | "paused";
 
-type VariationStockRow = {
-  available_quantity?: number | null;
-};
-
 export function isCrossDockingListing(product: {
   logisticType: string | null;
   isFull: boolean;
 }): boolean {
   if (product.isFull) return false;
   const lt = product.logisticType ?? "";
+  if (lt === "cross_docking" || lt === "xd_drop_off") return true;
   return lt.split(",").some((t) => {
     const trimmed = t.trim();
     return trimmed === "cross_docking" || trimmed === "xd_drop_off";
@@ -30,29 +27,6 @@ export function crossDockingSqlCondition() {
       eq(productsTable.logisticType, "xd_drop_off"),
     )!,
   );
-}
-
-export function getEffectiveAvailableQuantity(product: {
-  availableQuantity: number | null;
-  variationsJson: unknown;
-}): number {
-  const direct = product.availableQuantity ?? 0;
-  if (direct > 0) return direct;
-
-  if (!Array.isArray(product.variationsJson)) return 0;
-
-  return (product.variationsJson as VariationStockRow[]).reduce(
-    (sum, v) => sum + Math.max(0, v.available_quantity ?? 0),
-    0,
-  );
-}
-
-export function isReactivatableListing(product: {
-  status: string | null;
-  availableQuantity: number | null;
-  variationsJson: unknown;
-}): boolean {
-  return product.status === "paused" && getEffectiveAvailableQuantity(product) > 0;
 }
 
 export async function setProductListingStatus(
