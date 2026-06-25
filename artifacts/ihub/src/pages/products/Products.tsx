@@ -955,6 +955,7 @@ export default function Products() {
             <optgroup label="Tipo">
               <option value="flex">Flex</option>
               <option value="full">Full</option>
+              <option value="cross">Cross-docking</option>
               <option value="promo">Promo</option>
               <option value="catalog">Catálogo</option>
             </optgroup>

@@ -179,12 +179,13 @@ export const ListProductsQueryParams = zod.object({
       "under_review",
       "flex",
       "full",
+      "cross",
       "promo",
       "catalog",
     ])
     .optional()
     .describe(
-      "Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.",
+      "Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, cross, promo, catalog). Omitir para listar todos.",
     ),
   search: zod.coerce
     .string()

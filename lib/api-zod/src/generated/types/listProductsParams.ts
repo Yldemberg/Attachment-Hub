@@ -10,7 +10,7 @@ import type { ListProductsListingFilter } from "./listProductsListingFilter";
 export type ListProductsParams = {
   account_id?: string;
   /**
-   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.
+   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, cross, promo, catalog). Omitir para listar todos.
    */
   listing_filter?: ListProductsListingFilter;
   /**

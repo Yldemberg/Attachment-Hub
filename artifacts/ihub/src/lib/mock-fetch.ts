@@ -273,6 +273,14 @@ export function installMockFetch(): void {
         );
       } else if (listingFilter === "catalog") {
         filtered = filtered.filter((p) => p.catalogListing === true);
+      } else if (listingFilter === "cross") {
+        filtered = filtered.filter(
+          (p) =>
+            p.isFull !== true &&
+            (p.logisticType === "cross_docking" ||
+              p.logisticType === "xd_drop_off" ||
+              (p.logisticType ?? "").includes("cross_docking")),
+        );
       } else if (listingFilter === "promo") {
         filtered = filtered.filter((p) => {
           const ra = p.regularAmount;

@@ -16,6 +16,7 @@ export const ListProductsListingFilter = {
   under_review: "under_review",
   flex: "flex",
   full: "full",
+  cross: "cross",
   promo: "promo",
   catalog: "catalog",
 } as const;

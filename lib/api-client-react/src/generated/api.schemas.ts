@@ -786,7 +786,7 @@ export type SyncAccount202 = {
 export type ListProductsParams = {
   account_id?: string;
   /**
-   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, promo, catalog). Omitir para listar todos.
+   * Filtro único por status do anúncio (active, paused, closed, under_review) ou por característica (flex, full, cross, promo, catalog). Omitir para listar todos.
    */
   listing_filter?: ListProductsListingFilter;
   /**
@@ -811,6 +811,7 @@ export const ListProductsListingFilter = {
   under_review: "under_review",
   flex: "flex",
   full: "full",
+  cross: "cross",
   promo: "promo",
   catalog: "catalog",
 } as const;

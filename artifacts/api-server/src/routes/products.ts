@@ -230,6 +230,17 @@ router.get("/products", ...auth, async (req, res) => {
           )!,
         )!,
       );
+    } else if (filterKey === "cross") {
+      conditions.push(
+        and(
+          eq(productsTable.isFull, false),
+          or(
+            eq(productsTable.logisticType, "cross_docking"),
+            sql`${productsTable.logisticType} LIKE ${"%cross_docking%"}`,
+            eq(productsTable.logisticType, "xd_drop_off"),
+          )!,
+        )!,
+      );
     }
 
     if (!picker && search && String(search).trim()) {

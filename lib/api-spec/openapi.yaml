@@ -271,10 +271,10 @@ paths:
           in: query
           description: >-
             Filtro único por status do anúncio (active, paused, closed, under_review)
-            ou por característica (flex, full, promo, catalog). Omitir para listar todos.
+            ou por característica (flex, full, cross, promo, catalog). Omitir para listar todos.
           schema:
             type: string
-            enum: [active, paused, closed, under_review, flex, full, promo, catalog]
+            enum: [active, paused, closed, under_review, flex, full, cross, promo, catalog]
         - name: search
           in: query
           description: >-
