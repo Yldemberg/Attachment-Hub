@@ -244,19 +244,28 @@ export default function Dashboard() {
           }
         } else {
           const activated = data.activated ?? 0;
+          const skipped = data.skipped ?? 0;
           if (data.failed > 0) {
             toast({
               variant: "destructive",
               title: "Modo Férias desativado com falhas",
-              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s). Alguns anúncios podem continuar pausados no Mercado Livre.`,
+              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s).${skipped > 0 ? ` ${skipped} ignorado(s) sem estoque.` : ""}`,
+            });
+          } else if (activated > 0) {
+            toast({
+              title: "Modo Férias desativado",
+              description:
+                skipped > 0
+                  ? `${activated} anúncio(s) cross-docking reativado(s). ${skipped} pausado(s) sem estoque não foram alterados.`
+                  : `${activated} anúncio(s) cross-docking reativado(s).`,
             });
           } else {
             toast({
               title: "Modo Férias desativado",
               description:
-                activated > 0
-                  ? `${activated} anúncio(s) cross-docking reativado(s).`
-                  : "Nenhum anúncio cross-docking pausado para reativar.",
+                skipped > 0
+                  ? `Nenhum anúncio pausado com estoque para reativar. ${skipped} pausado(s) sem estoque permanecem inalterados.`
+                  : "Nenhum anúncio cross-docking pausado com estoque para reativar.",
             });
           }
         }
@@ -454,8 +463,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     Isso reativará <span className="font-medium text-foreground">{pausedCrossCount}</span> anúncio(s)
-                    cross-docking pausado(s) em todas as suas contas, inclusive os que já estavam pausados antes do
-                    Modo Férias.
+                    cross-docking pausado(s) com estoque em todas as suas contas. Anúncios pausados sem estoque,
+                    encerrados ou de outras modalidades não serão alterados.
                   </>
                 )}
               </AlertDialogDescription>

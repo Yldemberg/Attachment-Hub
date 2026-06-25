@@ -1,4 +1,4 @@
-import { eq, or, and, sql } from "drizzle-orm";
+import { eq, or, and, sql, gt } from "drizzle-orm";
 import { productsTable, type Product } from "@workspace/db/schema";
 import { getDb } from "./db";
 import { ml } from "./mercadolivre";
@@ -25,6 +25,15 @@ export function crossDockingSqlCondition() {
       sql`${productsTable.logisticType} LIKE ${"%cross_docking%"}`,
       eq(productsTable.logisticType, "xd_drop_off"),
     )!,
+  );
+}
+
+/** Pausados, com estoque e cross-docking — elegíveis para reativação ao desligar Modo Férias. */
+export function crossDockingReactivatableSqlCondition() {
+  return and(
+    crossDockingSqlCondition(),
+    eq(productsTable.status, "paused"),
+    gt(productsTable.availableQuantity, 0),
   );
 }
 

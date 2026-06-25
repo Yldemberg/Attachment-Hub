@@ -3135,6 +3135,7 @@ components:
           type: integer
         pausedCrossDockingCount:
           type: integer
+          description: Cross-docking pausados com estoque, elegíveis para reativação.
       required: [enabled, activeCrossDockingCount, pausedCrossDockingCount]
 
     SetVacationModeRequest:
@@ -3155,6 +3156,9 @@ components:
             activated:
               type: integer
               description: Anúncios reativados ao desligar o Modo Férias.
+            skipped:
+              type: integer
+              description: Pausados sem estoque, ignorados na reativação.
             failed:
               type: integer
             errors:

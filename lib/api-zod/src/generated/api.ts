@@ -1727,7 +1727,9 @@ export const GetDashboardSummaryResponse = zod.object({
 export const GetVacationModeResponse = zod.object({
   enabled: zod.boolean(),
   activeCrossDockingCount: zod.number(),
-  pausedCrossDockingCount: zod.number(),
+  pausedCrossDockingCount: zod
+    .number()
+    .describe("Cross-docking pausados com estoque, elegíveis para reativação."),
 });
 
 /**
@@ -1742,7 +1744,11 @@ export const SetVacationModeResponse = zod
   .object({
     enabled: zod.boolean(),
     activeCrossDockingCount: zod.number(),
-    pausedCrossDockingCount: zod.number(),
+    pausedCrossDockingCount: zod
+      .number()
+      .describe(
+        "Cross-docking pausados com estoque, elegíveis para reativação.",
+      ),
   })
   .and(
     zod.object({
@@ -1754,6 +1760,10 @@ export const SetVacationModeResponse = zod
         .number()
         .optional()
         .describe("Anúncios reativados ao desligar o Modo Férias."),
+      skipped: zod
+        .number()
+        .optional()
+        .describe("Pausados sem estoque, ignorados na reativação."),
       failed: zod.number(),
       errors: zod.array(
         zod.object({

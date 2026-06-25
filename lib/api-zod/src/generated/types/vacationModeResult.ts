@@ -13,6 +13,8 @@ export type VacationModeResult = VacationModeState & {
   paused?: number;
   /** Anúncios reativados ao desligar o Modo Férias. */
   activated?: number;
+  /** Pausados sem estoque, ignorados na reativação. */
+  skipped?: number;
   failed: number;
   errors: VacationModeError[];
 };
