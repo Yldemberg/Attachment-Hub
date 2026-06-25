@@ -674,7 +674,7 @@ export interface VacationModeError {
 export interface VacationModeState {
   enabled: boolean;
   activeCrossDockingCount: number;
-  /** Cross-docking pausados com estoque, elegíveis para reativação. */
+  /** Anúncios pausados pelo Modo Férias (snapshot) com estoque, elegíveis para reativação. */
   pausedCrossDockingCount: number;
 }
 
@@ -687,7 +687,7 @@ export type VacationModeResult = VacationModeState & {
   paused?: number;
   /** Anúncios reativados ao desligar o Modo Férias. */
   activated?: number;
-  /** Pausados sem estoque, ignorados na reativação. */
+  /** Itens do snapshot ignorados na reativação (sem estoque ou não mais pausados). */
   skipped?: number;
   failed: number;
   errors: VacationModeError[];

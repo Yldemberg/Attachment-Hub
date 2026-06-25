@@ -9,6 +9,6 @@
 export interface VacationModeState {
   enabled: boolean;
   activeCrossDockingCount: number;
-  /** Cross-docking pausados com estoque, elegíveis para reativação. */
+  /** Anúncios pausados pelo Modo Férias (snapshot) com estoque, elegíveis para reativação. */
   pausedCrossDockingCount: number;
 }

@@ -249,23 +249,23 @@ export default function Dashboard() {
             toast({
               variant: "destructive",
               title: "Modo Férias desativado com falhas",
-              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s).${skipped > 0 ? ` ${skipped} ignorado(s) sem estoque.` : ""}`,
+              description: `${activated} anúncio(s) reativado(s), ${data.failed} falha(s).${skipped > 0 ? ` ${skipped} do snapshot ignorado(s).` : ""}`,
             });
           } else if (activated > 0) {
             toast({
               title: "Modo Férias desativado",
               description:
                 skipped > 0
-                  ? `${activated} anúncio(s) cross-docking reativado(s). ${skipped} pausado(s) sem estoque não foram alterados.`
-                  : `${activated} anúncio(s) cross-docking reativado(s).`,
+                  ? `${activated} anúncio(s) pausados pelo Modo Férias reativado(s). ${skipped} ignorado(s) (sem estoque ou não pausados).`
+                  : `${activated} anúncio(s) pausados pelo Modo Férias reativado(s).`,
             });
           } else {
             toast({
               title: "Modo Férias desativado",
               description:
                 skipped > 0
-                  ? `Nenhum anúncio pausado com estoque para reativar. ${skipped} pausado(s) sem estoque permanecem inalterados.`
-                  : "Nenhum anúncio cross-docking pausado com estoque para reativar.",
+                  ? `Nenhum anúncio do snapshot com estoque para reativar. ${skipped} ignorado(s).`
+                  : "Nenhum anúncio pausado pelo Modo Férias para reativar.",
             });
           }
         }
@@ -463,8 +463,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     Isso reativará <span className="font-medium text-foreground">{pausedCrossCount}</span> anúncio(s)
-                    cross-docking pausado(s) com estoque em todas as suas contas. Anúncios pausados sem estoque,
-                    encerrados ou de outras modalidades não serão alterados.
+                    pausados pelo Modo Férias com estoque. Anúncios pausados manualmente, sem estoque ou encerrados
+                    não serão alterados.
                   </>
                 )}
               </AlertDialogDescription>

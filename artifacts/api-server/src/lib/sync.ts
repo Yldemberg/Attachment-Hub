@@ -26,7 +26,7 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { applyMandateStockFromWebhookOrder } from "./order-mandate-stock";
 import { isCrossDockingListing, setProductListingStatus } from "./cross-docking-listings";
-import { isVacationModeEnabledForAccount } from "./vacation-mode";
+import { isVacationModeEnabledForAccount, recordVacationModePause, getUserIdForAccount } from "./vacation-mode";
 
 const ALL_ML_STATUSES = ["active", "paused", "closed", "under_review"];
 
@@ -178,6 +178,10 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
               { id: row.id, accountId, mlItemId: item.id },
               "paused",
             );
+            const userId = await getUserIdForAccount(accountId);
+            if (userId) {
+              await recordVacationModePause(userId, row.id);
+            }
           }
         } catch (err) {
           logger.warn({ err, accountId, mlItemId: item.id }, "Vacation mode auto-pause failed during sync");
