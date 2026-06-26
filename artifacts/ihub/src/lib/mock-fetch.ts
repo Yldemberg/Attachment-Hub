@@ -307,6 +307,62 @@ export function installMockFetch(): void {
       return jsonResponse(paginate(filtered, page, limit));
     }
 
+    if (path === "/products/bulk-status" && method === "POST") {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      const st = body.status === "active" || body.status === "paused" ? body.status : null;
+      const rawIds = body.product_ids;
+      if (!st || !Array.isArray(rawIds) || rawIds.length === 0) {
+        return jsonResponse({ error: { message: "payload inválido" } }, 400);
+      }
+      const ids = rawIds.filter((id): id is string => typeof id === "string");
+      const results: {
+        productId: string;
+        mlItemId: string | null;
+        ok: boolean;
+        error?: string;
+        skipped?: boolean;
+      }[] = [];
+      for (const id of ids) {
+        const prod = _mockProducts.find((p) => p.id === id);
+        if (!prod) {
+          results.push({ productId: id, mlItemId: null, ok: false, error: "Anúncio não encontrado" });
+          continue;
+        }
+        if (prod.status !== "active" && prod.status !== "paused") {
+          results.push({
+            productId: id,
+            mlItemId: prod.mlItemId ?? null,
+            ok: false,
+            skipped: true,
+            error: "status não permitido",
+          });
+          continue;
+        }
+        if (prod.status === st) {
+          results.push({
+            productId: id,
+            mlItemId: prod.mlItemId ?? null,
+            ok: true,
+            skipped: true,
+          });
+          continue;
+        }
+        _mockProducts = _mockProducts.map((p) => (p.id === id ? { ...p, status: st } : p));
+        results.push({ productId: id, mlItemId: prod.mlItemId ?? null, ok: true });
+      }
+      const summary = {
+        updated: results.filter((r) => r.ok && !r.skipped).length,
+        skipped: results.filter((r) => r.skipped).length,
+        failed: results.filter((r) => !r.ok && !r.skipped).length,
+      };
+      return jsonResponse({ success: true, status: st, results, summary });
+    }
+
     if (path.match(/^\/products\/([^/]+)\/status$/) && method === "PATCH") {
       const id = path.split("/")[2];
       let body: Record<string, unknown> = {};

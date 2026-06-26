@@ -143,6 +143,52 @@ export interface UpdateProductListingStatusRequest {
   status: UpdateProductListingStatusRequestStatus;
 }
 
+export type BulkUpdateProductListingStatusRequestStatus =
+  (typeof BulkUpdateProductListingStatusRequestStatus)[keyof typeof BulkUpdateProductListingStatusRequestStatus];
+
+export const BulkUpdateProductListingStatusRequestStatus = {
+  active: "active",
+  paused: "paused",
+} as const;
+
+export interface BulkUpdateProductListingStatusRequest {
+  status: BulkUpdateProductListingStatusRequestStatus;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  product_ids: string[];
+}
+
+export interface BulkUpdateProductListingStatusResult {
+  productId: string;
+  mlItemId?: string | null;
+  ok: boolean;
+  error?: string;
+  skipped?: boolean;
+}
+
+export type BulkUpdateProductListingStatusResponseStatus =
+  (typeof BulkUpdateProductListingStatusResponseStatus)[keyof typeof BulkUpdateProductListingStatusResponseStatus];
+
+export const BulkUpdateProductListingStatusResponseStatus = {
+  active: "active",
+  paused: "paused",
+} as const;
+
+export type BulkUpdateProductListingStatusResponseSummary = {
+  updated: number;
+  skipped: number;
+  failed: number;
+};
+
+export interface BulkUpdateProductListingStatusResponse {
+  success: boolean;
+  status: BulkUpdateProductListingStatusResponseStatus;
+  results: BulkUpdateProductListingStatusResult[];
+  summary: BulkUpdateProductListingStatusResponseSummary;
+}
+
 export interface MlCategoryPrediction {
   categoryId: string;
   categoryName: string;

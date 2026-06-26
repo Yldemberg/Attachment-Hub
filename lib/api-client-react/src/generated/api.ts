@@ -24,6 +24,8 @@ import type {
   BadRequestResponse,
   BulkActivatePromotionItemsRequest,
   BulkActivatePromotionItemsResponse,
+  BulkUpdateProductListingStatusRequest,
+  BulkUpdateProductListingStatusResponse,
   CreateProductRequest,
   DashboardSummary,
   DeleteProduct200,
@@ -2115,6 +2117,99 @@ export const useUpdateProductListingStatus = <
   TContext
 > => {
   return useMutation(getUpdateProductListingStatusMutationOptions(options));
+};
+
+/**
+ * Sets listing status to active or paused for up to 500 products via ML API. Only listings currently active or paused are updated; others are skipped or reported as failed.
+ * @summary Pause or activate multiple listings (Mercado Livre)
+ */
+export const getBulkUpdateProductListingStatusUrl = () => {
+  return `/api/products/bulk-status`;
+};
+
+export const bulkUpdateProductListingStatus = async (
+  bulkUpdateProductListingStatusRequest: BulkUpdateProductListingStatusRequest,
+  options?: RequestInit,
+): Promise<BulkUpdateProductListingStatusResponse> => {
+  return customFetch<BulkUpdateProductListingStatusResponse>(
+    getBulkUpdateProductListingStatusUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(bulkUpdateProductListingStatusRequest),
+    },
+  );
+};
+
+export const getBulkUpdateProductListingStatusMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>,
+    TError,
+    { data: BodyType<BulkUpdateProductListingStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>,
+  TError,
+  { data: BodyType<BulkUpdateProductListingStatusRequest> },
+  TContext
+> => {
+  const mutationKey = ["bulkUpdateProductListingStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>,
+    { data: BodyType<BulkUpdateProductListingStatusRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkUpdateProductListingStatus(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkUpdateProductListingStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>
+>;
+export type BulkUpdateProductListingStatusMutationBody =
+  BodyType<BulkUpdateProductListingStatusRequest>;
+export type BulkUpdateProductListingStatusMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Pause or activate multiple listings (Mercado Livre)
+ */
+export const useBulkUpdateProductListingStatus = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>,
+    TError,
+    { data: BodyType<BulkUpdateProductListingStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkUpdateProductListingStatus>>,
+  TError,
+  { data: BodyType<BulkUpdateProductListingStatusRequest> },
+  TContext
+> => {
+  return useMutation(getBulkUpdateProductListingStatusMutationOptions(options));
 };
 
 /**

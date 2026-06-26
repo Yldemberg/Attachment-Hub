@@ -27,6 +27,7 @@ import {
 } from "../lib/ml-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import {
+  bulkChangeProductListingStatus,
   changeProductListingStatus,
   ProductListingStatusError,
 } from "../lib/product-listing-status";
@@ -670,6 +671,50 @@ router.delete("/products/:id", ...auth, async (req, res) => {
     res.json({ success: true, productId: product.id, status: "closed" as const });
   } catch (err) {
     handleMlListingRouteError(err, res, req.log, "Failed to close product");
+  }
+});
+
+router.post("/products/bulk-status", ...auth, async (req, res) => {
+  try {
+    const { status, product_ids } = req.body as {
+      status?: string;
+      product_ids?: unknown;
+    };
+
+    if (status !== "active" && status !== "paused") {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe status active ou paused" },
+      });
+      return;
+    }
+
+    if (!Array.isArray(product_ids) || product_ids.length === 0) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe ao menos um product_id" },
+      });
+      return;
+    }
+
+    if (product_ids.length > 500) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Máximo de 500 anúncios por requisição" },
+      });
+      return;
+    }
+
+    const ids = product_ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length === 0) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "product_ids inválidos" },
+      });
+      return;
+    }
+
+    const result = await bulkChangeProductListingStatus(req.user!.id, ids, status);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk update product listing status");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });
 

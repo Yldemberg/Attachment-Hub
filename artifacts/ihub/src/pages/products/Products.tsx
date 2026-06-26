@@ -4,6 +4,7 @@ import {
   useListAccounts,
   useUpdateProductStock,
   useUpdateProductListingStatus,
+  useBulkUpdateProductListingStatus,
   useDeleteProduct,
   useDuplicateProduct,
   useSyncSkuStock,
@@ -52,6 +53,17 @@ import { Input } from "@/components/ui/input";
 import { Link, useLocation, useSearchParams, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   ROWS_OPTIONS,
   type RowsOption,
@@ -62,6 +74,10 @@ import {
 } from "@/lib/products-list-persistence";
 import { CloseListingDialog } from "./components/CloseListingDialog";
 import { DuplicateListingDialog } from "./components/DuplicateListingDialog";
+import {
+  bulkListingStatusErrorMessage,
+  bulkListingStatusToastContent,
+} from "./components/bulkListingStatusFeedback";
 
 interface Product {
   id: string;
@@ -114,6 +130,10 @@ function listingMatchesPickerFilter(p: ProductWithVariations, searchRaw: string)
   return tokens.every((tok) => fields.some((f) => f.includes(tok)));
 }
 
+function isSelectableForBulk(p: Pick<Product, "status">): boolean {
+  return p.status === "active" || p.status === "paused";
+}
+
 function stockTextColor(qty: number | null | undefined): string {
   if (qty == null || qty === 0) return "text-muted-foreground/60";
   if (qty < 3) return "text-red-600";
@@ -130,6 +150,10 @@ function ProductCard({
   onListingStatusChange,
   statusMutationPending,
   accountNickname,
+  bulkMode,
+  selected,
+  onToggleSelect,
+  selectable,
 }: {
   p: Product;
   onEdit: () => void;
@@ -139,6 +163,10 @@ function ProductCard({
   onListingStatusChange: (next: "active" | "paused") => void;
   statusMutationPending: boolean;
   accountNickname?: string | null;
+  bulkMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (checked: boolean) => void;
+  selectable?: boolean;
 }) {
   /** Prefer live /prices; fallback to DB fields from sync (GET /items — same idea as ProductDetail). */
   const salePrice = p.amount ?? p.price;
@@ -187,6 +215,20 @@ function ProductCard({
 
   return (
     <div className="flex items-center gap-2 bg-card border border-card-border rounded-xl px-3 py-2 hover:border-primary/40 hover:shadow-sm transition-all">
+      {bulkMode ? (
+        <div
+          className="flex shrink-0 items-center"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={!!selected}
+            disabled={!selectable}
+            onCheckedChange={(checked) => onToggleSelect?.(checked === true)}
+            aria-label={selected ? "Desmarcar anúncio" : "Selecionar anúncio"}
+          />
+        </div>
+      ) : null}
       <Link
         to={`/products/${p.id}`}
         className="flex flex-1 min-w-0 items-center gap-2 cursor-pointer"
@@ -455,6 +497,9 @@ export default function Products() {
     mlItemId?: string | null;
   } | null>(null);
   const [duplicateTargetAccountId, setDuplicateTargetAccountId] = useState("");
+  const [bulkModeEnabled, setBulkModeEnabled] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<"pause" | "activate" | null>(null);
 
   const params = {
     page,
@@ -488,10 +533,57 @@ export default function Products() {
   const allListingsForPicker = useListProducts(pickerListParams, {
     query: {
       queryKey: getListProductsQueryKey(pickerListParams),
-      enabled: listingPickerOpen,
+      enabled: listingPickerOpen || bulkModeEnabled,
       staleTime: 60_000,
     },
   });
+
+  const selectableFiltered = useMemo(() => {
+    const items = (allListingsForPicker.data?.data ?? []) as ProductWithVariations[];
+    return items.filter((p) => listingMatchesPickerFilter(p, search) && isSelectableForBulk(p));
+  }, [allListingsForPicker.data, search]);
+
+  const selectableIds = useMemo(() => selectableFiltered.map((p) => p.id), [selectableFiltered]);
+
+  const selectedProducts = useMemo(() => {
+    const byId = new Map(selectableFiltered.map((p) => [p.id, p]));
+    return [...selectedIds].map((id) => byId.get(id)).filter(Boolean) as Product[];
+  }, [selectedIds, selectableFiltered]);
+
+  const pauseCount = selectedProducts.filter((p) => p.status === "active").length;
+  const activateCount = selectedProducts.filter((p) => p.status === "paused").length;
+
+  const selectedSelectableCount = selectableIds.filter((id) => selectedIds.has(id)).length;
+  const allSelectableSelected =
+    selectableIds.length > 0 && selectedSelectableCount === selectableIds.length;
+  const someSelectableSelected = selectedSelectableCount > 0 && !allSelectableSelected;
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [search, listingFilter, accountId]);
+
+  useEffect(() => {
+    if (!bulkModeEnabled) {
+      setSelectedIds(new Set());
+    }
+  }, [bulkModeEnabled]);
+
+  const handleMasterCheckbox = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(selectableIds));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const toggleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   const filteredPickerListings = useMemo(() => {
     const items = (allListingsForPicker.data?.data ?? []) as ProductWithVariations[];
@@ -713,6 +805,48 @@ export default function Products() {
     },
   });
 
+  const { mutate: bulkUpdateListingStatus, isPending: bulkUpdatingListingStatus } =
+    useBulkUpdateProductListingStatus({
+      mutation: {
+        onSuccess: (data, vars) => {
+          queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+          const action = vars.data.status === "paused" ? "pause" : "activate";
+          toast(bulkListingStatusToastContent(action, data.results));
+          const okIds = new Set(
+            (data.results ?? []).filter((r) => r.ok && !r.skipped).map((r) => r.productId),
+          );
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const id of okIds) next.delete(id);
+            return next;
+          });
+          setBulkConfirm(null);
+        },
+        onError: (err) => {
+          toast({
+            variant: "destructive",
+            title: "Erro na ação em massa",
+            description: bulkListingStatusErrorMessage(err),
+          });
+          setBulkConfirm(null);
+        },
+      },
+    });
+
+  const runBulkStatusUpdate = (action: "pause" | "activate") => {
+    const ids =
+      action === "pause"
+        ? selectedProducts.filter((p) => p.status === "active").map((p) => p.id)
+        : selectedProducts.filter((p) => p.status === "paused").map((p) => p.id);
+    if (ids.length === 0) return;
+    bulkUpdateListingStatus({
+      data: {
+        status: action === "pause" ? "paused" : "active",
+        product_ids: ids,
+      },
+    });
+  };
+
   const { mutate: duplicateListing, isPending: duplicatingListing } = useDuplicateProduct({
     mutation: {
       onSuccess: (data) => {
@@ -780,6 +914,9 @@ export default function Products() {
 
   const totalPages = pagination?.totalPages ?? 1;
   const total = pagination?.total ?? 0;
+
+  const filteredTotalForBulk = allListingsForPicker.data?.pagination?.total ?? total;
+  const filteredOverLimit = bulkModeEnabled && filteredTotalForBulk > PICKER_LIST_LIMIT;
 
   const selectCls =
     "bg-input border border-border text-xs rounded-lg px-2.5 h-7 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
@@ -978,7 +1115,69 @@ export default function Products() {
               ))}
             </select>
           )}
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 h-7">
+            <Switch
+              id="bulk-mode"
+              checked={bulkModeEnabled}
+              onCheckedChange={setBulkModeEnabled}
+              aria-label="Ação em massa"
+            />
+            <label htmlFor="bulk-mode" className="text-xs text-foreground whitespace-nowrap cursor-pointer">
+              Ação em massa
+            </label>
+          </div>
         </div>
+        {bulkModeEnabled ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={allSelectableSelected ? true : someSelectableSelected ? "indeterminate" : false}
+                disabled={selectableIds.length === 0 || allListingsForPicker.isLoading}
+                onCheckedChange={(checked) => handleMasterCheckbox(checked === true)}
+                aria-label="Selecionar todos do filtro"
+              />
+              <span className="text-xs text-foreground">
+                Selecionar todos do filtro ({selectableIds.length})
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {selectedIds.size} selecionado{selectedIds.size === 1 ? "" : "s"}
+            </span>
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={pauseCount === 0 || bulkUpdatingListingStatus}
+                onClick={() => setBulkConfirm("pause")}
+              >
+                Pausar em massa ({pauseCount})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={activateCount === 0 || bulkUpdatingListingStatus}
+                onClick={() => setBulkConfirm("activate")}
+              >
+                Ativar em massa ({activateCount})
+              </Button>
+            </div>
+            {allListingsForPicker.isLoading ? (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground w-full">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Carregando anúncios do filtro…
+              </span>
+            ) : null}
+            {filteredOverLimit ? (
+              <p className="text-[10px] text-amber-600 w-full leading-snug">
+                O filtro retorna mais de {PICKER_LIST_LIMIT} anúncios. A seleção em massa considera no
+                máximo {PICKER_LIST_LIMIT}. Refine os filtros para incluir todos.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div ref={listScrollElRef} className="flex-1 overflow-y-auto px-4 py-3">
@@ -1034,6 +1233,10 @@ export default function Products() {
                     )}
                     <ProductCard
                       p={p}
+                      bulkMode={bulkModeEnabled}
+                      selected={selectedIds.has(p.id)}
+                      selectable={isSelectableForBulk(p)}
+                      onToggleSelect={(checked) => toggleSelect(p.id, checked)}
                       onEdit={() => openStockDialog(p)}
                       onEditListing={() => navigate(`/products/${p.id}/edit`)}
                       onDuplicate={() => {
@@ -1217,6 +1420,47 @@ export default function Products() {
           });
         }}
       />
+
+      <AlertDialog
+        open={bulkConfirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setBulkConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkConfirm === "pause" ? "Pausar anúncios em massa" : "Ativar anúncios em massa"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkConfirm === "pause"
+                ? `Confirma pausar ${pauseCount} anúncio(s) selecionado(s) no Mercado Livre? Anúncios pausados deixam de aparecer para compradores.`
+                : `Confirma ativar ${activateCount} anúncio(s) selecionado(s) no Mercado Livre? Eles voltarão a ficar visíveis para compradores.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkUpdatingListingStatus}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkUpdatingListingStatus}
+              onClick={(e) => {
+                e.preventDefault();
+                if (bulkConfirm) runBulkStatusUpdate(bulkConfirm);
+              }}
+            >
+              {bulkUpdatingListingStatus ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Processando…
+                </>
+              ) : bulkConfirm === "pause" ? (
+                "Pausar"
+              ) : (
+                "Ativar"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CloseListingDialog
         open={!!closeDialog}

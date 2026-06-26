@@ -738,6 +738,39 @@ export const UpdateProductListingStatusResponse = zod.object({
 });
 
 /**
+ * Sets listing status to active or paused for up to 500 products via ML API. Only listings currently active or paused are updated; others are skipped or reported as failed.
+ * @summary Pause or activate multiple listings (Mercado Livre)
+ */
+export const bulkUpdateProductListingStatusBodyProductIdsMax = 500;
+
+export const BulkUpdateProductListingStatusBody = zod.object({
+  status: zod.enum(["active", "paused"]),
+  product_ids: zod
+    .array(zod.string())
+    .min(1)
+    .max(bulkUpdateProductListingStatusBodyProductIdsMax),
+});
+
+export const BulkUpdateProductListingStatusResponse = zod.object({
+  success: zod.boolean(),
+  status: zod.enum(["active", "paused"]),
+  results: zod.array(
+    zod.object({
+      productId: zod.string(),
+      mlItemId: zod.string().nullish(),
+      ok: zod.boolean(),
+      error: zod.string().optional(),
+      skipped: zod.boolean().optional(),
+    }),
+  ),
+  summary: zod.object({
+    updated: zod.number(),
+    skipped: zod.number(),
+    failed: zod.number(),
+  }),
+});
+
+/**
  * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
  * @summary Update stock for a single product
  */

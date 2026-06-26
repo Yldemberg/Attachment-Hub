@@ -654,6 +654,34 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /products/bulk-status:
+    post:
+      operationId: bulkUpdateProductListingStatus
+      tags: [products]
+      summary: Pause or activate multiple listings (Mercado Livre)
+      description: >-
+        Sets listing status to active or paused for up to 500 products via ML API.
+        Only listings currently active or paused are updated; others are skipped or reported as failed.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkUpdateProductListingStatusRequest"
+      responses:
+        "200":
+          description: Bulk status update completed (may include partial failures)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkUpdateProductListingStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /products/{id}/stock:
     patch:
       operationId: updateProductStock
@@ -2024,6 +2052,60 @@ components:
           type: string
           enum: [active, paused]
       required: [status]
+
+    BulkUpdateProductListingStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, paused]
+        product_ids:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 500
+      required: [status, product_ids]
+
+    BulkUpdateProductListingStatusResult:
+      type: object
+      properties:
+        productId:
+          type: string
+        mlItemId:
+          type: string
+          nullable: true
+        ok:
+          type: boolean
+        error:
+          type: string
+        skipped:
+          type: boolean
+      required: [productId, ok]
+
+    BulkUpdateProductListingStatusResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [active, paused]
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkUpdateProductListingStatusResult"
+        summary:
+          type: object
+          properties:
+            updated:
+              type: integer
+            skipped:
+              type: integer
+            failed:
+              type: integer
+          required: [updated, skipped, failed]
+      required: [success, status, results, summary]
 
     MlCategoryPrediction:
       type: object
