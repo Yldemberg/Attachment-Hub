@@ -31,6 +31,12 @@ import {
   changeProductListingStatus,
   ProductListingStatusError,
 } from "../lib/product-listing-status";
+import {
+  prepareListingFromLink,
+  publishListingDraft,
+  N8nListingError,
+  type N8nListingDraft,
+} from "../lib/n8n-listings";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -138,6 +144,10 @@ function handleMlListingRouteError(
 ): void {
   if (err instanceof MlListingError) {
     res.status(err.statusCode).json({ error: { code: err.code, message: err.message } });
+    return;
+  }
+  if (err instanceof N8nListingError) {
+    res.status(err.statusCode).json({ error: { code: "N8N_ERROR", message: err.message } });
     return;
   }
   log.error({ err }, context);
@@ -416,6 +426,52 @@ router.post("/products/pictures", ...auth, async (req, res) => {
     res.json(result);
   } catch (err) {
     handleMlListingRouteError(err, res, req.log, "Failed to upload picture");
+  }
+});
+
+router.post("/products/prepare-from-link", ...auth, async (req, res) => {
+  try {
+    const { accountId, productUrl } = req.body as { accountId?: string; productUrl?: string };
+    if (!accountId || !productUrl) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId e productUrl" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const data = await prepareListingFromLink({
+      accountId,
+      productUrl,
+      userId: req.user!.id,
+    });
+    res.json({ data });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to prepare listing from link");
+  }
+});
+
+router.post("/products/publish-draft", ...auth, async (req, res) => {
+  try {
+    const { accountId, draft } = req.body as { accountId?: string; draft?: unknown };
+    if (!accountId || !draft || typeof draft !== "object") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId e draft" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const result = await publishListingDraft({
+      accountId,
+      draft: draft as N8nListingDraft,
+      userId: req.user!.id,
+    });
+    res.json(result);
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to publish listing draft");
   }
 });
 

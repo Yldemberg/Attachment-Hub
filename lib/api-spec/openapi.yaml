@@ -434,6 +434,68 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /products/prepare-from-link:
+    post:
+      operationId: prepareProductFromLink
+      tags: [products]
+      summary: Prepare a listing draft from an Amazon or Shopee product link via N8N
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareProductFromLinkRequest"
+      responses:
+        "200":
+          description: Listing draft prepared by N8N
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareProductFromLinkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: N8N webhook error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/publish-draft:
+    post:
+      operationId: publishProductDraft
+      tags: [products]
+      summary: Publish a prepared listing draft via N8N
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishProductDraftRequest"
+      responses:
+        "200":
+          description: Draft sent to N8N for publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishProductDraftResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: N8N webhook error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /products/low-stock:
     get:
       operationId: getLowStockProducts
@@ -2244,6 +2306,136 @@ components:
           items:
             $ref: "#/components/schemas/MlListingVariationInput"
       required: [accountId, title, categoryId, availableQuantity, condition, listingTypeId, pictures, attributes]
+
+    N8nListingAttribute:
+      type: object
+      properties:
+        id:
+          type: string
+        value_name:
+          type: string
+        value_id:
+          type: string
+          nullable: true
+      required: [id]
+
+    N8nListingPicture:
+      type: object
+      properties:
+        source:
+          type: string
+      required: [source]
+
+    N8nListingPayload:
+      type: object
+      properties:
+        category_id:
+          type: string
+        price:
+          type: number
+        currency_id:
+          type: string
+        available_quantity:
+          type: integer
+        buying_mode:
+          type: string
+        listing_type_id:
+          type: string
+        condition:
+          type: string
+          enum: [new, used]
+        pictures:
+          type: array
+          items:
+            $ref: "#/components/schemas/N8nListingPicture"
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/N8nListingAttribute"
+        family_name:
+          type: string
+      required: [category_id, available_quantity, listing_type_id, condition, pictures, attributes, family_name]
+
+    N8nListingAttributeValor:
+      type: object
+      properties:
+        value_name:
+          type: string
+        value_id:
+          type: string
+          nullable: true
+
+    N8nListingAttributeReview:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        valor:
+          $ref: "#/components/schemas/N8nListingAttributeValor"
+      required: [id, name, valor]
+
+    N8nListingDraft:
+      type: object
+      properties:
+        payload:
+          $ref: "#/components/schemas/N8nListingPayload"
+        _description:
+          type: string
+        _attributes_ainda_pendentes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        _attributes_preenchidos_inteligente:
+          type: array
+          items:
+            $ref: "#/components/schemas/N8nListingAttributeReview"
+        _attributes_ficticios:
+          type: array
+          items:
+            $ref: "#/components/schemas/N8nListingAttributeReview"
+        _asin:
+          type: string
+          nullable: true
+      required: [payload]
+
+    PrepareProductFromLinkRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        productUrl:
+          type: string
+          format: uri
+      required: [accountId, productUrl]
+
+    PrepareProductFromLinkResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/N8nListingDraft"
+      required: [data]
+
+    PublishProductDraftRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        draft:
+          $ref: "#/components/schemas/N8nListingDraft"
+      required: [accountId, draft]
+
+    PublishProductDraftResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+      required: [ok]
 
     UpdateProductRequest:
       type: object

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 
+export * from "./_n8nListingDraftAttributesAindaPendentesItem";
 export * from "./account";
 export * from "./accountSummary";
 export * from "./activatePromotionItem200";
@@ -81,6 +82,13 @@ export * from "./mlExtraCostsBreakdown";
 export * from "./mlListingAttributeInput";
 export * from "./mlListingVariationInput";
 export * from "./mpCredentialsStatus";
+export * from "./n8nListingAttribute";
+export * from "./n8nListingAttributeReview";
+export * from "./n8nListingAttributeValor";
+export * from "./n8nListingDraft";
+export * from "./n8nListingPayload";
+export * from "./n8nListingPayloadCondition";
+export * from "./n8nListingPicture";
 export * from "./notFoundResponse";
 export * from "./notification";
 export * from "./notificationListResponse";
@@ -91,6 +99,8 @@ export * from "./orderListResponse";
 export * from "./pagination";
 export * from "./predictProductCategory200";
 export * from "./predictProductCategoryParams";
+export * from "./prepareProductFromLinkRequest";
+export * from "./prepareProductFromLinkResponse";
 export * from "./product";
 export * from "./productListingDetail";
 export * from "./productListingDetailAttributesItem";
@@ -106,6 +116,8 @@ export * from "./promotionItemNetProceeds";
 export * from "./promotionListResponse";
 export * from "./promotionSummary";
 export * from "./promotionSummaryAccount";
+export * from "./publishProductDraftRequest";
+export * from "./publishProductDraftResponse";
 export * from "./question";
 export * from "./questionListResponse";
 export * from "./questionStatus";

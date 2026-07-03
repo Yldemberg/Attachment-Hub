@@ -73,6 +73,8 @@ import type {
   OrderListResponse,
   PredictProductCategory200,
   PredictProductCategoryParams,
+  PrepareProductFromLinkRequest,
+  PrepareProductFromLinkResponse,
   Product,
   ProductListResponse,
   ProductListingDetail,
@@ -81,6 +83,8 @@ import type {
   PromotionItemListResponse,
   PromotionListResponse,
   PromotionSummary,
+  PublishProductDraftRequest,
+  PublishProductDraftResponse,
   Question,
   QuestionListResponse,
   RemovePromotionItem200,
@@ -1457,6 +1461,187 @@ export const useUploadProductPicture = <
   TContext
 > => {
   return useMutation(getUploadProductPictureMutationOptions(options));
+};
+
+/**
+ * @summary Prepare a listing draft from an Amazon or Shopee product link via N8N
+ */
+export const getPrepareProductFromLinkUrl = () => {
+  return `/api/products/prepare-from-link`;
+};
+
+export const prepareProductFromLink = async (
+  prepareProductFromLinkRequest: PrepareProductFromLinkRequest,
+  options?: RequestInit,
+): Promise<PrepareProductFromLinkResponse> => {
+  return customFetch<PrepareProductFromLinkResponse>(
+    getPrepareProductFromLinkUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(prepareProductFromLinkRequest),
+    },
+  );
+};
+
+export const getPrepareProductFromLinkMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prepareProductFromLink>>,
+    TError,
+    { data: BodyType<PrepareProductFromLinkRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof prepareProductFromLink>>,
+  TError,
+  { data: BodyType<PrepareProductFromLinkRequest> },
+  TContext
+> => {
+  const mutationKey = ["prepareProductFromLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof prepareProductFromLink>>,
+    { data: BodyType<PrepareProductFromLinkRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return prepareProductFromLink(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PrepareProductFromLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof prepareProductFromLink>>
+>;
+export type PrepareProductFromLinkMutationBody =
+  BodyType<PrepareProductFromLinkRequest>;
+export type PrepareProductFromLinkMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Prepare a listing draft from an Amazon or Shopee product link via N8N
+ */
+export const usePrepareProductFromLink = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prepareProductFromLink>>,
+    TError,
+    { data: BodyType<PrepareProductFromLinkRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof prepareProductFromLink>>,
+  TError,
+  { data: BodyType<PrepareProductFromLinkRequest> },
+  TContext
+> => {
+  return useMutation(getPrepareProductFromLinkMutationOptions(options));
+};
+
+/**
+ * @summary Publish a prepared listing draft via N8N
+ */
+export const getPublishProductDraftUrl = () => {
+  return `/api/products/publish-draft`;
+};
+
+export const publishProductDraft = async (
+  publishProductDraftRequest: PublishProductDraftRequest,
+  options?: RequestInit,
+): Promise<PublishProductDraftResponse> => {
+  return customFetch<PublishProductDraftResponse>(getPublishProductDraftUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(publishProductDraftRequest),
+  });
+};
+
+export const getPublishProductDraftMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishProductDraft>>,
+    TError,
+    { data: BodyType<PublishProductDraftRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishProductDraft>>,
+  TError,
+  { data: BodyType<PublishProductDraftRequest> },
+  TContext
+> => {
+  const mutationKey = ["publishProductDraft"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishProductDraft>>,
+    { data: BodyType<PublishProductDraftRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return publishProductDraft(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishProductDraftMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishProductDraft>>
+>;
+export type PublishProductDraftMutationBody =
+  BodyType<PublishProductDraftRequest>;
+export type PublishProductDraftMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Publish a prepared listing draft via N8N
+ */
+export const usePublishProductDraft = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishProductDraft>>,
+    TError,
+    { data: BodyType<PublishProductDraftRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishProductDraft>>,
+  TError,
+  { data: BodyType<PublishProductDraftRequest> },
+  TContext
+> => {
+  return useMutation(getPublishProductDraftMutationOptions(options));
 };
 
 /**

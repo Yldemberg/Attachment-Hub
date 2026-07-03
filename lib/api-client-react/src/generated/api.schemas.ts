@@ -266,6 +266,80 @@ export interface CreateProductRequest {
   variations?: MlListingVariationInput[] | null;
 }
 
+export interface N8nListingAttribute {
+  id: string;
+  value_name?: string;
+  value_id?: string | null;
+}
+
+export interface N8nListingPicture {
+  source: string;
+}
+
+export type N8nListingPayloadCondition =
+  (typeof N8nListingPayloadCondition)[keyof typeof N8nListingPayloadCondition];
+
+export const N8nListingPayloadCondition = {
+  new: "new",
+  used: "used",
+} as const;
+
+export interface N8nListingPayload {
+  category_id: string;
+  price?: number;
+  currency_id?: string;
+  available_quantity: number;
+  buying_mode?: string;
+  listing_type_id: string;
+  condition: N8nListingPayloadCondition;
+  pictures: N8nListingPicture[];
+  attributes: N8nListingAttribute[];
+  family_name: string;
+}
+
+export interface N8nListingAttributeValor {
+  value_name?: string;
+  value_id?: string | null;
+}
+
+export interface N8nListingAttributeReview {
+  id: string;
+  name: string;
+  valor: N8nListingAttributeValor;
+}
+
+export type _N8nListingDraftAttributesAindaPendentesItem = {
+  [key: string]: unknown;
+};
+
+export interface N8nListingDraft {
+  payload: N8nListingPayload;
+  _description?: string;
+  _attributes_ainda_pendentes?: _N8nListingDraftAttributesAindaPendentesItem[];
+  _attributes_preenchidos_inteligente?: N8nListingAttributeReview[];
+  _attributes_ficticios?: N8nListingAttributeReview[];
+  _asin?: string | null;
+}
+
+export interface PrepareProductFromLinkRequest {
+  accountId: string;
+  productUrl: string;
+}
+
+export interface PrepareProductFromLinkResponse {
+  data: N8nListingDraft;
+}
+
+export interface PublishProductDraftRequest {
+  accountId: string;
+  draft: N8nListingDraft;
+}
+
+export interface PublishProductDraftResponse {
+  ok: boolean;
+  message?: string | null;
+}
+
 export interface UpdateProductRequest {
   title?: string;
   /** Nome da família do produto (modelo User Products do Mercado Livre). */
