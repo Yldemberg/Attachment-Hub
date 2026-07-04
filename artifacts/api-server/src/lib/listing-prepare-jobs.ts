@@ -23,7 +23,7 @@ export type ListingPrepareJobView = {
   errorMessage?: string | null;
 };
 
-const DEFAULT_PREPARE_JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_PREPARE_JOB_TIMEOUT_MS = 60 * 1000;
 
 function getPrepareJobTimeoutMs(): number {
   const raw = process.env.LISTING_PREPARE_JOB_TIMEOUT_MS;
