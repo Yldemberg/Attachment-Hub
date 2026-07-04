@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useListAccounts,
   usePrepareProductFromLink,
   usePublishProductDraft,
+  useGetListingPrepareJob,
   getListProductsQueryKey,
+  getGetListingPrepareJobQueryKey,
   type N8nListingDraft,
+  type ListingPrepareJobResponse,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type Query } from "@tanstack/react-query";
 import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -32,21 +35,61 @@ export default function ProductCreate() {
   const [step, setStep] = useState<1 | 2>(1);
   const [accountId, setAccountId] = useState("");
   const [productUrl, setProductUrl] = useState("");
+  const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
   const [draft, setDraft] = useState<N8nListingDraft | null>(null);
 
   const { data: accountsData } = useListAccounts();
   const accounts = accountsData?.data ?? [];
 
-  const { mutateAsync: prepareFromLink, isPending: preparing } = usePrepareProductFromLink();
+  const { mutateAsync: startPrepare, isPending: startingPrepare } = usePrepareProductFromLink();
+
+  const { data: jobData } = useGetListingPrepareJob(prepareJobId ?? "", {
+    query: {
+      queryKey: getGetListingPrepareJobQueryKey(prepareJobId ?? ""),
+      enabled: !!prepareJobId,
+      refetchInterval: (query: Query<ListingPrepareJobResponse>) => {
+        const status = query.state.data?.status;
+        if (status === "pending" || status === "processing") return 3000;
+        return false;
+      },
+    },
+  });
+
+  const isPreparing =
+    startingPrepare ||
+    (!!prepareJobId &&
+      (jobData?.status === "pending" || jobData?.status === "processing"));
+
+  useEffect(() => {
+    if (!jobData || !prepareJobId) return;
+
+    if (jobData.status === "completed" && jobData.data) {
+      setDraft(jobData.data);
+      setStep(2);
+      setPrepareJobId(null);
+      toast({
+        title: "Anúncio preparado",
+        description: "Revise os dados antes de publicar no Mercado Livre.",
+      });
+    }
+
+    if (jobData.status === "failed") {
+      setPrepareJobId(null);
+      toast({
+        variant: "destructive",
+        title: "Falha ao preparar anúncio",
+        description: jobData.errorMessage ?? "Não foi possível preparar o anúncio.",
+      });
+    }
+  }, [jobData, prepareJobId, toast]);
+
   const { mutate: publishDraft, isPending: publishing } = usePublishProductDraft({
     mutation: {
-      onSuccess: (result) => {
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         toast({
-          title: "Anúncio enviado para publicação",
-          description:
-            result.message ??
-            "O N8N recebeu os dados. O anúncio pode levar alguns instantes para aparecer na listagem.",
+          title: "Anúncio publicado",
+          description: "O anúncio foi criado no Mercado Livre.",
         });
         navigate(buildProductsListReturnPath());
       },
@@ -62,19 +105,14 @@ export default function ProductCreate() {
 
   const handlePrepare = async () => {
     try {
-      const result = await prepareFromLink({
+      const result = await startPrepare({
         data: { accountId, productUrl: productUrl.trim() },
       });
-      setDraft(result.data);
-      setStep(2);
-      toast({
-        title: "Anúncio preparado",
-        description: "Revise os dados antes de publicar no Mercado Livre.",
-      });
+      setPrepareJobId(result.jobId);
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Falha ao preparar anúncio",
+        title: "Falha ao iniciar preparação",
         description: getErrorMessage(err),
       });
     }
@@ -105,6 +143,10 @@ export default function ProductCreate() {
     }
     navigate(buildProductsListReturnPath());
   };
+
+  const prepareStatusMessage = isPreparing
+    ? "Extraindo dados do produto… isso pode levar alguns minutos."
+    : undefined;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -148,7 +190,8 @@ export default function ProductCreate() {
               accountId={accountId}
               productUrl={productUrl}
               accounts={accounts}
-              preparing={preparing}
+              preparing={isPreparing}
+              statusMessage={prepareStatusMessage}
               onAccountIdChange={setAccountId}
               onProductUrlChange={setProductUrl}
               onPrepare={handlePrepare}

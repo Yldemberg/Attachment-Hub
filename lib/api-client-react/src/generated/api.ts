@@ -46,6 +46,7 @@ import type {
   GetSalesReportParams,
   HandleConnectCallbackParams,
   HandleMercadoLivreWebhook200,
+  HandleN8nListingPrepared200,
   HandleStripeWebhook200,
   HealthStatus,
   InventorySearchResponse,
@@ -59,6 +60,7 @@ import type {
   ListPromotionItemsParams,
   ListPromotionsParams,
   ListQuestionsParams,
+  ListingPrepareJobResponse,
   MandateAdjustRequest,
   MandateAdjustResponse,
   MarkAllNotificationsRead200,
@@ -66,6 +68,7 @@ import type {
   MercadoPagoPayment,
   MlExtraCostsBreakdown,
   MpCredentialsStatus,
+  N8nListingPreparedWebhookPayload,
   NotFoundResponse,
   Notification,
   NotificationListResponse,
@@ -84,7 +87,6 @@ import type {
   PromotionListResponse,
   PromotionSummary,
   PublishProductDraftRequest,
-  PublishProductDraftResponse,
   Question,
   QuestionListResponse,
   RemovePromotionItem200,
@@ -1464,7 +1466,7 @@ export const useUploadProductPicture = <
 };
 
 /**
- * @summary Prepare a listing draft from an Amazon or Shopee product link via N8N
+ * @summary Start async preparation of a listing draft from an Amazon or Shopee link via N8N
  */
 export const getPrepareProductFromLinkUrl = () => {
   return `/api/products/prepare-from-link`;
@@ -1533,7 +1535,7 @@ export type PrepareProductFromLinkMutationError = ErrorType<
 >;
 
 /**
- * @summary Prepare a listing draft from an Amazon or Shopee product link via N8N
+ * @summary Start async preparation of a listing draft from an Amazon or Shopee link via N8N
  */
 export const usePrepareProductFromLink = <
   TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
@@ -1556,7 +1558,101 @@ export const usePrepareProductFromLink = <
 };
 
 /**
- * @summary Publish a prepared listing draft via N8N
+ * @summary Get status of an async listing prepare job
+ */
+export const getGetListingPrepareJobUrl = (jobId: string) => {
+  return `/api/products/prepare-jobs/${jobId}`;
+};
+
+export const getListingPrepareJob = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<ListingPrepareJobResponse> => {
+  return customFetch<ListingPrepareJobResponse>(
+    getGetListingPrepareJobUrl(jobId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetListingPrepareJobQueryKey = (jobId: string) => {
+  return [`/api/products/prepare-jobs/${jobId}`] as const;
+};
+
+export const getGetListingPrepareJobQueryOptions = <
+  TData = Awaited<ReturnType<typeof getListingPrepareJob>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getListingPrepareJob>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetListingPrepareJobQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getListingPrepareJob>>
+  > = ({ signal }) =>
+    getListingPrepareJob(jobId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getListingPrepareJob>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetListingPrepareJobQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getListingPrepareJob>>
+>;
+export type GetListingPrepareJobQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Get status of an async listing prepare job
+ */
+
+export function useGetListingPrepareJob<
+  TData = Awaited<ReturnType<typeof getListingPrepareJob>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getListingPrepareJob>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetListingPrepareJobQueryOptions(jobId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Publish a prepared listing draft on Mercado Livre
  */
 export const getPublishProductDraftUrl = () => {
   return `/api/products/publish-draft`;
@@ -1565,8 +1661,8 @@ export const getPublishProductDraftUrl = () => {
 export const publishProductDraft = async (
   publishProductDraftRequest: PublishProductDraftRequest,
   options?: RequestInit,
-): Promise<PublishProductDraftResponse> => {
-  return customFetch<PublishProductDraftResponse>(getPublishProductDraftUrl(), {
+): Promise<Product> => {
+  return customFetch<Product>(getPublishProductDraftUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -1622,7 +1718,7 @@ export type PublishProductDraftMutationError = ErrorType<
 >;
 
 /**
- * @summary Publish a prepared listing draft via N8N
+ * @summary Publish a prepared listing draft on Mercado Livre
  */
 export const usePublishProductDraft = <
   TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
@@ -5383,4 +5479,95 @@ export const useHandleStripeWebhook = <
   TContext
 > => {
   return useMutation(getHandleStripeWebhookMutationOptions(options));
+};
+
+/**
+ * No JWT auth. Validates N8N_WEBHOOK_SECRET via Authorization Bearer or X-N8N-Secret header.
+ * @summary N8N callback when a listing prepare job completes
+ */
+export const getHandleN8nListingPreparedUrl = () => {
+  return `/api/webhooks/n8n/listing-prepared`;
+};
+
+export const handleN8nListingPrepared = async (
+  n8nListingPreparedWebhookPayload: N8nListingPreparedWebhookPayload,
+  options?: RequestInit,
+): Promise<HandleN8nListingPrepared200> => {
+  return customFetch<HandleN8nListingPrepared200>(
+    getHandleN8nListingPreparedUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(n8nListingPreparedWebhookPayload),
+    },
+  );
+};
+
+export const getHandleN8nListingPreparedMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof handleN8nListingPrepared>>,
+    TError,
+    { data: BodyType<N8nListingPreparedWebhookPayload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof handleN8nListingPrepared>>,
+  TError,
+  { data: BodyType<N8nListingPreparedWebhookPayload> },
+  TContext
+> => {
+  const mutationKey = ["handleN8nListingPrepared"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof handleN8nListingPrepared>>,
+    { data: BodyType<N8nListingPreparedWebhookPayload> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return handleN8nListingPrepared(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type HandleN8nListingPreparedMutationResult = NonNullable<
+  Awaited<ReturnType<typeof handleN8nListingPrepared>>
+>;
+export type HandleN8nListingPreparedMutationBody =
+  BodyType<N8nListingPreparedWebhookPayload>;
+export type HandleN8nListingPreparedMutationError = ErrorType<void>;
+
+/**
+ * @summary N8N callback when a listing prepare job completes
+ */
+export const useHandleN8nListingPrepared = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof handleN8nListingPrepared>>,
+    TError,
+    { data: BodyType<N8nListingPreparedWebhookPayload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof handleN8nListingPrepared>>,
+  TError,
+  { data: BodyType<N8nListingPreparedWebhookPayload> },
+  TContext
+> => {
+  return useMutation(getHandleN8nListingPreparedMutationOptions(options));
 };

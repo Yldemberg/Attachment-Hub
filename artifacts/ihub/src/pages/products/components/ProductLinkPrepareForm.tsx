@@ -15,6 +15,7 @@ type ProductLinkPrepareFormProps = {
   productUrl: string;
   accounts: AccountOption[];
   preparing: boolean;
+  statusMessage?: string;
   onAccountIdChange: (value: string) => void;
   onProductUrlChange: (value: string) => void;
   onPrepare: () => void;
@@ -25,6 +26,7 @@ export function ProductLinkPrepareForm({
   productUrl,
   accounts,
   preparing,
+  statusMessage,
   onAccountIdChange,
   onProductUrlChange,
   onPrepare,
@@ -72,6 +74,12 @@ export function ProductLinkPrepareForm({
         {preparing ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
         Preparar Anúncio
       </Button>
+      {preparing && statusMessage ? (
+        <p className="text-xs text-muted-foreground flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          {statusMessage}
+        </p>
+      ) : null}
     </div>
   );
 }

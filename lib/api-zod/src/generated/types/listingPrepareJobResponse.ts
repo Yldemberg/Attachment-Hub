@@ -6,8 +6,11 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { ListingPrepareJobStatus } from "./listingPrepareJobStatus";
+import type { N8nListingDraft } from "./n8nListingDraft";
 
-export interface PrepareProductFromLinkResponse {
+export interface ListingPrepareJobResponse {
   jobId: string;
   status: ListingPrepareJobStatus;
+  data?: N8nListingDraft;
+  errorMessage?: string | null;
 }

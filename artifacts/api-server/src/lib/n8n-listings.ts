@@ -1,5 +1,6 @@
-const PREPARE_TIMEOUT_MS = 120_000;
-const PUBLISH_TIMEOUT_MS = 60_000;
+import crypto from "crypto";
+
+const N8N_DISPATCH_TIMEOUT_MS = 30_000;
 
 export type N8nListingAttribute = {
   id: string;
@@ -55,15 +56,7 @@ function getPrepareWebhookUrl(): string {
   return url;
 }
 
-function getPublishWebhookUrl(): string {
-  const url = process.env.N8N_PUBLISH_WEBHOOK_URL?.trim();
-  if (!url) {
-    throw new N8nListingError("N8N_PUBLISH_WEBHOOK_URL não configurada", 500);
-  }
-  return url;
-}
-
-function isSupportedProductUrl(productUrl: string): boolean {
+export function isSupportedProductUrl(productUrl: string): boolean {
   try {
     const host = new URL(productUrl).hostname.toLowerCase();
     return (
@@ -78,7 +71,7 @@ function isSupportedProductUrl(productUrl: string): boolean {
   }
 }
 
-function parseN8nDraftResponse(body: unknown): N8nListingDraft {
+export function parseN8nDraftResponse(body: unknown): N8nListingDraft {
   if (Array.isArray(body)) {
     if (body.length === 0) {
       throw new N8nListingError("N8N retornou uma resposta vazia");
@@ -94,56 +87,69 @@ function parseN8nDraftResponse(body: unknown): N8nListingDraft {
     return body as N8nListingDraft;
   }
 
+  if (body && typeof body === "object" && "draft" in body) {
+    return parseN8nDraftResponse((body as { draft?: unknown }).draft);
+  }
+
   if (body && typeof body === "object" && "data" in body) {
-    const data = (body as { data?: unknown }).data;
-    return parseN8nDraftResponse(data);
+    return parseN8nDraftResponse((body as { data?: unknown }).data);
   }
 
   throw new N8nListingError("N8N retornou um formato de resposta inválido");
 }
 
-async function callN8nWebhook(
-  url: string,
-  payload: Record<string, unknown>,
-  timeoutMs: number,
-): Promise<unknown> {
+export function verifyN8nWebhookSecret(
+  authHeader: string | undefined,
+  secretHeader: string | undefined,
+): boolean {
+  const secret = process.env.N8N_WEBHOOK_SECRET?.trim();
+  if (!secret) return true;
+
+  const provided = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1] ?? secretHeader;
+  if (!provided || provided.length !== secret.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+}
+
+/** Fire-and-forget dispatch to N8N; N8N completes via callback webhook. */
+export async function dispatchPrepareToN8n(input: {
+  jobId: string;
+  productUrl: string;
+  accountId: string;
+  userId: string;
+  callbackUrl: string;
+}): Promise<void> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), N8N_DISPATCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(getPrepareWebhookUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        jobId: input.jobId,
+        productUrl: input.productUrl,
+        accountId: input.accountId,
+        userId: input.userId,
+        callbackUrl: input.callbackUrl,
+      }),
       signal: controller.signal,
     });
 
-    const text = await res.text();
-    let body: unknown = null;
-    if (text.trim()) {
-      try {
-        body = JSON.parse(text) as unknown;
-      } catch {
-        body = text;
-      }
-    }
-
     if (!res.ok) {
-      const message =
-        typeof body === "object" &&
-        body !== null &&
-        "message" in body &&
-        typeof (body as { message?: unknown }).message === "string"
-          ? (body as { message: string }).message
-          : `N8N respondeu com status ${res.status}`;
+      const text = await res.text();
+      let message = `N8N respondeu com status ${res.status}`;
+      try {
+        const parsed = JSON.parse(text) as { message?: string };
+        if (parsed.message) message = parsed.message;
+      } catch {
+        if (text.trim()) message = text.slice(0, 200);
+      }
       throw new N8nListingError(message);
     }
-
-    return body;
   } catch (err) {
     if (err instanceof N8nListingError) throw err;
     if (err instanceof Error && err.name === "AbortError") {
-      throw new N8nListingError("Tempo esgotado ao aguardar resposta do N8N");
+      throw new N8nListingError("N8N não respondeu a tempo ao iniciar a preparação");
     }
     throw new N8nListingError(
       err instanceof Error ? err.message : "Falha ao comunicar com N8N",
@@ -151,64 +157,4 @@ async function callN8nWebhook(
   } finally {
     clearTimeout(timer);
   }
-}
-
-export async function prepareListingFromLink(input: {
-  accountId: string;
-  productUrl: string;
-  userId: string;
-}): Promise<N8nListingDraft> {
-  const productUrl = input.productUrl.trim();
-  if (!productUrl) {
-    throw new N8nListingError("Informe o link do produto", 400);
-  }
-  if (!isSupportedProductUrl(productUrl)) {
-    throw new N8nListingError("Link inválido. Use um produto da Amazon ou Shopee.", 400);
-  }
-
-  const body = await callN8nWebhook(
-    getPrepareWebhookUrl(),
-    {
-      productUrl,
-      accountId: input.accountId,
-      userId: input.userId,
-    },
-    PREPARE_TIMEOUT_MS,
-  );
-
-  return parseN8nDraftResponse(body);
-}
-
-export async function publishListingDraft(input: {
-  accountId: string;
-  draft: N8nListingDraft;
-  userId: string;
-}): Promise<{ ok: true; message?: string }> {
-  if (!input.draft?.payload) {
-    throw new N8nListingError("Rascunho inválido", 400);
-  }
-
-  const body = await callN8nWebhook(
-    getPublishWebhookUrl(),
-    {
-      accountId: input.accountId,
-      userId: input.userId,
-      draft: input.draft,
-    },
-    PUBLISH_TIMEOUT_MS,
-  );
-
-  if (body && typeof body === "object" && "ok" in body) {
-    const ok = Boolean((body as { ok?: unknown }).ok);
-    const message =
-      "message" in body && typeof (body as { message?: unknown }).message === "string"
-        ? (body as { message: string }).message
-        : undefined;
-    if (!ok) {
-      throw new N8nListingError(message ?? "N8N não confirmou a publicação");
-    }
-    return { ok: true, message };
-  }
-
-  return { ok: true };
 }

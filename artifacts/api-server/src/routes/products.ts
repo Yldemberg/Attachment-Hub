@@ -32,11 +32,12 @@ import {
   ProductListingStatusError,
 } from "../lib/product-listing-status";
 import {
-  prepareListingFromLink,
-  publishListingDraft,
-  N8nListingError,
-  type N8nListingDraft,
-} from "../lib/n8n-listings";
+  startListingPrepareJob,
+  getListingPrepareJobForUser,
+  publishDraftOnMercadoLivre,
+  buildListingPreparedCallbackUrl,
+} from "../lib/listing-prepare-jobs";
+import { N8nListingError, type N8nListingDraft } from "../lib/n8n-listings";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -441,14 +442,29 @@ router.post("/products/prepare-from-link", ...auth, async (req, res) => {
       return;
     }
 
-    const data = await prepareListingFromLink({
+    const callbackUrl = buildListingPreparedCallbackUrl(req);
+    const result = await startListingPrepareJob({
       accountId,
       productUrl,
       userId: req.user!.id,
+      callbackUrl,
     });
-    res.json({ data });
+    res.status(202).json(result);
   } catch (err) {
-    handleMlListingRouteError(err, res, req.log, "Failed to prepare listing from link");
+    handleMlListingRouteError(err, res, req.log, "Failed to start listing prepare job");
+  }
+});
+
+router.get("/products/prepare-jobs/:jobId", ...auth, async (req, res) => {
+  try {
+    const job = await getListingPrepareJobForUser(req.params.jobId as string, req.user!.id);
+    if (!job) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Job não encontrado" } });
+      return;
+    }
+    res.json(job);
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to get listing prepare job");
   }
 });
 
@@ -464,12 +480,16 @@ router.post("/products/publish-draft", ...auth, async (req, res) => {
       return;
     }
 
-    const result = await publishListingDraft({
-      accountId,
-      draft: draft as N8nListingDraft,
-      userId: req.user!.id,
-    });
-    res.json(result);
+    const { productId } = await publishDraftOnMercadoLivre(accountId, draft as N8nListingDraft);
+
+    const db = getDb();
+    const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
+    if (!product) {
+      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+      return;
+    }
+
+    res.status(201).json(await formatProductResponse(product));
   } catch (err) {
     handleMlListingRouteError(err, res, req.log, "Failed to publish listing draft");
   }

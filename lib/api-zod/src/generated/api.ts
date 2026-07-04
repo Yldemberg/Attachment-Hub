@@ -397,71 +397,83 @@ export const UploadProductPictureResponse = zod.object({
 });
 
 /**
- * @summary Prepare a listing draft from an Amazon or Shopee product link via N8N
+ * @summary Start async preparation of a listing draft from an Amazon or Shopee link via N8N
  */
 export const PrepareProductFromLinkBody = zod.object({
   accountId: zod.string(),
   productUrl: zod.string().url(),
 });
 
-export const PrepareProductFromLinkResponse = zod.object({
-  data: zod.object({
-    payload: zod.object({
-      category_id: zod.string(),
-      price: zod.number().optional(),
-      currency_id: zod.string().optional(),
-      available_quantity: zod.number(),
-      buying_mode: zod.string().optional(),
-      listing_type_id: zod.string(),
-      condition: zod.enum(["new", "used"]),
-      pictures: zod.array(
-        zod.object({
-          source: zod.string(),
-        }),
-      ),
-      attributes: zod.array(
-        zod.object({
-          id: zod.string(),
-          value_name: zod.string().optional(),
-          value_id: zod.string().nullish(),
-        }),
-      ),
-      family_name: zod.string(),
-    }),
-    _description: zod.string().optional(),
-    _attributes_ainda_pendentes: zod
-      .array(zod.record(zod.string(), zod.unknown()))
-      .optional(),
-    _attributes_preenchidos_inteligente: zod
-      .array(
-        zod.object({
-          id: zod.string(),
-          name: zod.string(),
-          valor: zod.object({
+/**
+ * @summary Get status of an async listing prepare job
+ */
+export const GetListingPrepareJobParams = zod.object({
+  jobId: zod.coerce.string().uuid(),
+});
+
+export const GetListingPrepareJobResponse = zod.object({
+  jobId: zod.string().uuid(),
+  status: zod.enum(["pending", "processing", "completed", "failed"]),
+  data: zod
+    .object({
+      payload: zod.object({
+        category_id: zod.string(),
+        price: zod.number().optional(),
+        currency_id: zod.string().optional(),
+        available_quantity: zod.number(),
+        buying_mode: zod.string().optional(),
+        listing_type_id: zod.string(),
+        condition: zod.enum(["new", "used"]),
+        pictures: zod.array(
+          zod.object({
+            source: zod.string(),
+          }),
+        ),
+        attributes: zod.array(
+          zod.object({
+            id: zod.string(),
             value_name: zod.string().optional(),
             value_id: zod.string().nullish(),
           }),
-        }),
-      )
-      .optional(),
-    _attributes_ficticios: zod
-      .array(
-        zod.object({
-          id: zod.string(),
-          name: zod.string(),
-          valor: zod.object({
-            value_name: zod.string().optional(),
-            value_id: zod.string().nullish(),
+        ),
+        family_name: zod.string(),
+      }),
+      _description: zod.string().optional(),
+      _attributes_ainda_pendentes: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      _attributes_preenchidos_inteligente: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+            valor: zod.object({
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
           }),
-        }),
-      )
-      .optional(),
-    _asin: zod.string().nullish(),
-  }),
+        )
+        .optional(),
+      _attributes_ficticios: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+            valor: zod.object({
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
+          }),
+        )
+        .optional(),
+      _asin: zod.string().nullish(),
+    })
+    .optional(),
+  errorMessage: zod.string().nullish(),
 });
 
 /**
- * @summary Publish a prepared listing draft via N8N
+ * @summary Publish a prepared listing draft on Mercado Livre
  */
 export const PublishProductDraftBody = zod.object({
   accountId: zod.string(),
@@ -518,11 +530,6 @@ export const PublishProductDraftBody = zod.object({
       .optional(),
     _asin: zod.string().nullish(),
   }),
-});
-
-export const PublishProductDraftResponse = zod.object({
-  ok: zod.boolean(),
-  message: zod.string().nullish(),
 });
 
 /**
@@ -2053,4 +2060,73 @@ export const HandleMercadoLivreWebhookResponse = zod.object({
  */
 export const HandleStripeWebhookResponse = zod.object({
   received: zod.boolean(),
+});
+
+/**
+ * No JWT auth. Validates N8N_WEBHOOK_SECRET via Authorization Bearer or X-N8N-Secret header.
+ * @summary N8N callback when a listing prepare job completes
+ */
+export const HandleN8nListingPreparedBody = zod.object({
+  jobId: zod.string().uuid(),
+  status: zod.enum(["completed", "failed"]),
+  draft: zod
+    .object({
+      payload: zod.object({
+        category_id: zod.string(),
+        price: zod.number().optional(),
+        currency_id: zod.string().optional(),
+        available_quantity: zod.number(),
+        buying_mode: zod.string().optional(),
+        listing_type_id: zod.string(),
+        condition: zod.enum(["new", "used"]),
+        pictures: zod.array(
+          zod.object({
+            source: zod.string(),
+          }),
+        ),
+        attributes: zod.array(
+          zod.object({
+            id: zod.string(),
+            value_name: zod.string().optional(),
+            value_id: zod.string().nullish(),
+          }),
+        ),
+        family_name: zod.string(),
+      }),
+      _description: zod.string().optional(),
+      _attributes_ainda_pendentes: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      _attributes_preenchidos_inteligente: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+            valor: zod.object({
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
+          }),
+        )
+        .optional(),
+      _attributes_ficticios: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            name: zod.string(),
+            valor: zod.object({
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
+          }),
+        )
+        .optional(),
+      _asin: zod.string().nullish(),
+    })
+    .optional(),
+  error: zod.string().nullish(),
+});
+
+export const HandleN8nListingPreparedResponse = zod.object({
+  status: zod.string(),
 });

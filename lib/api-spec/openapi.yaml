@@ -438,7 +438,7 @@ paths:
     post:
       operationId: prepareProductFromLink
       tags: [products]
-      summary: Prepare a listing draft from an Amazon or Shopee product link via N8N
+      summary: Start async preparation of a listing draft from an Amazon or Shopee link via N8N
       security:
         - bearerAuth: []
       requestBody:
@@ -448,8 +448,8 @@ paths:
             schema:
               $ref: "#/components/schemas/PrepareProductFromLinkRequest"
       responses:
-        "200":
-          description: Listing draft prepared by N8N
+        "202":
+          description: Prepare job accepted; poll GET /products/prepare-jobs/{jobId}
           content:
             application/json:
               schema:
@@ -465,11 +465,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /products/prepare-jobs/{jobId}:
+    get:
+      operationId: getListingPrepareJob
+      tags: [products]
+      summary: Get status of an async listing prepare job
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job status (includes draft when completed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingPrepareJobResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /products/publish-draft:
     post:
       operationId: publishProductDraft
       tags: [products]
-      summary: Publish a prepared listing draft via N8N
+      summary: Publish a prepared listing draft on Mercado Livre
       security:
         - bearerAuth: []
       requestBody:
@@ -479,18 +505,18 @@ paths:
             schema:
               $ref: "#/components/schemas/PublishProductDraftRequest"
       responses:
-        "200":
-          description: Draft sent to N8N for publication
+        "201":
+          description: Listing published on Mercado Livre
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PublishProductDraftResponse"
+                $ref: "#/components/schemas/Product"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "502":
-          description: N8N webhook error
+          description: Mercado Livre API error
           content:
             application/json:
               schema:
@@ -1808,6 +1834,33 @@ paths:
                     type: boolean
                 required: [received]
 
+  /webhooks/n8n/listing-prepared:
+    post:
+      operationId: handleN8nListingPrepared
+      tags: [webhooks]
+      summary: N8N callback when a listing prepare job completes
+      description: >-
+        No JWT auth. Validates N8N_WEBHOOK_SECRET via Authorization Bearer or X-N8N-Secret header.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/N8nListingPreparedWebhookPayload"
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required: [status]
+        "401":
+          description: Invalid webhook secret
+
 # ==============================================================================
 # Components
 # ==============================================================================
@@ -2414,9 +2467,47 @@ components:
     PrepareProductFromLinkResponse:
       type: object
       properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ListingPrepareJobStatus"
+      required: [jobId, status]
+
+    ListingPrepareJobStatus:
+      type: string
+      enum: [pending, processing, completed, failed]
+
+    ListingPrepareJobResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ListingPrepareJobStatus"
         data:
           $ref: "#/components/schemas/N8nListingDraft"
-      required: [data]
+        errorMessage:
+          type: string
+          nullable: true
+      required: [jobId, status]
+
+    N8nListingPreparedWebhookPayload:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [completed, failed]
+        draft:
+          $ref: "#/components/schemas/N8nListingDraft"
+        error:
+          type: string
+          nullable: true
+      required: [jobId, status]
 
     PublishProductDraftRequest:
       type: object
@@ -2426,16 +2517,6 @@ components:
         draft:
           $ref: "#/components/schemas/N8nListingDraft"
       required: [accountId, draft]
-
-    PublishProductDraftResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-        message:
-          type: string
-          nullable: true
-      required: [ok]
 
     UpdateProductRequest:
       type: object

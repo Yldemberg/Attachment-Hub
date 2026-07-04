@@ -6,7 +6,6 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface PublishProductDraftResponse {
-  ok: boolean;
-  message?: string | null;
-}
+export type HandleN8nListingPrepared200 = {
+  status: string;
+};

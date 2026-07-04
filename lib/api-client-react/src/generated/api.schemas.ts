@@ -326,18 +326,46 @@ export interface PrepareProductFromLinkRequest {
   productUrl: string;
 }
 
+export type ListingPrepareJobStatus =
+  (typeof ListingPrepareJobStatus)[keyof typeof ListingPrepareJobStatus];
+
+export const ListingPrepareJobStatus = {
+  pending: "pending",
+  processing: "processing",
+  completed: "completed",
+  failed: "failed",
+} as const;
+
 export interface PrepareProductFromLinkResponse {
-  data: N8nListingDraft;
+  jobId: string;
+  status: ListingPrepareJobStatus;
+}
+
+export interface ListingPrepareJobResponse {
+  jobId: string;
+  status: ListingPrepareJobStatus;
+  data?: N8nListingDraft;
+  errorMessage?: string | null;
+}
+
+export type N8nListingPreparedWebhookPayloadStatus =
+  (typeof N8nListingPreparedWebhookPayloadStatus)[keyof typeof N8nListingPreparedWebhookPayloadStatus];
+
+export const N8nListingPreparedWebhookPayloadStatus = {
+  completed: "completed",
+  failed: "failed",
+} as const;
+
+export interface N8nListingPreparedWebhookPayload {
+  jobId: string;
+  status: N8nListingPreparedWebhookPayloadStatus;
+  draft?: N8nListingDraft;
+  error?: string | null;
 }
 
 export interface PublishProductDraftRequest {
   accountId: string;
   draft: N8nListingDraft;
-}
-
-export interface PublishProductDraftResponse {
-  ok: boolean;
-  message?: string | null;
 }
 
 export interface UpdateProductRequest {
@@ -1185,4 +1213,8 @@ export type HandleMercadoLivreWebhook200 = {
 
 export type HandleStripeWebhook200 = {
   received: boolean;
+};
+
+export type HandleN8nListingPrepared200 = {
+  status: string;
 };

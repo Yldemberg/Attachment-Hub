@@ -30,6 +30,8 @@ import {
   PROMOTION_TYPE_LABELS,
 } from "../lib/ml-promotions";
 import { buildMlOrderStoredPayload } from "../lib/ml-order-payload";
+import { verifyN8nWebhookSecret } from "../lib/n8n-listings";
+import { completeListingPrepareJobFromWebhook } from "../lib/listing-prepare-jobs";
 
 const router = Router();
 
@@ -505,6 +507,41 @@ router.post("/webhooks/stripe", async (req, res) => {
       }
     } catch (err) {
       logger.error({ err, eventType: event.type }, "Stripe webhook processing failed");
+    }
+  });
+});
+
+router.post("/webhooks/n8n/listing-prepared", async (req, res) => {
+  if (!verifyN8nWebhookSecret(req.headers.authorization, req.headers["x-n8n-secret"] as string | undefined)) {
+    logger.warn("N8N listing-prepared webhook secret verification failed");
+    res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Invalid webhook secret" } });
+    return;
+  }
+
+  const body = req.body as {
+    jobId?: string;
+    status?: "completed" | "failed";
+    draft?: unknown;
+    error?: string | null;
+  };
+
+  if (!body.jobId || !body.status) {
+    res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe jobId e status" } });
+    return;
+  }
+
+  res.status(200).json({ status: "accepted" });
+
+  setImmediate(async () => {
+    try {
+      await completeListingPrepareJobFromWebhook({
+        jobId: body.jobId!,
+        status: body.status!,
+        draft: body.draft,
+        error: body.error,
+      });
+    } catch (err) {
+      logger.error({ err, jobId: body.jobId }, "N8N listing-prepared webhook processing failed");
     }
   });
 });
