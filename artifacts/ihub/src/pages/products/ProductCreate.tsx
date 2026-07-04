@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
   useListAccounts,
@@ -15,7 +15,11 @@ import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
-import { N8N_CREATE_STEPS, canPublishDraft } from "./components/n8n-listing-types";
+import {
+  N8N_CREATE_STEPS,
+  PREPARE_JOB_TIMEOUT_MS,
+  canPublishDraft,
+} from "./components/n8n-listing-types";
 import { ProductLinkPrepareForm } from "./components/ProductLinkPrepareForm";
 import { N8nListingReviewForm } from "./components/N8nListingReviewForm";
 
@@ -36,6 +40,7 @@ export default function ProductCreate() {
   const [accountId, setAccountId] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
+  const [prepareStartedAt, setPrepareStartedAt] = useState<number | null>(null);
   const [draft, setDraft] = useState<N8nListingDraft | null>(null);
 
   const { data: accountsData } = useListAccounts();
@@ -43,7 +48,16 @@ export default function ProductCreate() {
 
   const { mutateAsync: startPrepare, isPending: startingPrepare } = usePrepareProductFromLink();
 
-  const { data: jobData } = useGetListingPrepareJob(prepareJobId ?? "", {
+  const clearPrepareJob = useCallback(() => {
+    setPrepareJobId(null);
+    setPrepareStartedAt(null);
+  }, []);
+
+  const {
+    data: jobData,
+    isError: isJobPollError,
+    error: jobPollError,
+  } = useGetListingPrepareJob(prepareJobId ?? "", {
     query: {
       queryKey: getGetListingPrepareJobQueryKey(prepareJobId ?? ""),
       enabled: !!prepareJobId,
@@ -55,10 +69,9 @@ export default function ProductCreate() {
     },
   });
 
-  const isPreparing =
-    startingPrepare ||
-    (!!prepareJobId &&
-      (jobData?.status === "pending" || jobData?.status === "processing"));
+  const jobFinished =
+    jobData?.status === "completed" || jobData?.status === "failed";
+  const isPreparing = startingPrepare || (!!prepareJobId && !jobFinished);
 
   useEffect(() => {
     if (!jobData || !prepareJobId) return;
@@ -66,22 +79,62 @@ export default function ProductCreate() {
     if (jobData.status === "completed" && jobData.data) {
       setDraft(jobData.data);
       setStep(2);
-      setPrepareJobId(null);
+      clearPrepareJob();
       toast({
         title: "Anúncio preparado",
         description: "Revise os dados antes de publicar no Mercado Livre.",
       });
+      return;
     }
 
     if (jobData.status === "failed") {
-      setPrepareJobId(null);
+      clearPrepareJob();
       toast({
         variant: "destructive",
         title: "Falha ao preparar anúncio",
         description: jobData.errorMessage ?? "Não foi possível preparar o anúncio.",
       });
     }
-  }, [jobData, prepareJobId, toast]);
+  }, [jobData, prepareJobId, toast, clearPrepareJob]);
+
+  useEffect(() => {
+    if (!isJobPollError || !prepareJobId) return;
+    clearPrepareJob();
+    toast({
+      variant: "destructive",
+      title: "Falha ao preparar anúncio",
+      description: getErrorMessage(jobPollError),
+    });
+  }, [isJobPollError, jobPollError, prepareJobId, toast, clearPrepareJob]);
+
+  useEffect(() => {
+    if (!prepareJobId || !prepareStartedAt) return;
+
+    const elapsed = Date.now() - prepareStartedAt;
+    const remaining = PREPARE_JOB_TIMEOUT_MS - elapsed;
+    if (remaining <= 0) {
+      clearPrepareJob();
+      toast({
+        variant: "destructive",
+        title: "Tempo esgotado",
+        description:
+          "A preparação demorou demais. Verifique o workflow N8N ou tente novamente.",
+      });
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      clearPrepareJob();
+      toast({
+        variant: "destructive",
+        title: "Tempo esgotado",
+        description:
+          "A preparação demorou demais. Verifique o workflow N8N ou tente novamente.",
+      });
+    }, remaining);
+
+    return () => window.clearTimeout(timer);
+  }, [prepareJobId, prepareStartedAt, toast, clearPrepareJob]);
 
   const { mutate: publishDraft, isPending: publishing } = usePublishProductDraft({
     mutation: {
@@ -109,6 +162,7 @@ export default function ProductCreate() {
         data: { accountId, productUrl: productUrl.trim() },
       });
       setPrepareJobId(result.jobId);
+      setPrepareStartedAt(Date.now());
     } catch (err) {
       toast({
         variant: "destructive",
@@ -116,6 +170,14 @@ export default function ProductCreate() {
         description: getErrorMessage(err),
       });
     }
+  };
+
+  const handleCancelPrepare = () => {
+    clearPrepareJob();
+    toast({
+      title: "Preparação cancelada",
+      description: "Você pode tentar novamente quando quiser.",
+    });
   };
 
   const handlePublish = () => {
@@ -195,6 +257,7 @@ export default function ProductCreate() {
               onAccountIdChange={setAccountId}
               onProductUrlChange={setProductUrl}
               onPrepare={handlePrepare}
+              onCancel={isPreparing ? handleCancelPrepare : undefined}
             />
           ) : draft ? (
             <N8nListingReviewForm draft={draft} onDraftChange={setDraft} />

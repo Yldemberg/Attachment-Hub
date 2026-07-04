@@ -1,5 +1,7 @@
 import type { N8nListingDraft } from "@workspace/api-client-react";
 
+export const PREPARE_JOB_TIMEOUT_MS = 15 * 60 * 1000;
+
 export const N8N_CREATE_STEPS = [
   { id: 1, label: "Link do produto" },
   { id: 2, label: "Revisão e publicação" },

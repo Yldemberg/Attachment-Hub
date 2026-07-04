@@ -19,6 +19,7 @@ type ProductLinkPrepareFormProps = {
   onAccountIdChange: (value: string) => void;
   onProductUrlChange: (value: string) => void;
   onPrepare: () => void;
+  onCancel?: () => void;
 };
 
 export function ProductLinkPrepareForm({
@@ -30,6 +31,7 @@ export function ProductLinkPrepareForm({
   onAccountIdChange,
   onProductUrlChange,
   onPrepare,
+  onCancel,
 }: ProductLinkPrepareFormProps) {
   const urlValid = productUrl.trim().length > 0 && isSupportedProductUrl(productUrl);
   const canPrepare = accountId.length > 0 && urlValid && !preparing;
@@ -75,10 +77,17 @@ export function ProductLinkPrepareForm({
         Preparar Anúncio
       </Button>
       {preparing && statusMessage ? (
-        <p className="text-xs text-muted-foreground flex items-center gap-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-          {statusMessage}
-        </p>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            {statusMessage}
+          </p>
+          {onCancel ? (
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
+              Cancelar preparação
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

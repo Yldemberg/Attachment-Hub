@@ -23,6 +23,43 @@ export type ListingPrepareJobView = {
   errorMessage?: string | null;
 };
 
+const DEFAULT_PREPARE_JOB_TIMEOUT_MS = 15 * 60 * 1000;
+
+function getPrepareJobTimeoutMs(): number {
+  const raw = process.env.LISTING_PREPARE_JOB_TIMEOUT_MS;
+  if (!raw) return DEFAULT_PREPARE_JOB_TIMEOUT_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PREPARE_JOB_TIMEOUT_MS;
+}
+
+function isPrepareJobStale(row: ListingPrepareJob): boolean {
+  if (row.status !== "pending" && row.status !== "processing") return false;
+  return Date.now() - row.createdAt.getTime() > getPrepareJobTimeoutMs();
+}
+
+async function expireStalePrepareJob(row: ListingPrepareJob): Promise<ListingPrepareJob> {
+  if (!isPrepareJobStale(row)) return row;
+
+  const errorMessage =
+    "Tempo esgotado ao preparar o anúncio. O workflow N8N pode ter falhado — tente novamente.";
+  const db = getDb();
+  await db
+    .update(listingPrepareJobsTable)
+    .set({
+      status: "failed",
+      errorMessage,
+      completedAt: new Date(),
+    })
+    .where(eq(listingPrepareJobsTable.id, row.id));
+
+  return {
+    ...row,
+    status: "failed",
+    errorMessage,
+    completedAt: new Date(),
+  };
+}
+
 function toJobView(row: ListingPrepareJob): ListingPrepareJobView {
   const view: ListingPrepareJobView = {
     jobId: row.id,
@@ -118,7 +155,8 @@ export async function getListingPrepareJobForUser(
     .where(and(eq(listingPrepareJobsTable.id, jobId), eq(listingPrepareJobsTable.userId, userId)))
     .limit(1);
   if (!row) return null;
-  return toJobView(row);
+  const current = await expireStalePrepareJob(row);
+  return toJobView(current);
 }
 
 export async function completeListingPrepareJobFromWebhook(input: {
