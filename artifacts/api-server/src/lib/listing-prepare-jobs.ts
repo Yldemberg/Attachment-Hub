@@ -72,6 +72,27 @@ function toJobView(row: ListingPrepareJob): ListingPrepareJobView {
   return view;
 }
 
+const LISTING_PREPARED_WEBHOOK_PATH = "/api/webhooks/n8n/listing-prepared";
+
+/**
+ * Resolve the public callback URL for N8N.
+ * Accepts either the app origin (`https://app.example.com`) or the full webhook URL.
+ * Avoids doubling the path when IHUB_PUBLIC_URL already includes it.
+ */
+export function resolveListingPreparedCallbackUrl(configured: string): string {
+  const raw = configured.trim().replace(/\/$/, "");
+  if (!raw) {
+    throw new N8nListingError("IHUB_PUBLIC_URL vazia", 500);
+  }
+
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${LISTING_PREPARED_WEBHOOK_PATH}`;
+  } catch {
+    return `${raw}${LISTING_PREPARED_WEBHOOK_PATH}`;
+  }
+}
+
 export function buildListingPreparedCallbackUrl(req: {
   headers: Record<string, string | string[] | undefined>;
   protocol: string;
@@ -79,7 +100,7 @@ export function buildListingPreparedCallbackUrl(req: {
 }): string {
   const configured = process.env.IHUB_PUBLIC_URL?.trim();
   if (configured) {
-    return `${configured.replace(/\/$/, "")}/api/webhooks/n8n/listing-prepared`;
+    return resolveListingPreparedCallbackUrl(configured);
   }
   const proto =
     (typeof req.headers["x-forwarded-proto"] === "string"
@@ -89,7 +110,7 @@ export function buildListingPreparedCallbackUrl(req: {
     (typeof req.headers["x-forwarded-host"] === "string"
       ? req.headers["x-forwarded-host"]
       : req.get("host")) ?? "localhost";
-  return `${proto}://${host}/api/webhooks/n8n/listing-prepared`;
+  return `${proto}://${host}${LISTING_PREPARED_WEBHOOK_PATH}`;
 }
 
 export async function startListingPrepareJob(input: {
@@ -191,7 +212,23 @@ export async function completeListingPrepareJobFromWebhook(input: {
     return;
   }
 
-  const draft = parseN8nDraftResponse(input.draft ?? input);
+  let draft: N8nListingDraft;
+  try {
+    draft = parseN8nDraftResponse(input.draft ?? input);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "N8N retornou um formato de rascunho inválido";
+    await db
+      .update(listingPrepareJobsTable)
+      .set({
+        status: "failed",
+        errorMessage: message,
+        completedAt: new Date(),
+      })
+      .where(eq(listingPrepareJobsTable.id, input.jobId));
+    throw err;
+  }
+
   const jobStatus = input.status === "needs_review" ? "needs_review" : "completed";
   await db
     .update(listingPrepareJobsTable)

@@ -222,7 +222,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           accountId: account.id,
           type: "new_order",
           title: "Novo pedido",
-          message: `Pedido #${order.id} de ${order.buyer.nickname} â€” R$ ${order.total_amount}`,
+          message: `Pedido #${order.id} de ${order.buyer.nickname} — R$ ${order.total_amount}`,
           isRead: false,
           resourceType: "order",
           resourceId: order.id.toString(),
@@ -317,7 +317,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "low_stock",
-            title: "Estoque crÃ­tico",
+            title: "Estoque crítico",
             message: `"${item.title}" tem apenas ${item.available_quantity} unidade(s)`,
             isRead: false,
             resourceType: "product",
@@ -363,7 +363,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "promotion_candidate",
-            title: "Produto elegÃ­vel para promoÃ§Ã£o",
+            title: "Produto elegível para promoção",
             message: `${productTitle ?? candidate.item_id} pode participar de ${typeLabel}`,
             isRead: false,
             resourceType: "promotion",
@@ -414,7 +414,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               userId: account.userId,
               accountId: account.id,
               type: "promotion_active",
-              title: "PromoÃ§Ã£o ativada",
+              title: "Promoção ativada",
               message: `${productTitle ?? offer.item_id} entrou em ${typeLabel}`,
               isRead: false,
               resourceType: "promotion",
@@ -530,20 +530,25 @@ router.post("/webhooks/n8n/listing-prepared", async (req, res) => {
     return;
   }
 
-  res.status(200).json({ status: "accepted" });
-
-  setImmediate(async () => {
-    try {
-      await completeListingPrepareJobFromWebhook({
-        jobId: body.jobId!,
-        status: body.status!,
-        draft: body.draft,
-        error: body.error,
-      });
-    } catch (err) {
-      logger.error({ err, jobId: body.jobId }, "N8N listing-prepared webhook processing failed");
-    }
-  });
+  try {
+    await completeListingPrepareJobFromWebhook({
+      jobId: body.jobId,
+      status: body.status,
+      draft: body.draft,
+      error: body.error,
+    });
+    res.status(200).json({ status: "accepted" });
+  } catch (err) {
+    logger.error({ err, jobId: body.jobId }, "N8N listing-prepared webhook processing failed");
+    const message = err instanceof Error ? err.message : "Falha ao processar callback do N8N";
+    const statusCode =
+      err && typeof err === "object" && "statusCode" in err && typeof (err as { statusCode?: unknown }).statusCode === "number"
+        ? (err as { statusCode: number }).statusCode
+        : 500;
+    res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: { code: "WEBHOOK_PROCESSING_FAILED", message },
+    });
+  }
 });
 
 export default router;
