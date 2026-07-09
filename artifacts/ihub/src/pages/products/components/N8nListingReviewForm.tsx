@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { MLB_LISTING_TYPES, LISTING_CONDITIONS } from "./listing-constants";
 import {
+  formatMlValidationMessage,
+  getBlockingMlValidationErrors,
   getCampoDisplayValue,
   getIhubUiSecoes,
+  getMlValidationWarnings,
   getPendingRequiredIhubUiCampos,
+  getRequiredAttributeIdsFromMlErrors,
   removeDraftPicture,
   updateDraftAttributeValue,
   updateDraftDescription,
@@ -20,6 +24,10 @@ type N8nListingReviewFormProps = {
   draft: N8nListingDraft;
   onDraftChange: (draft: N8nListingDraft) => void;
   jobNeedsReview?: boolean;
+};
+
+const ATTR_LABELS: Record<string, string> = {
+  UNITS_PER_PACK: "Unidades por kit",
 };
 
 function sectionStatusLabel(status: IhubUiSecao["status"]): string {
@@ -122,37 +130,60 @@ export function N8nListingReviewForm({
     : (draft._attributes_ainda_pendentes?.length ?? 0);
   const fictitious = draft._attributes_ficticios ?? [];
   const intelligent = draft._attributes_preenchidos_inteligente ?? [];
-  const mlErrors = draft._erros_validacao_ml ?? [];
+  const blockingErrors = getBlockingMlValidationErrors(draft);
+  const warnings = getMlValidationWarnings(draft);
+  const requiredFromMl = getRequiredAttributeIdsFromMlErrors(draft).filter((id) => {
+    const current = payload.attributes.find((a) => a.id === id);
+    return !(current?.value_name?.trim() || current?.value_id);
+  });
+  const readyToPublish =
+    blockingErrors.length === 0 && pendingCount === 0 && requiredFromMl.length === 0;
 
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
   return (
     <div className="space-y-5">
-      {jobNeedsReview || pendingCount > 0 || mlErrors.length > 0 ? (
+      {jobNeedsReview ||
+      pendingCount > 0 ||
+      blockingErrors.length > 0 ||
+      requiredFromMl.length > 0 ? (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">
-              {jobNeedsReview
-                ? "Revisão necessária antes de publicar"
-                : pendingCount > 0
-                  ? `${pendingCount} campo(s) obrigatório(s) pendente(s)`
-                  : "Há erros de validação do Mercado Livre"}
+              {blockingErrors.length > 0 || requiredFromMl.length > 0
+                ? "Corrija os erros abaixo antes de publicar"
+                : jobNeedsReview
+                  ? "Revisão necessária antes de publicar"
+                  : `${pendingCount} campo(s) obrigatório(s) pendente(s)`}
             </p>
             <p className="mt-0.5 text-amber-700">
-              Complete as seções pendentes e corrija os erros antes de criar o anúncio.
+              Avisos do Mercado Livre não bloqueiam a publicação; apenas erros reais.
             </p>
           </div>
         </div>
       ) : null}
 
-      {mlErrors.length > 0 ? (
+      {blockingErrors.length > 0 ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive space-y-1">
-          {mlErrors.map((err, index) => (
-            <p key={index}>{String(err.message ?? err.code ?? JSON.stringify(err))}</p>
+          {blockingErrors.map((err, index) => (
+            <p key={index}>{formatMlValidationMessage(err)}</p>
           ))}
         </div>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <details className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer font-medium text-foreground">
+            {warnings.length} aviso(s) do Mercado Livre (não bloqueiam)
+          </summary>
+          <ul className="mt-2 space-y-1 list-disc pl-4">
+            {warnings.map((w, index) => (
+              <li key={index}>{formatMlValidationMessage(w)}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
@@ -164,12 +195,10 @@ export function N8nListingReviewForm({
         <div>
           <span className="font-medium text-foreground">Categoria ML:</span> {payload.category_id}
         </div>
-        {draft._pronto_para_publicar != null ? (
-          <div>
-            <span className="font-medium text-foreground">Pronto para publicar:</span>{" "}
-            {draft._pronto_para_publicar ? "Sim" : "Não"}
-          </div>
-        ) : null}
+        <div>
+          <span className="font-medium text-foreground">Pronto para publicar:</span>{" "}
+          {readyToPublish ? "Sim" : "Não"}
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -285,6 +314,40 @@ export function N8nListingReviewForm({
           <p className="text-[11px] text-destructive">Adicione ao menos uma foto antes de publicar.</p>
         ) : null}
       </div>
+
+      {requiredFromMl.length > 0 ? (
+        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+          <div>
+            <Label>Campos exigidos pelo Mercado Livre</Label>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Preencha para liberar a publicação.
+            </p>
+          </div>
+          {requiredFromMl.map((attrId) => {
+            const current = payload.attributes.find((a) => a.id === attrId);
+            return (
+              <div key={attrId} className="space-y-1.5">
+                <Label className="text-sm">
+                  {ATTR_LABELS[attrId] ?? attrId}
+                  <span className="text-destructive ml-0.5">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={current?.value_name ?? ""}
+                  onChange={(e) =>
+                    onDraftChange(
+                      updateDraftAttributeValue(draft, attrId, { value_name: e.target.value }),
+                    )
+                  }
+                  className="h-9"
+                  placeholder={attrId === "UNITS_PER_PACK" ? "Ex.: 1" : undefined}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {hasIhubUi ? (
         <div className="space-y-4">

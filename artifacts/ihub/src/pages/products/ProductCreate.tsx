@@ -19,7 +19,9 @@ import {
   N8N_CREATE_STEPS,
   PREPARE_JOB_TIMEOUT_MS,
   canPublishDraft,
+  getBlockingMlValidationErrors,
   hasBlockingPendingIhubUi,
+  revalidateDraftReadiness,
 } from "./components/n8n-listing-types";
 import { ProductLinkPrepareForm } from "./components/ProductLinkPrepareForm";
 import { N8nListingReviewForm } from "./components/N8nListingReviewForm";
@@ -196,14 +198,14 @@ export default function ProductCreate() {
 
   const handlePublish = () => {
     if (!draft || !canPublishDraft(draft)) {
-      const hasMlErrors = (draft?._erros_validacao_ml?.length ?? 0) > 0;
+      const hasMlErrors = draft ? getBlockingMlValidationErrors(draft).length > 0 : false;
       const hasPendingUi = draft ? hasBlockingPendingIhubUi(draft) : false;
       toast({
         variant: "destructive",
         title: hasMlErrors || hasPendingUi ? "Revisão incompleta" : "Dados incompletos",
         description: hasMlErrors
           ? "Corrija os erros de validação do Mercado Livre antes de publicar."
-          : hasPendingUi || draft?._pronto_para_publicar === false
+          : hasPendingUi
             ? "Complete os campos obrigatórios pendentes antes de publicar."
             : "Preencha nome, preço, estoque e ao menos uma foto.",
       });
@@ -213,7 +215,7 @@ export default function ProductCreate() {
     publishDraft({
       data: {
         accountId,
-        draft,
+        draft: revalidateDraftReadiness(draft),
       },
     });
   };

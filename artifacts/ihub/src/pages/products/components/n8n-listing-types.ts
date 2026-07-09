@@ -156,20 +156,160 @@ function refreshIhubUi(draft: N8nListingDraft, touchedFieldId?: string, touchedV
   };
 }
 
+export type MlValidationItem = {
+  type?: string;
+  code?: string;
+  message?: string;
+  cause_id?: number;
+  department?: string;
+  references?: string[];
+  raw?: unknown;
+};
+
+/** N8N may send objects or stringified JSON / "Validation error" wrappers. */
+export function normalizeMlValidationItems(
+  items: N8nListingDraft["_erros_validacao_ml"] | undefined,
+): MlValidationItem[] {
+  if (!items?.length) return [];
+
+  const out: MlValidationItem[] = [];
+  for (const item of items) {
+    const unknownItem: unknown = item;
+    if (typeof unknownItem === "string") {
+      const trimmed = unknownItem.trim();
+      if (!trimmed || /^validation error$/i.test(trimmed)) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object") {
+          out.push({
+            type: typeof parsed.type === "string" ? parsed.type : undefined,
+            code: typeof parsed.code === "string" ? parsed.code : undefined,
+            message: typeof parsed.message === "string" ? parsed.message : trimmed,
+            cause_id: typeof parsed.cause_id === "number" ? parsed.cause_id : undefined,
+            department: typeof parsed.department === "string" ? parsed.department : undefined,
+            references: Array.isArray(parsed.references)
+              ? parsed.references.filter((r): r is string => typeof r === "string")
+              : undefined,
+            raw: parsed,
+          });
+          continue;
+        }
+      } catch {
+        /* plain string */
+      }
+      out.push({ type: "error", message: trimmed, raw: unknownItem });
+      continue;
+    }
+
+    if (unknownItem && typeof unknownItem === "object") {
+      const row = unknownItem as Record<string, unknown>;
+      // Nested string payload: { message: "{...json...}" }
+      if (typeof row.message === "string" && row.message.trim().startsWith("{")) {
+        try {
+          const nested = JSON.parse(row.message) as Record<string, unknown>;
+          out.push({
+            type:
+              typeof nested.type === "string"
+                ? nested.type
+                : typeof row.type === "string"
+                  ? row.type
+                  : undefined,
+            code: typeof nested.code === "string" ? nested.code : undefined,
+            message: typeof nested.message === "string" ? nested.message : row.message,
+            cause_id: typeof nested.cause_id === "number" ? nested.cause_id : undefined,
+            department: typeof nested.department === "string" ? nested.department : undefined,
+            references: Array.isArray(nested.references)
+              ? nested.references.filter((r): r is string => typeof r === "string")
+              : undefined,
+            raw: nested,
+          });
+          continue;
+        } catch {
+          /* fall through */
+        }
+      }
+      out.push({
+        type: typeof row.type === "string" ? row.type : undefined,
+        code: typeof row.code === "string" ? row.code : undefined,
+        message: typeof row.message === "string" ? row.message : undefined,
+        cause_id: typeof row.cause_id === "number" ? row.cause_id : undefined,
+        department: typeof row.department === "string" ? row.department : undefined,
+        references: Array.isArray(row.references)
+          ? row.references.filter((r): r is string => typeof r === "string")
+          : undefined,
+        raw: unknownItem,
+      });
+    }
+  }
+  return out;
+}
+
+export function isBlockingMlValidation(item: MlValidationItem): boolean {
+  const type = (item.type ?? "").toLowerCase();
+  if (type === "warning" || type === "info") return false;
+  if (type === "error") return true;
+  // Unknown type: treat as blocking only if it looks like a hard validation failure
+  if (item.code?.includes("invalid") || item.code?.includes("required")) return true;
+  if (item.message && /preencha|obrigat|invalid|required/i.test(item.message)) return true;
+  return type === "" && Boolean(item.message);
+}
+
+function isMlErrorResolvedByDraft(item: MlValidationItem, draft: N8nListingDraft): boolean {
+  const blob = `${item.code ?? ""} ${item.message ?? ""} ${JSON.stringify(item.raw ?? {})}`;
+  if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
+    const units = draft.payload.attributes.find((a) => a.id === "UNITS_PER_PACK");
+    return Boolean(units?.value_name?.trim() || units?.value_id);
+  }
+  return false;
+}
+
+export function getBlockingMlValidationErrors(
+  draft: N8nListingDraft,
+): MlValidationItem[] {
+  return normalizeMlValidationItems(draft._erros_validacao_ml).filter(
+    (item) => isBlockingMlValidation(item) && !isMlErrorResolvedByDraft(item, draft),
+  );
+}
+
+export function getMlValidationWarnings(draft: N8nListingDraft): MlValidationItem[] {
+  return normalizeMlValidationItems(draft._erros_validacao_ml).filter(
+    (item) => !isBlockingMlValidation(item),
+  );
+}
+
+export function formatMlValidationMessage(item: MlValidationItem): string {
+  return item.message?.trim() || item.code || "Erro de validação do Mercado Livre";
+}
+
+/** Attribute IDs mentioned in blocking ML errors (e.g. UNITS_PER_PACK). */
+export function getRequiredAttributeIdsFromMlErrors(draft: N8nListingDraft): string[] {
+  const ids = new Set<string>();
+  for (const err of getBlockingMlValidationErrors(draft)) {
+    const blob = `${err.code ?? ""} ${err.message ?? ""} ${JSON.stringify(err.raw ?? {})}`;
+    if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
+      ids.add("UNITS_PER_PACK");
+    }
+    const attrMatch = blob.match(/Attribute\s*\[([A-Z0-9_]+)\]/i);
+    if (attrMatch?.[1] && isBlockingMlValidation(err)) {
+      // Only from error-type items; warnings about ignored attrs are skipped above
+      if (!/ignored because it is not modifiable/i.test(blob)) {
+        ids.add(attrMatch[1]);
+      }
+    }
+  }
+  return [...ids];
+}
+
 export function revalidateDraftReadiness(draft: N8nListingDraft): N8nListingDraft {
   const withUi = draft._ihub_ui
     ? { ...draft, _ihub_ui: refreshIhubUi(draft) }
     : draft;
 
-  if (!withUi._ihub_ui && withUi._pronto_para_publicar === undefined) {
-    return withUi;
-  }
-
-  const blocking = hasBlockingPendingIhubUi(withUi);
-  const mlErrors = withUi._erros_validacao_ml?.length ?? 0;
+  const blockingUi = hasBlockingPendingIhubUi(withUi);
+  const blockingMl = getBlockingMlValidationErrors(withUi).length > 0;
   return {
     ...withUi,
-    _pronto_para_publicar: !blocking && mlErrors === 0,
+    _pronto_para_publicar: !blockingUi && !blockingMl,
   };
 }
 
@@ -314,9 +454,13 @@ export function canPublishDraft(draft: N8nListingDraft): boolean {
     (draft.payload.price ?? 0) > 0;
 
   if (!basics) return false;
-  if ((draft._erros_validacao_ml?.length ?? 0) > 0) return false;
+  if (getBlockingMlValidationErrors(draft).length > 0) return false;
   if (hasBlockingPendingIhubUi(draft)) return false;
-  if (draft._pronto_para_publicar === false) return false;
+  const missingRequired = getRequiredAttributeIdsFromMlErrors(draft).filter((id) => {
+    const current = draft.payload.attributes.find((a) => a.id === id);
+    return !(current?.value_name?.trim() || current?.value_id);
+  });
+  if (missingRequired.length > 0) return false;
   return true;
 }
 

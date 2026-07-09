@@ -251,24 +251,86 @@ function hasBlockingPendingIhubUiFields(draft: N8nListingDraft): boolean {
 }
 
 export function assertDraftReadyToPublish(draft: N8nListingDraft): void {
-  if (draft._pronto_para_publicar === false) {
-    throw new N8nListingError(
-      "O rascunho ainda não está pronto para publicar. Complete os campos pendentes.",
-      400,
-    );
-  }
-  if ((draft._erros_validacao_ml?.length ?? 0) > 0) {
-    throw new N8nListingError(
-      "Existem erros de validação do Mercado Livre. Corrija-os antes de publicar.",
-      400,
-    );
-  }
   if (hasBlockingPendingIhubUiFields(draft)) {
     throw new N8nListingError(
       "Há seções pendentes com campos obrigatórios. Complete a revisão antes de publicar.",
       400,
     );
   }
+
+  const blockingMl = getBlockingMlValidationErrors(draft);
+  if (blockingMl.length > 0) {
+    const first = blockingMl[0]?.message ?? "Erro de validação do Mercado Livre";
+    throw new N8nListingError(
+      `Existem erros de validação do Mercado Livre. ${first}`,
+      400,
+    );
+  }
+}
+
+function normalizeMlValidationItems(
+  items: N8nListingDraft["_erros_validacao_ml"] | undefined,
+): Array<{ type?: string; code?: string; message?: string }> {
+  if (!items?.length) return [];
+  const out: Array<{ type?: string; code?: string; message?: string }> = [];
+  for (const item of items) {
+    const unknownItem: unknown = item;
+    if (typeof unknownItem === "string") {
+      const trimmed = unknownItem.trim();
+      if (!trimmed || /^validation error$/i.test(trimmed)) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        out.push({
+          type: typeof parsed.type === "string" ? parsed.type : undefined,
+          code: typeof parsed.code === "string" ? parsed.code : undefined,
+          message: typeof parsed.message === "string" ? parsed.message : trimmed,
+        });
+      } catch {
+        out.push({ type: "error", message: trimmed });
+      }
+      continue;
+    }
+    if (unknownItem && typeof unknownItem === "object") {
+      const row = unknownItem as Record<string, unknown>;
+      if (typeof row.message === "string" && row.message.trim().startsWith("{")) {
+        try {
+          const nested = JSON.parse(row.message) as Record<string, unknown>;
+          out.push({
+            type: typeof nested.type === "string" ? nested.type : typeof row.type === "string" ? row.type : undefined,
+            code: typeof nested.code === "string" ? nested.code : undefined,
+            message: typeof nested.message === "string" ? nested.message : row.message,
+          });
+          continue;
+        } catch {
+          /* fall through */
+        }
+      }
+      out.push({
+        type: typeof row.type === "string" ? row.type : undefined,
+        code: typeof row.code === "string" ? row.code : undefined,
+        message: typeof row.message === "string" ? row.message : undefined,
+      });
+    }
+  }
+  return out;
+}
+
+function getBlockingMlValidationErrors(draft: N8nListingDraft) {
+  return normalizeMlValidationItems(draft._erros_validacao_ml).filter((item) => {
+    const type = (item.type ?? "").toLowerCase();
+    if (type === "warning" || type === "info") return false;
+
+    const blob = `${item.code ?? ""} ${item.message ?? ""}`;
+    if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
+      const units = draft.payload.attributes.find((a) => a.id === "UNITS_PER_PACK");
+      if (units?.value_name?.trim() || units?.value_id) return false;
+    }
+
+    if (type === "error") return true;
+    if (item.code?.includes("invalid") || item.code?.includes("required")) return true;
+    if (item.message && /preencha|obrigat|invalid|required/i.test(item.message)) return true;
+    return type === "" && Boolean(item.message);
+  });
 }
 
 export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingInput {
