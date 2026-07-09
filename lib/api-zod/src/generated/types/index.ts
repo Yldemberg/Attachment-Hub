@@ -7,6 +7,7 @@
  */
 
 export * from "./_n8nListingDraftAttributesAindaPendentesItem";
+export * from "./_n8nListingDraftErrosValidacaoMlItem";
 export * from "./account";
 export * from "./accountSummary";
 export * from "./activatePromotionItem200";
@@ -51,6 +52,13 @@ export * from "./handleMercadoLivreWebhook200";
 export * from "./handleN8nListingPrepared200";
 export * from "./handleStripeWebhook200";
 export * from "./healthStatus";
+export * from "./ihubUiCampo";
+export * from "./ihubUiCampoDestino";
+export * from "./ihubUiCampoOpcoesItem";
+export * from "./ihubUiCampoTipo";
+export * from "./ihubUiMeta";
+export * from "./ihubUiSecao";
+export * from "./ihubUiSecaoStatus";
 export * from "./inventorySearchItem";
 export * from "./inventorySearchResponse";
 export * from "./inventorySkuFinancialsPatchRequest";
@@ -94,6 +102,8 @@ export * from "./n8nListingPayloadCondition";
 export * from "./n8nListingPicture";
 export * from "./n8nListingPreparedWebhookPayload";
 export * from "./n8nListingPreparedWebhookPayloadStatus";
+export * from "./n8nListingSaleTerm";
+export * from "./n8nListingShipping";
 export * from "./notFoundResponse";
 export * from "./notification";
 export * from "./notificationListResponse";

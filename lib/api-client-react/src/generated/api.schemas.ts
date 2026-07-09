@@ -276,6 +276,19 @@ export interface N8nListingPicture {
   source: string;
 }
 
+export interface N8nListingSaleTerm {
+  id: string;
+  value_name?: string;
+  value_id?: string | null;
+}
+
+export interface N8nListingShipping {
+  local_pick_up?: boolean;
+  mode?: string;
+  free_shipping?: boolean;
+  [key: string]: unknown;
+}
+
 export type N8nListingPayloadCondition =
   (typeof N8nListingPayloadCondition)[keyof typeof N8nListingPayloadCondition];
 
@@ -295,6 +308,8 @@ export interface N8nListingPayload {
   pictures: N8nListingPicture[];
   attributes: N8nListingAttribute[];
   family_name: string;
+  sale_terms?: N8nListingSaleTerm[];
+  shipping?: N8nListingShipping;
 }
 
 export interface N8nListingAttributeValor {
@@ -308,9 +323,75 @@ export interface N8nListingAttributeReview {
   valor: N8nListingAttributeValor;
 }
 
+export type IhubUiCampoDestino =
+  (typeof IhubUiCampoDestino)[keyof typeof IhubUiCampoDestino];
+
+export const IhubUiCampoDestino = {
+  attributes: "attributes",
+  sale_terms: "sale_terms",
+  shipping: "shipping",
+  description: "description",
+} as const;
+
+export type IhubUiCampoTipo =
+  (typeof IhubUiCampoTipo)[keyof typeof IhubUiCampoTipo];
+
+export const IhubUiCampoTipo = {
+  string: "string",
+  number: "number",
+  boolean: "boolean",
+  select: "select",
+  textarea: "textarea",
+} as const;
+
+export type IhubUiCampoOpcoesItem = {
+  id: string;
+  name: string;
+};
+
+export interface IhubUiCampo {
+  id: string;
+  label: string;
+  obrigatorio?: boolean;
+  destino_payload: IhubUiCampoDestino;
+  valor?: unknown | null;
+  value_name?: string | null;
+  value_id?: string | null;
+  tipo?: IhubUiCampoTipo;
+  opcoes?: IhubUiCampoOpcoesItem[];
+  somente_leitura?: boolean;
+  hint?: string;
+  [key: string]: unknown;
+}
+
+export type IhubUiSecaoStatus =
+  (typeof IhubUiSecaoStatus)[keyof typeof IhubUiSecaoStatus];
+
+export const IhubUiSecaoStatus = {
+  pendente: "pendente",
+  completo: "completo",
+  somente_leitura: "somente_leitura",
+} as const;
+
+export interface IhubUiSecao {
+  id: string;
+  titulo: string;
+  status: IhubUiSecaoStatus;
+  campos: IhubUiCampo[];
+  [key: string]: unknown;
+}
+
+export interface IhubUiMeta {
+  secoes?: IhubUiSecao[];
+  campos_editaveis?: IhubUiCampo[];
+  [key: string]: unknown;
+}
+
 export type _N8nListingDraftAttributesAindaPendentesItem = {
   [key: string]: unknown;
 };
+
+export type _N8nListingDraftErrosValidacaoMlItem = { [key: string]: unknown };
 
 export interface N8nListingDraft {
   payload: N8nListingPayload;
@@ -319,6 +400,9 @@ export interface N8nListingDraft {
   _attributes_preenchidos_inteligente?: N8nListingAttributeReview[];
   _attributes_ficticios?: N8nListingAttributeReview[];
   _asin?: string | null;
+  _pronto_para_publicar?: boolean;
+  _erros_validacao_ml?: _N8nListingDraftErrosValidacaoMlItem[];
+  _ihub_ui?: IhubUiMeta;
 }
 
 export interface PrepareProductFromLinkRequest {
@@ -333,6 +417,7 @@ export const ListingPrepareJobStatus = {
   pending: "pending",
   processing: "processing",
   completed: "completed",
+  needs_review: "needs_review",
   failed: "failed",
 } as const;
 
@@ -353,6 +438,7 @@ export type N8nListingPreparedWebhookPayloadStatus =
 
 export const N8nListingPreparedWebhookPayloadStatus = {
   completed: "completed",
+  needs_review: "needs_review",
   failed: "failed",
 } as const;
 

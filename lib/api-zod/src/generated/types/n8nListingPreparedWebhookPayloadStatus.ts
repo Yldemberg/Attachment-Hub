@@ -11,5 +11,6 @@ export type N8nListingPreparedWebhookPayloadStatus =
 
 export const N8nListingPreparedWebhookPayloadStatus = {
   completed: "completed",
+  needs_review: "needs_review",
   failed: "failed",
 } as const;

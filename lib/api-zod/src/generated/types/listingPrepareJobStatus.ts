@@ -13,5 +13,6 @@ export const ListingPrepareJobStatus = {
   pending: "pending",
   processing: "processing",
   completed: "completed",
+  needs_review: "needs_review",
   failed: "failed",
 } as const;

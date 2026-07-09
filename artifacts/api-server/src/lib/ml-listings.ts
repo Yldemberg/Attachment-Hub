@@ -58,6 +58,13 @@ export type MlSaleTermInput = {
   value_id?: string;
 };
 
+export type CreateMlListingShippingInput = {
+  local_pick_up?: boolean;
+  mode?: string;
+  free_shipping?: boolean;
+  [key: string]: unknown;
+};
+
 export type CreateMlListingInput = {
   title: string;
   /** Required for User Products sellers (tag user_product_seller). Falls back to title. */
@@ -73,6 +80,7 @@ export type CreateMlListingInput = {
   attributes: MlListingAttributeInput[];
   description?: string;
   saleTerms?: MlSaleTermInput[];
+  shipping?: CreateMlListingShippingInput;
   variations?: MlListingVariationInput[];
 };
 
@@ -346,6 +354,10 @@ function buildCreateItemPayload(
       if (term.value_name) row.value_name = term.value_name;
       return row;
     });
+  }
+
+  if (input.shipping && Object.keys(input.shipping).length > 0) {
+    payload.shipping = input.shipping;
   }
 
   if (isUpSeller) {

@@ -8,6 +8,8 @@
 import type { N8nListingAttribute } from "./n8nListingAttribute";
 import type { N8nListingPayloadCondition } from "./n8nListingPayloadCondition";
 import type { N8nListingPicture } from "./n8nListingPicture";
+import type { N8nListingSaleTerm } from "./n8nListingSaleTerm";
+import type { N8nListingShipping } from "./n8nListingShipping";
 
 export interface N8nListingPayload {
   category_id: string;
@@ -20,4 +22,6 @@ export interface N8nListingPayload {
   pictures: N8nListingPicture[];
   attributes: N8nListingAttribute[];
   family_name: string;
+  sale_terms?: N8nListingSaleTerm[];
+  shipping?: N8nListingShipping;
 }

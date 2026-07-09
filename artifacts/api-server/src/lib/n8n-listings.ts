@@ -12,10 +12,54 @@ export type N8nListingPicture = {
   source: string;
 };
 
+export type N8nListingSaleTerm = {
+  id: string;
+  value_name?: string;
+  value_id?: string | null;
+};
+
+export type N8nListingShipping = {
+  local_pick_up?: boolean;
+  mode?: string;
+  free_shipping?: boolean;
+  [key: string]: unknown;
+};
+
 export type N8nListingAttributeReview = {
   id: string;
   name: string;
   valor: { value_name?: string; value_id?: string | null };
+};
+
+export type IhubUiCampoDestino = "attributes" | "sale_terms" | "shipping" | "description";
+
+export type IhubUiCampo = {
+  id: string;
+  label: string;
+  obrigatorio?: boolean;
+  destino_payload: IhubUiCampoDestino;
+  valor?: unknown;
+  value_name?: string | null;
+  value_id?: string | null;
+  tipo?: "string" | "number" | "boolean" | "select" | "textarea";
+  opcoes?: Array<{ id: string; name: string }>;
+  somente_leitura?: boolean;
+  hint?: string;
+  [key: string]: unknown;
+};
+
+export type IhubUiSecao = {
+  id: string;
+  titulo: string;
+  status: "pendente" | "completo" | "somente_leitura";
+  campos: IhubUiCampo[];
+  [key: string]: unknown;
+};
+
+export type IhubUiMeta = {
+  secoes?: IhubUiSecao[];
+  campos_editaveis?: IhubUiCampo[];
+  [key: string]: unknown;
 };
 
 export type N8nListingDraft = {
@@ -30,12 +74,17 @@ export type N8nListingDraft = {
     pictures: N8nListingPicture[];
     attributes: N8nListingAttribute[];
     family_name: string;
+    sale_terms?: N8nListingSaleTerm[];
+    shipping?: N8nListingShipping;
   };
   _description?: string;
   _attributes_ainda_pendentes?: Record<string, unknown>[];
   _attributes_preenchidos_inteligente?: N8nListingAttributeReview[];
   _attributes_ficticios?: N8nListingAttributeReview[];
   _asin?: string | null;
+  _pronto_para_publicar?: boolean;
+  _erros_validacao_ml?: Record<string, unknown>[];
+  _ihub_ui?: IhubUiMeta;
 };
 
 export class N8nListingError extends Error {

@@ -413,7 +413,13 @@ export const GetListingPrepareJobParams = zod.object({
 
 export const GetListingPrepareJobResponse = zod.object({
   jobId: zod.string().uuid(),
-  status: zod.enum(["pending", "processing", "completed", "failed"]),
+  status: zod.enum([
+    "pending",
+    "processing",
+    "completed",
+    "needs_review",
+    "failed",
+  ]),
   data: zod
     .object({
       payload: zod.object({
@@ -437,6 +443,22 @@ export const GetListingPrepareJobResponse = zod.object({
           }),
         ),
         family_name: zod.string(),
+        sale_terms: zod
+          .array(
+            zod.object({
+              id: zod.string(),
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
+          )
+          .optional(),
+        shipping: zod
+          .object({
+            local_pick_up: zod.boolean().optional(),
+            mode: zod.string().optional(),
+            free_shipping: zod.boolean().optional(),
+          })
+          .optional(),
       }),
       _description: zod.string().optional(),
       _attributes_ainda_pendentes: zod
@@ -467,6 +489,89 @@ export const GetListingPrepareJobResponse = zod.object({
         )
         .optional(),
       _asin: zod.string().nullish(),
+      _pronto_para_publicar: zod.boolean().optional(),
+      _erros_validacao_ml: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      _ihub_ui: zod
+        .object({
+          secoes: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                titulo: zod.string(),
+                status: zod.enum(["pendente", "completo", "somente_leitura"]),
+                campos: zod.array(
+                  zod.object({
+                    id: zod.string(),
+                    label: zod.string(),
+                    obrigatorio: zod.boolean().optional(),
+                    destino_payload: zod.enum([
+                      "attributes",
+                      "sale_terms",
+                      "shipping",
+                      "description",
+                    ]),
+                    valor: zod.unknown().nullish(),
+                    value_name: zod.string().nullish(),
+                    value_id: zod.string().nullish(),
+                    tipo: zod
+                      .enum([
+                        "string",
+                        "number",
+                        "boolean",
+                        "select",
+                        "textarea",
+                      ])
+                      .optional(),
+                    opcoes: zod
+                      .array(
+                        zod.object({
+                          id: zod.string(),
+                          name: zod.string(),
+                        }),
+                      )
+                      .optional(),
+                    somente_leitura: zod.boolean().optional(),
+                    hint: zod.string().optional(),
+                  }),
+                ),
+              }),
+            )
+            .optional(),
+          campos_editaveis: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                label: zod.string(),
+                obrigatorio: zod.boolean().optional(),
+                destino_payload: zod.enum([
+                  "attributes",
+                  "sale_terms",
+                  "shipping",
+                  "description",
+                ]),
+                valor: zod.unknown().nullish(),
+                value_name: zod.string().nullish(),
+                value_id: zod.string().nullish(),
+                tipo: zod
+                  .enum(["string", "number", "boolean", "select", "textarea"])
+                  .optional(),
+                opcoes: zod
+                  .array(
+                    zod.object({
+                      id: zod.string(),
+                      name: zod.string(),
+                    }),
+                  )
+                  .optional(),
+                somente_leitura: zod.boolean().optional(),
+                hint: zod.string().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional(),
     })
     .optional(),
   errorMessage: zod.string().nullish(),
@@ -499,6 +604,22 @@ export const PublishProductDraftBody = zod.object({
         }),
       ),
       family_name: zod.string(),
+      sale_terms: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            value_name: zod.string().optional(),
+            value_id: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+      shipping: zod
+        .object({
+          local_pick_up: zod.boolean().optional(),
+          mode: zod.string().optional(),
+          free_shipping: zod.boolean().optional(),
+        })
+        .optional(),
     }),
     _description: zod.string().optional(),
     _attributes_ainda_pendentes: zod
@@ -529,6 +650,83 @@ export const PublishProductDraftBody = zod.object({
       )
       .optional(),
     _asin: zod.string().nullish(),
+    _pronto_para_publicar: zod.boolean().optional(),
+    _erros_validacao_ml: zod
+      .array(zod.record(zod.string(), zod.unknown()))
+      .optional(),
+    _ihub_ui: zod
+      .object({
+        secoes: zod
+          .array(
+            zod.object({
+              id: zod.string(),
+              titulo: zod.string(),
+              status: zod.enum(["pendente", "completo", "somente_leitura"]),
+              campos: zod.array(
+                zod.object({
+                  id: zod.string(),
+                  label: zod.string(),
+                  obrigatorio: zod.boolean().optional(),
+                  destino_payload: zod.enum([
+                    "attributes",
+                    "sale_terms",
+                    "shipping",
+                    "description",
+                  ]),
+                  valor: zod.unknown().nullish(),
+                  value_name: zod.string().nullish(),
+                  value_id: zod.string().nullish(),
+                  tipo: zod
+                    .enum(["string", "number", "boolean", "select", "textarea"])
+                    .optional(),
+                  opcoes: zod
+                    .array(
+                      zod.object({
+                        id: zod.string(),
+                        name: zod.string(),
+                      }),
+                    )
+                    .optional(),
+                  somente_leitura: zod.boolean().optional(),
+                  hint: zod.string().optional(),
+                }),
+              ),
+            }),
+          )
+          .optional(),
+        campos_editaveis: zod
+          .array(
+            zod.object({
+              id: zod.string(),
+              label: zod.string(),
+              obrigatorio: zod.boolean().optional(),
+              destino_payload: zod.enum([
+                "attributes",
+                "sale_terms",
+                "shipping",
+                "description",
+              ]),
+              valor: zod.unknown().nullish(),
+              value_name: zod.string().nullish(),
+              value_id: zod.string().nullish(),
+              tipo: zod
+                .enum(["string", "number", "boolean", "select", "textarea"])
+                .optional(),
+              opcoes: zod
+                .array(
+                  zod.object({
+                    id: zod.string(),
+                    name: zod.string(),
+                  }),
+                )
+                .optional(),
+              somente_leitura: zod.boolean().optional(),
+              hint: zod.string().optional(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
   }),
 });
 
@@ -2068,7 +2266,7 @@ export const HandleStripeWebhookResponse = zod.object({
  */
 export const HandleN8nListingPreparedBody = zod.object({
   jobId: zod.string().uuid(),
-  status: zod.enum(["completed", "failed"]),
+  status: zod.enum(["completed", "needs_review", "failed"]),
   draft: zod
     .object({
       payload: zod.object({
@@ -2092,6 +2290,22 @@ export const HandleN8nListingPreparedBody = zod.object({
           }),
         ),
         family_name: zod.string(),
+        sale_terms: zod
+          .array(
+            zod.object({
+              id: zod.string(),
+              value_name: zod.string().optional(),
+              value_id: zod.string().nullish(),
+            }),
+          )
+          .optional(),
+        shipping: zod
+          .object({
+            local_pick_up: zod.boolean().optional(),
+            mode: zod.string().optional(),
+            free_shipping: zod.boolean().optional(),
+          })
+          .optional(),
       }),
       _description: zod.string().optional(),
       _attributes_ainda_pendentes: zod
@@ -2122,6 +2336,89 @@ export const HandleN8nListingPreparedBody = zod.object({
         )
         .optional(),
       _asin: zod.string().nullish(),
+      _pronto_para_publicar: zod.boolean().optional(),
+      _erros_validacao_ml: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      _ihub_ui: zod
+        .object({
+          secoes: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                titulo: zod.string(),
+                status: zod.enum(["pendente", "completo", "somente_leitura"]),
+                campos: zod.array(
+                  zod.object({
+                    id: zod.string(),
+                    label: zod.string(),
+                    obrigatorio: zod.boolean().optional(),
+                    destino_payload: zod.enum([
+                      "attributes",
+                      "sale_terms",
+                      "shipping",
+                      "description",
+                    ]),
+                    valor: zod.unknown().nullish(),
+                    value_name: zod.string().nullish(),
+                    value_id: zod.string().nullish(),
+                    tipo: zod
+                      .enum([
+                        "string",
+                        "number",
+                        "boolean",
+                        "select",
+                        "textarea",
+                      ])
+                      .optional(),
+                    opcoes: zod
+                      .array(
+                        zod.object({
+                          id: zod.string(),
+                          name: zod.string(),
+                        }),
+                      )
+                      .optional(),
+                    somente_leitura: zod.boolean().optional(),
+                    hint: zod.string().optional(),
+                  }),
+                ),
+              }),
+            )
+            .optional(),
+          campos_editaveis: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                label: zod.string(),
+                obrigatorio: zod.boolean().optional(),
+                destino_payload: zod.enum([
+                  "attributes",
+                  "sale_terms",
+                  "shipping",
+                  "description",
+                ]),
+                valor: zod.unknown().nullish(),
+                value_name: zod.string().nullish(),
+                value_id: zod.string().nullish(),
+                tipo: zod
+                  .enum(["string", "number", "boolean", "select", "textarea"])
+                  .optional(),
+                opcoes: zod
+                  .array(
+                    zod.object({
+                      id: zod.string(),
+                      name: zod.string(),
+                    }),
+                  )
+                  .optional(),
+                somente_leitura: zod.boolean().optional(),
+                hint: zod.string().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional(),
     })
     .optional(),
   error: zod.string().nullish(),

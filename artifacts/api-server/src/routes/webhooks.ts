@@ -520,7 +520,7 @@ router.post("/webhooks/n8n/listing-prepared", async (req, res) => {
 
   const body = req.body as {
     jobId?: string;
-    status?: "completed" | "failed";
+    status?: "completed" | "needs_review" | "failed";
     draft?: unknown;
     error?: string | null;
   };

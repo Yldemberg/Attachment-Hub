@@ -6,6 +6,8 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { _N8nListingDraftAttributesAindaPendentesItem } from "./_n8nListingDraftAttributesAindaPendentesItem";
+import type { _N8nListingDraftErrosValidacaoMlItem } from "./_n8nListingDraftErrosValidacaoMlItem";
+import type { IhubUiMeta } from "./ihubUiMeta";
 import type { N8nListingAttributeReview } from "./n8nListingAttributeReview";
 import type { N8nListingPayload } from "./n8nListingPayload";
 
@@ -16,4 +18,7 @@ export interface N8nListingDraft {
   _attributes_preenchidos_inteligente?: N8nListingAttributeReview[];
   _attributes_ficticios?: N8nListingAttributeReview[];
   _asin?: string | null;
+  _pronto_para_publicar?: boolean;
+  _erros_validacao_ml?: _N8nListingDraftErrosValidacaoMlItem[];
+  _ihub_ui?: IhubUiMeta;
 }

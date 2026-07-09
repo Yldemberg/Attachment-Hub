@@ -19,6 +19,7 @@ import {
   N8N_CREATE_STEPS,
   PREPARE_JOB_TIMEOUT_MS,
   canPublishDraft,
+  hasBlockingPendingIhubUi,
 } from "./components/n8n-listing-types";
 import { ProductLinkPrepareForm } from "./components/ProductLinkPrepareForm";
 import { N8nListingReviewForm } from "./components/N8nListingReviewForm";
@@ -42,6 +43,7 @@ export default function ProductCreate() {
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
   const [prepareStartedAt, setPrepareStartedAt] = useState<number | null>(null);
   const [draft, setDraft] = useState<N8nListingDraft | null>(null);
+  const [jobNeedsReview, setJobNeedsReview] = useState(false);
 
   const { data: accountsData } = useListAccounts();
   const accounts = accountsData?.data ?? [];
@@ -70,19 +72,31 @@ export default function ProductCreate() {
   });
 
   const jobFinished =
-    jobData?.status === "completed" || jobData?.status === "failed";
+    jobData?.status === "completed" ||
+    jobData?.status === "needs_review" ||
+    jobData?.status === "failed";
   const isPreparing = startingPrepare || (!!prepareJobId && !jobFinished);
 
   useEffect(() => {
     if (!jobData || !prepareJobId) return;
 
-    if (jobData.status === "completed" && jobData.data) {
+    if (
+      (jobData.status === "completed" || jobData.status === "needs_review") &&
+      jobData.data
+    ) {
       setDraft(jobData.data);
+      setJobNeedsReview(jobData.status === "needs_review");
       setStep(2);
       clearPrepareJob();
       toast({
-        title: "Anúncio preparado",
-        description: "Revise os dados antes de publicar no Mercado Livre.",
+        title:
+          jobData.status === "needs_review"
+            ? "Revisão necessária"
+            : "Anúncio preparado",
+        description:
+          jobData.status === "needs_review"
+            ? "Complete os campos pendentes antes de publicar no Mercado Livre."
+            : "Revise os dados antes de publicar no Mercado Livre.",
       });
       return;
     }
@@ -182,10 +196,16 @@ export default function ProductCreate() {
 
   const handlePublish = () => {
     if (!draft || !canPublishDraft(draft)) {
+      const hasMlErrors = (draft?._erros_validacao_ml?.length ?? 0) > 0;
+      const hasPendingUi = draft ? hasBlockingPendingIhubUi(draft) : false;
       toast({
         variant: "destructive",
-        title: "Dados incompletos",
-        description: "Preencha nome, preço, estoque e ao menos uma foto.",
+        title: hasMlErrors || hasPendingUi ? "Revisão incompleta" : "Dados incompletos",
+        description: hasMlErrors
+          ? "Corrija os erros de validação do Mercado Livre antes de publicar."
+          : hasPendingUi || draft?._pronto_para_publicar === false
+            ? "Complete os campos obrigatórios pendentes antes de publicar."
+            : "Preencha nome, preço, estoque e ao menos uma foto.",
       });
       return;
     }
@@ -260,7 +280,11 @@ export default function ProductCreate() {
               onCancel={isPreparing ? handleCancelPrepare : undefined}
             />
           ) : draft ? (
-            <N8nListingReviewForm draft={draft} onDraftChange={setDraft} />
+            <N8nListingReviewForm
+              draft={draft}
+              onDraftChange={setDraft}
+              jobNeedsReview={jobNeedsReview}
+            />
           ) : null}
         </div>
 

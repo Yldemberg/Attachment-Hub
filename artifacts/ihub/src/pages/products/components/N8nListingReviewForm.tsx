@@ -1,4 +1,4 @@
-import type { N8nListingDraft } from "@workspace/api-client-react";
+import type { IhubUiCampo, IhubUiSecao, N8nListingDraft } from "@workspace/api-client-react";
 import { AlertTriangle, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,35 +6,152 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { MLB_LISTING_TYPES, LISTING_CONDITIONS } from "./listing-constants";
 import {
+  getCampoDisplayValue,
+  getIhubUiSecoes,
+  getPendingRequiredIhubUiCampos,
   removeDraftPicture,
   updateDraftAttributeValue,
   updateDraftDescription,
+  updateDraftIhubUiCampo,
   updateDraftPayload,
 } from "./n8n-listing-types";
 
 type N8nListingReviewFormProps = {
   draft: N8nListingDraft;
   onDraftChange: (draft: N8nListingDraft) => void;
+  jobNeedsReview?: boolean;
 };
 
-export function N8nListingReviewForm({ draft, onDraftChange }: N8nListingReviewFormProps) {
+function sectionStatusLabel(status: IhubUiSecao["status"]): string {
+  if (status === "pendente") return "Pendente";
+  if (status === "somente_leitura") return "Somente leitura";
+  return "Completo";
+}
+
+function IhubUiCampoInput({
+  campo,
+  draft,
+  onDraftChange,
+}: {
+  campo: IhubUiCampo;
+  draft: N8nListingDraft;
+  onDraftChange: (draft: N8nListingDraft) => void;
+}) {
+  const value = getCampoDisplayValue(campo, draft);
+  const disabled = Boolean(campo.somente_leitura);
+  const selectCls =
+    "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60";
+
+  const applyValue = (next: { value_name?: string; value_id?: string | null }) => {
+    onDraftChange(updateDraftIhubUiCampo(draft, campo, next));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-sm">
+        {campo.label}
+        {campo.obrigatorio ? <span className="text-destructive ml-0.5">*</span> : null}
+      </Label>
+      {campo.hint ? <p className="text-[11px] text-muted-foreground">{campo.hint}</p> : null}
+
+      {campo.tipo === "textarea" || campo.destino_payload === "description" ? (
+        <textarea
+          value={value}
+          disabled={disabled}
+          rows={5}
+          onChange={(e) => applyValue({ value_name: e.target.value })}
+          className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[100px] disabled:opacity-60"
+        />
+      ) : campo.tipo === "boolean" ? (
+        <select
+          value={value || ""}
+          disabled={disabled}
+          onChange={(e) => applyValue({ value_name: e.target.value, value_id: e.target.value })}
+          className={selectCls}
+        >
+          <option value="">Selecione…</option>
+          <option value="true">Sim</option>
+          <option value="false">Não</option>
+        </select>
+      ) : campo.tipo === "select" || (campo.opcoes && campo.opcoes.length > 0) ? (
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            const selected = campo.opcoes?.find(
+              (opt) => opt.name === e.target.value || opt.id === e.target.value,
+            );
+            applyValue({
+              value_name: selected?.name ?? e.target.value,
+              value_id: selected?.id ?? null,
+            });
+          }}
+          className={selectCls}
+        >
+          <option value="">Selecione…</option>
+          {(campo.opcoes ?? []).map((opt) => (
+            <option key={opt.id} value={opt.name}>
+              {opt.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <Input
+          type={campo.tipo === "number" ? "number" : "text"}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => applyValue({ value_name: e.target.value })}
+          className="h-9"
+        />
+      )}
+    </div>
+  );
+}
+
+export function N8nListingReviewForm({
+  draft,
+  onDraftChange,
+  jobNeedsReview = false,
+}: N8nListingReviewFormProps) {
   const { payload } = draft;
-  const pendingCount = draft._attributes_ainda_pendentes?.length ?? 0;
+  const secoes = getIhubUiSecoes(draft);
+  const hasIhubUi = secoes.length > 0;
+  const pendingRequired = getPendingRequiredIhubUiCampos(draft);
+  const pendingCount = hasIhubUi
+    ? pendingRequired.length
+    : (draft._attributes_ainda_pendentes?.length ?? 0);
   const fictitious = draft._attributes_ficticios ?? [];
   const intelligent = draft._attributes_preenchidos_inteligente ?? [];
+  const mlErrors = draft._erros_validacao_ml ?? [];
 
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
   return (
     <div className="space-y-5">
-      {pendingCount > 0 ? (
+      {jobNeedsReview || pendingCount > 0 || mlErrors.length > 0 ? (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium">{pendingCount} atributo(s) ainda pendente(s)</p>
-            <p className="mt-0.5 text-amber-700">Revise os campos abaixo antes de publicar.</p>
+            <p className="font-medium">
+              {jobNeedsReview
+                ? "Revisão necessária antes de publicar"
+                : pendingCount > 0
+                  ? `${pendingCount} campo(s) obrigatório(s) pendente(s)`
+                  : "Há erros de validação do Mercado Livre"}
+            </p>
+            <p className="mt-0.5 text-amber-700">
+              Complete as seções pendentes e corrija os erros antes de criar o anúncio.
+            </p>
           </div>
+        </div>
+      ) : null}
+
+      {mlErrors.length > 0 ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive space-y-1">
+          {mlErrors.map((err, index) => (
+            <p key={index}>{String(err.message ?? err.code ?? JSON.stringify(err))}</p>
+          ))}
         </div>
       ) : null}
 
@@ -47,6 +164,12 @@ export function N8nListingReviewForm({ draft, onDraftChange }: N8nListingReviewF
         <div>
           <span className="font-medium text-foreground">Categoria ML:</span> {payload.category_id}
         </div>
+        {draft._pronto_para_publicar != null ? (
+          <div>
+            <span className="font-medium text-foreground">Pronto para publicar:</span>{" "}
+            {draft._pronto_para_publicar ? "Sim" : "Não"}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-1.5">
@@ -163,64 +286,107 @@ export function N8nListingReviewForm({ draft, onDraftChange }: N8nListingReviewF
         ) : null}
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Descrição</Label>
-        <textarea
-          value={draft._description ?? ""}
-          onChange={(e) => onDraftChange(updateDraftDescription(draft, e.target.value))}
-          rows={6}
-          className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[120px]"
-          placeholder="Descrição do anúncio…"
-        />
-      </div>
-
-      {fictitious.length > 0 ? (
-        <div className="space-y-3">
-          <div>
-            <Label>Revisar atributos</Label>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Atributos preenchidos automaticamente que podem precisar de ajuste.
-            </p>
-          </div>
-          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {fictitious.map((attr) => (
-              <div key={attr.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2 items-center">
-                <span className="text-xs text-muted-foreground truncate" title={attr.name}>
-                  {attr.name}
-                </span>
-                <Input
-                  value={attr.valor.value_name ?? ""}
-                  onChange={(e) =>
-                    onDraftChange(
-                      updateDraftAttributeValue(draft, attr.id, { value_name: e.target.value }),
-                    )
-                  }
-                  className="h-8 text-xs"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {intelligent.length > 0 ? (
-        <div className="space-y-2">
-          <Label>Atributos preenchidos automaticamente</Label>
-          <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border max-h-48 overflow-y-auto">
-            {intelligent.map((attr) => (
-              <div
-                key={attr.id}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
-              >
-                <span className="text-muted-foreground">{attr.name}</span>
-                <span className="font-medium text-foreground truncate">
-                  {attr.valor.value_name ?? "—"}
+      {hasIhubUi ? (
+        <div className="space-y-4">
+          {secoes.map((secao) => (
+            <div key={secao.id} className="space-y-3 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label>{secao.titulo}</Label>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {sectionStatusLabel(secao.status)}
+                  </p>
+                </div>
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                    secao.status === "pendente"
+                      ? "bg-amber-50 text-amber-800 border border-amber-200"
+                      : secao.status === "somente_leitura"
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  }`}
+                >
+                  {sectionStatusLabel(secao.status)}
                 </span>
               </div>
-            ))}
-          </div>
+              <div className="space-y-3">
+                {(secao.campos ?? []).map((campo) => (
+                  <IhubUiCampoInput
+                    key={`${secao.id}-${campo.id}`}
+                    campo={campo}
+                    draft={draft}
+                    onDraftChange={onDraftChange}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="space-y-1.5">
+            <Label>Descrição</Label>
+            <textarea
+              value={draft._description ?? ""}
+              onChange={(e) => onDraftChange(updateDraftDescription(draft, e.target.value))}
+              rows={6}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[120px]"
+              placeholder="Descrição do anúncio…"
+            />
+          </div>
+
+          {fictitious.length > 0 ? (
+            <div className="space-y-3">
+              <div>
+                <Label>Revisar atributos</Label>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Atributos preenchidos automaticamente que podem precisar de ajuste.
+                </p>
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {fictitious.map((attr) => (
+                  <div
+                    key={attr.id}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2 items-center"
+                  >
+                    <span className="text-xs text-muted-foreground truncate" title={attr.name}>
+                      {attr.name}
+                    </span>
+                    <Input
+                      value={attr.valor.value_name ?? ""}
+                      onChange={(e) =>
+                        onDraftChange(
+                          updateDraftAttributeValue(draft, attr.id, { value_name: e.target.value }),
+                        )
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {intelligent.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Atributos preenchidos automaticamente</Label>
+              <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border max-h-48 overflow-y-auto">
+                {intelligent.map((attr) => (
+                  <div
+                    key={attr.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                  >
+                    <span className="text-muted-foreground">{attr.name}</span>
+                    <span className="font-medium text-foreground truncate">
+                      {attr.valor.value_name ?? "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

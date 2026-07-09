@@ -66,7 +66,7 @@ function toJobView(row: ListingPrepareJob): ListingPrepareJobView {
     status: row.status,
     errorMessage: row.errorMessage,
   };
-  if (row.status === "completed" && row.draftJson) {
+  if ((row.status === "completed" || row.status === "needs_review") && row.draftJson) {
     view.data = row.draftJson as N8nListingDraft;
   }
   return view;
@@ -161,7 +161,7 @@ export async function getListingPrepareJobForUser(
 
 export async function completeListingPrepareJobFromWebhook(input: {
   jobId: string;
-  status: "completed" | "failed";
+  status: "completed" | "needs_review" | "failed";
   draft?: unknown;
   error?: string | null;
 }): Promise<void> {
@@ -175,7 +175,7 @@ export async function completeListingPrepareJobFromWebhook(input: {
   if (!job) {
     throw new N8nListingError("Job não encontrado", 404);
   }
-  if (job.status === "completed" || job.status === "failed") {
+  if (job.status === "completed" || job.status === "needs_review" || job.status === "failed") {
     return;
   }
 
@@ -192,15 +192,46 @@ export async function completeListingPrepareJobFromWebhook(input: {
   }
 
   const draft = parseN8nDraftResponse(input.draft ?? input);
+  const jobStatus = input.status === "needs_review" ? "needs_review" : "completed";
   await db
     .update(listingPrepareJobsTable)
     .set({
-      status: "completed",
+      status: jobStatus,
       draftJson: draft,
       errorMessage: null,
       completedAt: new Date(),
     })
     .where(eq(listingPrepareJobsTable.id, input.jobId));
+}
+
+function hasBlockingPendingIhubUiFields(draft: N8nListingDraft): boolean {
+  const secoes = draft._ihub_ui?.secoes ?? [];
+  return secoes.some(
+    (secao) =>
+      secao.status === "pendente" &&
+      (secao.campos ?? []).some((campo) => campo.obrigatorio === true),
+  );
+}
+
+export function assertDraftReadyToPublish(draft: N8nListingDraft): void {
+  if (draft._pronto_para_publicar === false) {
+    throw new N8nListingError(
+      "O rascunho ainda não está pronto para publicar. Complete os campos pendentes.",
+      400,
+    );
+  }
+  if ((draft._erros_validacao_ml?.length ?? 0) > 0) {
+    throw new N8nListingError(
+      "Existem erros de validação do Mercado Livre. Corrija-os antes de publicar.",
+      400,
+    );
+  }
+  if (hasBlockingPendingIhubUiFields(draft)) {
+    throw new N8nListingError(
+      "Há seções pendentes com campos obrigatórios. Complete a revisão antes de publicar.",
+      400,
+    );
+  }
 }
 
 export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingInput {
@@ -210,6 +241,11 @@ export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingIn
     id: attr.id,
     value_name: attr.value_name ?? "",
     ...(attr.value_id ? { value_id: attr.value_id } : {}),
+  }));
+  const saleTerms = payload.sale_terms?.map((term) => ({
+    id: term.id,
+    ...(term.value_name ? { value_name: term.value_name } : {}),
+    ...(term.value_id ? { value_id: term.value_id } : {}),
   }));
 
   return {
@@ -224,6 +260,8 @@ export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingIn
     pictureSources,
     attributes,
     description: draft._description,
+    saleTerms,
+    shipping: payload.shipping,
   };
 }
 
@@ -234,6 +272,7 @@ export async function publishDraftOnMercadoLivre(
   if (!draft?.payload) {
     throw new N8nListingError("Rascunho inválido", 400);
   }
+  assertDraftReadyToPublish(draft);
   const input = n8nDraftToCreateInput(draft);
   const created = await createMlItem(accountId, input);
   const productId = await upsertProductFromMlItem(accountId, created);

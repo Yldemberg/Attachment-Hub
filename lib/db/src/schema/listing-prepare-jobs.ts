@@ -6,6 +6,7 @@ export const listingPrepareJobStatusEnum = pgEnum("listing_prepare_job_status", 
   "pending",
   "processing",
   "completed",
+  "needs_review",
   "failed",
 ]);
 

@@ -2379,6 +2379,29 @@ components:
           type: string
       required: [source]
 
+    N8nListingSaleTerm:
+      type: object
+      properties:
+        id:
+          type: string
+        value_name:
+          type: string
+        value_id:
+          type: string
+          nullable: true
+      required: [id]
+
+    N8nListingShipping:
+      type: object
+      properties:
+        local_pick_up:
+          type: boolean
+        mode:
+          type: string
+        free_shipping:
+          type: boolean
+      additionalProperties: true
+
     N8nListingPayload:
       type: object
       properties:
@@ -2407,6 +2430,12 @@ components:
             $ref: "#/components/schemas/N8nListingAttribute"
         family_name:
           type: string
+        sale_terms:
+          type: array
+          items:
+            $ref: "#/components/schemas/N8nListingSaleTerm"
+        shipping:
+          $ref: "#/components/schemas/N8nListingShipping"
       required: [category_id, available_quantity, listing_type_id, condition, pictures, attributes, family_name]
 
     N8nListingAttributeValor:
@@ -2428,6 +2457,82 @@ components:
         valor:
           $ref: "#/components/schemas/N8nListingAttributeValor"
       required: [id, name, valor]
+
+    IhubUiCampoDestino:
+      type: string
+      enum: [attributes, sale_terms, shipping, description]
+
+    IhubUiCampo:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        obrigatorio:
+          type: boolean
+        destino_payload:
+          $ref: "#/components/schemas/IhubUiCampoDestino"
+        valor:
+          nullable: true
+        value_name:
+          type: string
+          nullable: true
+        value_id:
+          type: string
+          nullable: true
+        tipo:
+          type: string
+          enum: [string, number, boolean, select, textarea]
+        opcoes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+            required: [id, name]
+        somente_leitura:
+          type: boolean
+        hint:
+          type: string
+      required: [id, label, destino_payload]
+      additionalProperties: true
+
+    IhubUiSecaoStatus:
+      type: string
+      enum: [pendente, completo, somente_leitura]
+
+    IhubUiSecao:
+      type: object
+      properties:
+        id:
+          type: string
+        titulo:
+          type: string
+        status:
+          $ref: "#/components/schemas/IhubUiSecaoStatus"
+        campos:
+          type: array
+          items:
+            $ref: "#/components/schemas/IhubUiCampo"
+      required: [id, titulo, status, campos]
+      additionalProperties: true
+
+    IhubUiMeta:
+      type: object
+      properties:
+        secoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/IhubUiSecao"
+        campos_editaveis:
+          type: array
+          items:
+            $ref: "#/components/schemas/IhubUiCampo"
+      additionalProperties: true
 
     N8nListingDraft:
       type: object
@@ -2452,6 +2557,15 @@ components:
         _asin:
           type: string
           nullable: true
+        _pronto_para_publicar:
+          type: boolean
+        _erros_validacao_ml:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        _ihub_ui:
+          $ref: "#/components/schemas/IhubUiMeta"
       required: [payload]
 
     PrepareProductFromLinkRequest:
@@ -2476,7 +2590,7 @@ components:
 
     ListingPrepareJobStatus:
       type: string
-      enum: [pending, processing, completed, failed]
+      enum: [pending, processing, completed, needs_review, failed]
 
     ListingPrepareJobResponse:
       type: object
@@ -2501,7 +2615,7 @@ components:
           format: uuid
         status:
           type: string
-          enum: [completed, failed]
+          enum: [completed, needs_review, failed]
         draft:
           $ref: "#/components/schemas/N8nListingDraft"
         error:
