@@ -336,16 +336,32 @@ function getBlockingMlValidationErrors(draft: N8nListingDraft) {
 export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingInput {
   const payload = draft.payload;
   const pictureSources = payload.pictures.map((p) => p.source).filter(Boolean);
-  const attributes = payload.attributes.map((attr) => ({
-    id: attr.id,
-    value_name: attr.value_name ?? "",
-    ...(attr.value_id ? { value_id: attr.value_id } : {}),
-  }));
-  const saleTerms = payload.sale_terms?.map((term) => ({
-    id: term.id,
-    ...(term.value_name ? { value_name: term.value_name } : {}),
-    ...(term.value_id ? { value_id: term.value_id } : {}),
-  }));
+  const hiddenAttributeIds = new Set([
+    "HAZMAT_TRANSPORTABILITY",
+    "EXCLUDED_PLATFORMS",
+    "IS_FLAMMABLE",
+    "WITH_POSITIVE_IMPACT",
+    "HAS_COMPATIBILITIES",
+    "IS_NEW_OFFER",
+    "IS_SUITABLE_FOR_SHIPMENT",
+    "WITH_EXPIRATION_DATE",
+    "EXPIRATION_DATE",
+  ]);
+  const attributes = payload.attributes
+    .filter((attr) => !hiddenAttributeIds.has(attr.id))
+    .filter((attr) => Boolean(attr.value_name?.trim() || attr.value_id))
+    .map((attr) => ({
+      id: attr.id,
+      value_name: attr.value_name ?? "",
+      ...(attr.value_id ? { value_id: attr.value_id } : {}),
+    }));
+  const saleTerms = payload.sale_terms
+    ?.filter((term) => Boolean(term.value_name?.trim() || term.value_id))
+    .map((term) => ({
+      id: term.id,
+      ...(term.value_name ? { value_name: term.value_name } : {}),
+      ...(term.value_id ? { value_id: term.value_id } : {}),
+    }));
 
   return {
     title: payload.family_name,

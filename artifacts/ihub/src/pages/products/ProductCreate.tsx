@@ -200,14 +200,24 @@ export default function ProductCreate() {
     if (!draft || !canPublishDraft(draft)) {
       const hasMlErrors = draft ? getBlockingMlValidationErrors(draft).length > 0 : false;
       const hasPendingUi = draft ? hasBlockingPendingIhubUi(draft) : false;
+      const sku = draft?.payload.attributes.find((a) => a.id === "SELLER_SKU");
+      const missingSku = !(sku?.value_name?.trim() || sku?.value_id);
+      const warrantyType = draft?.payload.sale_terms?.find((t) => t.id === "WARRANTY_TYPE");
+      const missingWarranty = !(warrantyType?.value_name?.trim() || warrantyType?.value_id);
       toast({
         variant: "destructive",
-        title: hasMlErrors || hasPendingUi ? "Revisão incompleta" : "Dados incompletos",
+        title: hasMlErrors || hasPendingUi || missingSku || missingWarranty
+          ? "Revisão incompleta"
+          : "Dados incompletos",
         description: hasMlErrors
           ? "Corrija os erros de validação do Mercado Livre antes de publicar."
-          : hasPendingUi
-            ? "Complete os campos obrigatórios pendentes antes de publicar."
-            : "Preencha nome, preço, estoque e ao menos uma foto.",
+          : missingSku
+            ? "Informe o SKU antes de publicar."
+            : missingWarranty
+              ? "Informe a garantia antes de publicar."
+              : hasPendingUi
+                ? "Complete os campos obrigatórios pendentes antes de publicar."
+                : "Preencha nome, preço, estoque e ao menos uma foto.",
       });
       return;
     }

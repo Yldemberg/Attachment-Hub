@@ -365,6 +365,7 @@ export function updateDraftAttributeValue(
     ...draft,
     payload: { ...draft.payload, attributes },
     _attributes_ficticios: syncReviewList(draft._attributes_ficticios),
+    _attributes_preenchidos_inteligente: syncReviewList(draft._attributes_preenchidos_inteligente),
   };
 
   return revalidateDraftReadiness({
@@ -373,13 +374,30 @@ export function updateDraftAttributeValue(
   });
 }
 
+export function updateDraftSaleTerm(
+  draft: N8nListingDraft,
+  termId: string,
+  value: { value_name?: string; value_id?: string | null },
+): N8nListingDraft {
+  const next: N8nListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      sale_terms: upsertSaleTerm(draft.payload.sale_terms, termId, value),
+    },
+  };
+  return revalidateDraftReadiness({
+    ...next,
+    _ihub_ui: refreshIhubUi(next, termId, value),
+  });
+}
+
 export function updateDraftIhubUiCampo(
   draft: N8nListingDraft,
   campo: IhubUiCampo,
   value: { value_name?: string; value_id?: string | null },
 ): N8nListingDraft {
-  if (campo.somente_leitura) return draft;
-
+  // Campos sugeridos como somente_leitura pelo N8N ainda podem ser editados no iHub.
   if (campo.destino_payload === "description") {
     return updateDraftDescription(draft, value.value_name ?? "");
   }
@@ -409,17 +427,7 @@ export function updateDraftIhubUiCampo(
   }
 
   if (campo.destino_payload === "sale_terms") {
-    const next: N8nListingDraft = {
-      ...draft,
-      payload: {
-        ...draft.payload,
-        sale_terms: upsertSaleTerm(draft.payload.sale_terms, campo.id, value),
-      },
-    };
-    return revalidateDraftReadiness({
-      ...next,
-      _ihub_ui: refreshIhubUi(next, campo.id, value),
-    });
+    return updateDraftSaleTerm(draft, campo.id, value);
   }
 
   return updateDraftAttributeValue(draft, campo.id, {
@@ -433,10 +441,26 @@ export function getIhubUiSecoes(draft: N8nListingDraft): IhubUiSecao[] {
 }
 
 export function getPendingRequiredIhubUiCampos(draft: N8nListingDraft): IhubUiCampo[] {
+  const hidden = new Set([
+    "HAZMAT_TRANSPORTABILITY",
+    "EXCLUDED_PLATFORMS",
+    "IS_FLAMMABLE",
+    "WITH_POSITIVE_IMPACT",
+    "HAS_COMPATIBILITIES",
+    "IS_NEW_OFFER",
+    "IS_SUITABLE_FOR_SHIPMENT",
+    "WITH_EXPIRATION_DATE",
+    "EXPIRATION_DATE",
+    "ITEM_CONDITION",
+  ]);
+
   return getIhubUiSecoes(draft).flatMap((secao) =>
     secao.status === "pendente"
       ? (secao.campos ?? []).filter(
-          (campo) => campo.obrigatorio && !campo.somente_leitura && !isCampoFilled(campo, draft),
+          (campo) =>
+            campo.obrigatorio &&
+            !hidden.has(campo.id) &&
+            !isCampoFilled(campo, draft),
         )
       : [],
   );
@@ -461,6 +485,19 @@ export function canPublishDraft(draft: N8nListingDraft): boolean {
     return !(current?.value_name?.trim() || current?.value_id);
   });
   if (missingRequired.length > 0) return false;
+
+  const sku = draft.payload.attributes.find((a) => a.id === "SELLER_SKU");
+  if (!(sku?.value_name?.trim() || sku?.value_id)) return false;
+
+  const warrantyType = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TYPE");
+  if (!(warrantyType?.value_name?.trim() || warrantyType?.value_id)) return false;
+  const isNoWarranty =
+    warrantyType.value_id === "6150835" || warrantyType.value_name === "Sem garantia";
+  if (!isNoWarranty) {
+    const warrantyTime = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TIME");
+    if (!(warrantyTime?.value_name?.trim() || warrantyTime?.value_id)) return false;
+  }
+
   return true;
 }
 

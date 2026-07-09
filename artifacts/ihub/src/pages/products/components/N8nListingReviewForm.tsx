@@ -1,4 +1,4 @@
-import type { IhubUiCampo, IhubUiSecao, N8nListingDraft } from "@workspace/api-client-react";
+import type { N8nListingDraft } from "@workspace/api-client-react";
 import { AlertTriangle, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,18 +6,23 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { MLB_LISTING_TYPES, LISTING_CONDITIONS } from "./listing-constants";
 import {
+  REVIEW_GROUP_LABELS,
+  buildReviewEditableFields,
+  isHiddenListingAttribute,
+  type ReviewEditableField,
+  type ReviewFieldGroup,
+} from "./listing-review-fields";
+import {
   formatMlValidationMessage,
   getBlockingMlValidationErrors,
-  getCampoDisplayValue,
-  getIhubUiSecoes,
   getMlValidationWarnings,
   getPendingRequiredIhubUiCampos,
   getRequiredAttributeIdsFromMlErrors,
   removeDraftPicture,
   updateDraftAttributeValue,
   updateDraftDescription,
-  updateDraftIhubUiCampo,
   updateDraftPayload,
+  updateDraftSaleTerm,
 } from "./n8n-listing-types";
 
 type N8nListingReviewFormProps = {
@@ -26,70 +31,43 @@ type N8nListingReviewFormProps = {
   jobNeedsReview?: boolean;
 };
 
-const ATTR_LABELS: Record<string, string> = {
-  UNITS_PER_PACK: "Unidades por kit",
-};
-
-function sectionStatusLabel(status: IhubUiSecao["status"]): string {
-  if (status === "pendente") return "Pendente";
-  if (status === "somente_leitura") return "Somente leitura";
-  return "Completo";
-}
-
-function IhubUiCampoInput({
-  campo,
+function ReviewFieldInput({
+  field,
   draft,
   onDraftChange,
 }: {
-  campo: IhubUiCampo;
+  field: ReviewEditableField;
   draft: N8nListingDraft;
   onDraftChange: (draft: N8nListingDraft) => void;
 }) {
-  const value = getCampoDisplayValue(campo, draft);
-  const disabled = Boolean(campo.somente_leitura);
   const selectCls =
-    "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60";
+    "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
-  const applyValue = (next: { value_name?: string; value_id?: string | null }) => {
-    onDraftChange(updateDraftIhubUiCampo(draft, campo, next));
+  const apply = (next: { value_name?: string; value_id?: string | null }) => {
+    if (field.kind === "sale_term") {
+      onDraftChange(updateDraftSaleTerm(draft, field.id, next));
+      return;
+    }
+    onDraftChange(updateDraftAttributeValue(draft, field.id, {
+      ...(next.value_name !== undefined ? { value_name: next.value_name } : {}),
+      ...(next.value_id !== undefined && next.value_id !== null ? { value_id: next.value_id } : {}),
+    }));
   };
 
   return (
     <div className="space-y-1.5">
       <Label className="text-sm">
-        {campo.label}
-        {campo.obrigatorio ? <span className="text-destructive ml-0.5">*</span> : null}
+        {field.label}
+        {field.required ? <span className="text-destructive ml-0.5">*</span> : null}
       </Label>
-      {campo.hint ? <p className="text-[11px] text-muted-foreground">{campo.hint}</p> : null}
-
-      {campo.tipo === "textarea" || campo.destino_payload === "description" ? (
-        <textarea
-          value={value}
-          disabled={disabled}
-          rows={5}
-          onChange={(e) => applyValue({ value_name: e.target.value })}
-          className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[100px] disabled:opacity-60"
-        />
-      ) : campo.tipo === "boolean" ? (
+      {field.inputType === "select" && field.options ? (
         <select
-          value={value || ""}
-          disabled={disabled}
-          onChange={(e) => applyValue({ value_name: e.target.value, value_id: e.target.value })}
-          className={selectCls}
-        >
-          <option value="">Selecione…</option>
-          <option value="true">Sim</option>
-          <option value="false">Não</option>
-        </select>
-      ) : campo.tipo === "select" || (campo.opcoes && campo.opcoes.length > 0) ? (
-        <select
-          value={value}
-          disabled={disabled}
+          value={field.valueName || field.valueId || ""}
           onChange={(e) => {
-            const selected = campo.opcoes?.find(
+            const selected = field.options?.find(
               (opt) => opt.name === e.target.value || opt.id === e.target.value,
             );
-            applyValue({
+            apply({
               value_name: selected?.name ?? e.target.value,
               value_id: selected?.id ?? null,
             });
@@ -97,7 +75,7 @@ function IhubUiCampoInput({
           className={selectCls}
         >
           <option value="">Selecione…</option>
-          {(campo.opcoes ?? []).map((opt) => (
+          {field.options.map((opt) => (
             <option key={opt.id} value={opt.name}>
               {opt.name}
             </option>
@@ -105,11 +83,19 @@ function IhubUiCampoInput({
         </select>
       ) : (
         <Input
-          type={campo.tipo === "number" ? "number" : "text"}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => applyValue({ value_name: e.target.value })}
+          type={field.inputType === "number" ? "number" : "text"}
+          value={field.valueName}
+          onChange={(e) => apply({ value_name: e.target.value })}
           className="h-9"
+          placeholder={
+            field.id === "WARRANTY_TIME"
+              ? "Ex.: 3 meses"
+              : field.id === "SELLER_SKU"
+                ? "SKU do produto"
+                : field.id === "UNITS_PER_PACK"
+                  ? "Ex.: 1"
+                  : undefined
+          }
         />
       )}
     </div>
@@ -122,22 +108,28 @@ export function N8nListingReviewForm({
   jobNeedsReview = false,
 }: N8nListingReviewFormProps) {
   const { payload } = draft;
-  const secoes = getIhubUiSecoes(draft);
-  const hasIhubUi = secoes.length > 0;
-  const pendingRequired = getPendingRequiredIhubUiCampos(draft);
-  const pendingCount = hasIhubUi
-    ? pendingRequired.length
-    : (draft._attributes_ainda_pendentes?.length ?? 0);
-  const fictitious = draft._attributes_ficticios ?? [];
-  const intelligent = draft._attributes_preenchidos_inteligente ?? [];
+  const pendingRequired = getPendingRequiredIhubUiCampos(draft).filter(
+    (campo) => !isHiddenListingAttribute(campo.id),
+  );
+  const pendingCount = pendingRequired.length;
   const blockingErrors = getBlockingMlValidationErrors(draft);
   const warnings = getMlValidationWarnings(draft);
-  const requiredFromMl = getRequiredAttributeIdsFromMlErrors(draft).filter((id) => {
-    const current = payload.attributes.find((a) => a.id === id);
-    return !(current?.value_name?.trim() || current?.value_id);
+  const requiredFromMl = getRequiredAttributeIdsFromMlErrors(draft);
+  const reviewFields = buildReviewEditableFields(draft, requiredFromMl);
+  const missingEssentials = reviewFields.filter((field) => {
+    if (!field.required) return false;
+    return !(field.valueName.trim() || field.valueId);
   });
   const readyToPublish =
-    blockingErrors.length === 0 && pendingCount === 0 && requiredFromMl.length === 0;
+    blockingErrors.length === 0 && pendingCount === 0 && missingEssentials.length === 0;
+
+  const grouped = (Object.keys(REVIEW_GROUP_LABELS) as ReviewFieldGroup[])
+    .map((group) => ({
+      group,
+      label: REVIEW_GROUP_LABELS[group],
+      fields: reviewFields.filter((f) => f.group === group),
+    }))
+    .filter((g) => g.fields.length > 0);
 
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
@@ -147,19 +139,19 @@ export function N8nListingReviewForm({
       {jobNeedsReview ||
       pendingCount > 0 ||
       blockingErrors.length > 0 ||
-      requiredFromMl.length > 0 ? (
+      missingEssentials.length > 0 ? (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">
-              {blockingErrors.length > 0 || requiredFromMl.length > 0
-                ? "Corrija os erros abaixo antes de publicar"
+              {blockingErrors.length > 0 || missingEssentials.length > 0
+                ? "Complete os campos obrigatórios antes de publicar"
                 : jobNeedsReview
                   ? "Revisão necessária antes de publicar"
                   : `${pendingCount} campo(s) obrigatório(s) pendente(s)`}
             </p>
             <p className="mt-0.5 text-amber-700">
-              Avisos do Mercado Livre não bloqueiam a publicação; apenas erros reais.
+              Todos os atributos listados podem ser editados, inclusive os preenchidos automaticamente.
             </p>
           </div>
         </div>
@@ -315,141 +307,46 @@ export function N8nListingReviewForm({
         ) : null}
       </div>
 
-      {requiredFromMl.length > 0 ? (
-        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+      <div className="space-y-1.5">
+        <Label>Descrição</Label>
+        <textarea
+          value={draft._description ?? ""}
+          onChange={(e) => onDraftChange(updateDraftDescription(draft, e.target.value))}
+          rows={6}
+          className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[120px]"
+          placeholder="Descrição do anúncio…"
+        />
+      </div>
+
+      {grouped.map(({ group, label, fields }) => (
+        <div key={group} className="space-y-3 rounded-lg border border-border p-3">
           <div>
-            <Label>Campos exigidos pelo Mercado Livre</Label>
+            <Label>{label}</Label>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Preencha para liberar a publicação.
+              {group === "essenciais"
+                ? "SKU, garantia e identificadores necessários para publicar."
+                : group === "caracteristicas"
+                  ? "Principais e secundárias — todas editáveis."
+                  : group === "embalagem_fabrica"
+                    ? "Dimensões e peso da embalagem de fábrica."
+                    : group === "embalagem_envio"
+                      ? "Dimensões e peso da embalagem de envio."
+                      : "Revise e ajuste se necessário."}
             </p>
           </div>
-          {requiredFromMl.map((attrId) => {
-            const current = payload.attributes.find((a) => a.id === attrId);
-            return (
-              <div key={attrId} className="space-y-1.5">
-                <Label className="text-sm">
-                  {ATTR_LABELS[attrId] ?? attrId}
-                  <span className="text-destructive ml-0.5">*</span>
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={current?.value_name ?? ""}
-                  onChange={(e) =>
-                    onDraftChange(
-                      updateDraftAttributeValue(draft, attrId, { value_name: e.target.value }),
-                    )
-                  }
-                  className="h-9"
-                  placeholder={attrId === "UNITS_PER_PACK" ? "Ex.: 1" : undefined}
-                />
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {hasIhubUi ? (
-        <div className="space-y-4">
-          {secoes.map((secao) => (
-            <div key={secao.id} className="space-y-3 rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <Label>{secao.titulo}</Label>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {sectionStatusLabel(secao.status)}
-                  </p>
-                </div>
-                <span
-                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    secao.status === "pendente"
-                      ? "bg-amber-50 text-amber-800 border border-amber-200"
-                      : secao.status === "somente_leitura"
-                        ? "bg-muted text-muted-foreground"
-                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  }`}
-                >
-                  {sectionStatusLabel(secao.status)}
-                </span>
-              </div>
-              <div className="space-y-3">
-                {(secao.campos ?? []).map((campo) => (
-                  <IhubUiCampoInput
-                    key={`${secao.id}-${campo.id}`}
-                    campo={campo}
-                    draft={draft}
-                    onDraftChange={onDraftChange}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <>
-          <div className="space-y-1.5">
-            <Label>Descrição</Label>
-            <textarea
-              value={draft._description ?? ""}
-              onChange={(e) => onDraftChange(updateDraftDescription(draft, e.target.value))}
-              rows={6}
-              className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[120px]"
-              placeholder="Descrição do anúncio…"
-            />
+          <div className="space-y-3">
+            {fields.map((field) => (
+              <ReviewFieldInput
+                key={`${field.kind}-${field.id}`}
+                field={field}
+                draft={draft}
+                onDraftChange={onDraftChange}
+              />
+            ))}
           </div>
+        </div>
+      ))}
 
-          {fictitious.length > 0 ? (
-            <div className="space-y-3">
-              <div>
-                <Label>Revisar atributos</Label>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Atributos preenchidos automaticamente que podem precisar de ajuste.
-                </p>
-              </div>
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {fictitious.map((attr) => (
-                  <div
-                    key={attr.id}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2 items-center"
-                  >
-                    <span className="text-xs text-muted-foreground truncate" title={attr.name}>
-                      {attr.name}
-                    </span>
-                    <Input
-                      value={attr.valor.value_name ?? ""}
-                      onChange={(e) =>
-                        onDraftChange(
-                          updateDraftAttributeValue(draft, attr.id, { value_name: e.target.value }),
-                        )
-                      }
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {intelligent.length > 0 ? (
-            <div className="space-y-2">
-              <Label>Atributos preenchidos automaticamente</Label>
-              <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border max-h-48 overflow-y-auto">
-                {intelligent.map((attr) => (
-                  <div
-                    key={attr.id}
-                    className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
-                  >
-                    <span className="text-muted-foreground">{attr.name}</span>
-                    <span className="font-medium text-foreground truncate">
-                      {attr.valor.value_name ?? "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </>
-      )}
     </div>
   );
 }
