@@ -134,7 +134,7 @@ export default function ProductCreate() {
         variant: "destructive",
         title: "Tempo esgotado",
         description:
-          "A preparação demorou demais. Verifique o workflow N8N ou tente novamente.",
+          "A preparação demorou mais de 6 minutos. Verifique no N8N se o nó \"Enviar ao iHub\" concluiu (URL/secret) e tente novamente.",
       });
       return;
     }
@@ -145,7 +145,7 @@ export default function ProductCreate() {
         variant: "destructive",
         title: "Tempo esgotado",
         description:
-          "A preparação demorou demais. Verifique o workflow N8N ou tente novamente.",
+          "A preparação demorou mais de 6 minutos. Verifique no N8N se o nó \"Enviar ao iHub\" concluiu (URL/secret) e tente novamente.",
       });
     }, remaining);
 
@@ -239,7 +239,7 @@ export default function ProductCreate() {
   };
 
   const prepareStatusMessage = isPreparing
-    ? "Extraindo dados do produto… isso pode levar alguns minutos."
+    ? "Extraindo dados do produto (Amazon/Shopee)… pode levar até alguns minutos. Aguarde o retorno do N8N."
     : undefined;
 
   return (

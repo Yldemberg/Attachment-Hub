@@ -5,7 +5,8 @@ import type {
   N8nListingSaleTerm,
 } from "@workspace/api-client-react";
 
-export const PREPARE_JOB_TIMEOUT_MS = 60 * 1000;
+/** Apify sync no N8N pode levar até ~5 min; dá folga para validação ML + callback. */
+export const PREPARE_JOB_TIMEOUT_MS = 6 * 60 * 1000;
 
 export const N8N_CREATE_STEPS = [
   { id: 1, label: "Link do produto" },
@@ -454,16 +455,17 @@ export function getPendingRequiredIhubUiCampos(draft: N8nListingDraft): IhubUiCa
     "ITEM_CONDITION",
   ]);
 
-  return getIhubUiSecoes(draft).flatMap((secao) =>
-    secao.status === "pendente"
-      ? (secao.campos ?? []).filter(
-          (campo) =>
-            campo.obrigatorio &&
-            !hidden.has(campo.id) &&
-            !isCampoFilled(campo, draft),
-        )
-      : [],
-  );
+  return getIhubUiSecoes(draft).flatMap((secao) => {
+    // N8N pode enviar "ok" / "completo" / "pendente" / "somente_leitura"
+    const status = String(secao.status || "");
+    if (status !== "pendente") return [];
+    return (secao.campos ?? []).filter(
+      (campo) =>
+        campo.obrigatorio &&
+        !hidden.has(campo.id) &&
+        !isCampoFilled(campo, draft),
+    );
+  });
 }
 
 export function hasBlockingPendingIhubUi(draft: N8nListingDraft): boolean {

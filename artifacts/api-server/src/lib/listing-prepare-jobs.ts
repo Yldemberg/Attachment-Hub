@@ -23,7 +23,8 @@ export type ListingPrepareJobView = {
   errorMessage?: string | null;
 };
 
-const DEFAULT_PREPARE_JOB_TIMEOUT_MS = 60 * 1000;
+/** Alinhado ao timeout do Apify no N8N (~5 min) + margem para validação/callback. */
+const DEFAULT_PREPARE_JOB_TIMEOUT_MS = 6 * 60 * 1000;
 
 function getPrepareJobTimeoutMs(): number {
   const raw = process.env.LISTING_PREPARE_JOB_TIMEOUT_MS;
@@ -196,7 +197,17 @@ export async function completeListingPrepareJobFromWebhook(input: {
   if (!job) {
     throw new N8nListingError("Job não encontrado", 404);
   }
-  if (job.status === "completed" || job.status === "needs_review" || job.status === "failed") {
+
+  // Já finalizado com sucesso: idempotente.
+  if (job.status === "completed" || job.status === "needs_review") {
+    return;
+  }
+
+  // Se o iHub marcou timeout antes do N8N terminar, ainda aceita o callback tardio.
+  const failedDueToTimeout =
+    job.status === "failed" &&
+    Boolean(job.errorMessage?.toLowerCase().includes("tempo esgotado"));
+  if (job.status === "failed" && !failedDueToTimeout) {
     return;
   }
 
