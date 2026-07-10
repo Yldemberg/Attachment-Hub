@@ -24,6 +24,7 @@ import {
   Clock,
   FileSpreadsheet,
   Tag,
+  AlertTriangle,
 } from "lucide-react";
 import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ const navItems = [
   { path: "/reports/sales", label: "Relatório de vendas", icon: FileSpreadsheet, badge: "none" as const },
   { path: "/orders", label: "Pedidos", icon: ShoppingCart, badge: "none" as const },
   { path: "/questions", label: "Perguntas", icon: MessageSquare, badge: "questions" as const },
+  { path: "/critical-ads", label: "Anúncios Críticos", icon: AlertTriangle, badge: "none" as const },
   { path: "/notifications", label: "Notificacoes", icon: Bell, badge: "notifications" as const },
   { path: "/integrations", label: "Integracoes", icon: Plug, badge: "none" as const },
 ];

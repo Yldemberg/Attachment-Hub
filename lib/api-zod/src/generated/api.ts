@@ -1588,6 +1588,43 @@ export const AnswerQuestionResponse = zod.object({
 });
 
 /**
+ * @summary List critical listing diagnostics
+ */
+export const listCriticalAdsQueryPageDefault = 1;
+export const listCriticalAdsQueryLimitDefault = 20;
+
+export const ListCriticalAdsQueryParams = zod.object({
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by store name, title or problems"),
+  page: zod.coerce.number().default(listCriticalAdsQueryPageDefault),
+  limit: zod.coerce.number().default(listCriticalAdsQueryLimitDefault),
+});
+
+export const ListCriticalAdsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string(),
+      nomeLoja: zod.string().nullish(),
+      titulo: zod.string().nullish(),
+      problemas: zod.string().nullish(),
+      permalink: zod.string().nullish(),
+      status: zod.string().nullish(),
+      tipoEnvio: zod.string().nullish(),
+      faltasRelevancia: zod.number().nullish(),
+      diasSemVend: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
+
+/**
  * @summary Promotion KPIs across connected accounts
  */
 export const getPromotionsSummaryQueryRefreshDefault = false;

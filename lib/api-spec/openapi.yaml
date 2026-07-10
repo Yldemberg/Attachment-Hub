@@ -30,6 +30,8 @@ tags:
     description: Dashboard KPIs and analytics
   - name: promotions
     description: Mercado Livre seller promotions and campaigns
+  - name: critical-ads
+    description: Critical listing diagnostics from Mercado Livre
   - name: webhooks
     description: External webhook receivers
 
@@ -1195,6 +1197,42 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Critical Ads
+  # ---------------------------------------------------------------------------
+  /critical-ads:
+    get:
+      operationId: listCriticalAds
+      tags: [critical-ads]
+      summary: List critical listing diagnostics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          description: Filter by store name, title or problems
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of critical ads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriticalAdListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ---------------------------------------------------------------------------
   # Promotions
@@ -3092,6 +3130,51 @@ components:
           type: string
           minLength: 1
       required: [text]
+
+    # --------------------------------------------------------------------------
+    # Critical Ads
+    # --------------------------------------------------------------------------
+    CriticalAd:
+      type: object
+      properties:
+        id:
+          type: string
+        nomeLoja:
+          type: string
+          nullable: true
+        titulo:
+          type: string
+          nullable: true
+        problemas:
+          type: string
+          nullable: true
+        permalink:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        tipoEnvio:
+          type: string
+          nullable: true
+        faltasRelevancia:
+          type: integer
+          nullable: true
+        diasSemVend:
+          type: integer
+          nullable: true
+      required: [id]
+
+    CriticalAdListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CriticalAd"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
 
     # --------------------------------------------------------------------------
     # Notifications

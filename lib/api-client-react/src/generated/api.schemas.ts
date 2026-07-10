@@ -697,6 +697,23 @@ export interface AnswerQuestionRequest {
   text: string;
 }
 
+export interface CriticalAd {
+  id: string;
+  nomeLoja?: string | null;
+  titulo?: string | null;
+  problemas?: string | null;
+  permalink?: string | null;
+  status?: string | null;
+  tipoEnvio?: string | null;
+  faltasRelevancia?: number | null;
+  diasSemVend?: number | null;
+}
+
+export interface CriticalAdListResponse {
+  data: CriticalAd[];
+  pagination: Pagination;
+}
+
 export type NotificationType =
   (typeof NotificationType)[keyof typeof NotificationType];
 
@@ -1167,6 +1184,15 @@ export const ListQuestionsStatus = {
   closed_unanswered: "closed_unanswered",
   under_review: "under_review",
 } as const;
+
+export type ListCriticalAdsParams = {
+  /**
+   * Filter by store name, title or problems
+   */
+  search?: string;
+  page?: number;
+  limit?: number;
+};
 
 export type GetPromotionsSummaryParams = {
   account_id?: string;

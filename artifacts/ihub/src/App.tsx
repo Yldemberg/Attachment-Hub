@@ -23,6 +23,7 @@ import GeneralInventory from "@/pages/inventory/GeneralInventory";
 import SalesReport from "@/pages/reports/SalesReport";
 import Promotions from "@/pages/promotions/Promotions";
 import PromotionDetail from "@/pages/promotions/PromotionDetail";
+import CriticalAds from "@/pages/CriticalAds";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -151,6 +152,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <Questions />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/critical-ads">
+        <ProtectedRoute>
+          <AppLayout>
+            <CriticalAds />
           </AppLayout>
         </ProtectedRoute>
       </Route>

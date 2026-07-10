@@ -27,6 +27,7 @@ import type {
   BulkUpdateProductListingStatusRequest,
   BulkUpdateProductListingStatusResponse,
   CreateProductRequest,
+  CriticalAdListResponse,
   DashboardSummary,
   DeleteProduct200,
   DuplicateProductRequest,
@@ -53,6 +54,7 @@ import type {
   InventorySkuFinancialsPatchRequest,
   InventorySkuFinancialsResponse,
   ListAccounts200,
+  ListCriticalAdsParams,
   ListNotificationsParams,
   ListOrdersParams,
   ListProductsParams,
@@ -3676,6 +3678,100 @@ export const useAnswerQuestion = <
 > => {
   return useMutation(getAnswerQuestionMutationOptions(options));
 };
+
+/**
+ * @summary List critical listing diagnostics
+ */
+export const getListCriticalAdsUrl = (params?: ListCriticalAdsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/critical-ads?${stringifiedParams}`
+    : `/api/critical-ads`;
+};
+
+export const listCriticalAds = async (
+  params?: ListCriticalAdsParams,
+  options?: RequestInit,
+): Promise<CriticalAdListResponse> => {
+  return customFetch<CriticalAdListResponse>(getListCriticalAdsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCriticalAdsQueryKey = (params?: ListCriticalAdsParams) => {
+  return [`/api/critical-ads`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCriticalAdsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCriticalAds>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListCriticalAdsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCriticalAds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCriticalAdsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCriticalAds>>> = ({
+    signal,
+  }) => listCriticalAds(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCriticalAds>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCriticalAdsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCriticalAds>>
+>;
+export type ListCriticalAdsQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary List critical listing diagnostics
+ */
+
+export function useListCriticalAds<
+  TData = Awaited<ReturnType<typeof listCriticalAds>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListCriticalAdsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCriticalAds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCriticalAdsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Promotion KPIs across connected accounts
