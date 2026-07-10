@@ -126,11 +126,22 @@ function collectNamedAttributes(draft: N8nListingDraft): Map<string, { name: str
 
   const addReview = (items: N8nListingAttributeReview[] | undefined) => {
     for (const item of items ?? []) {
-      if (!item.id || isHiddenListingAttribute(item.id)) continue;
+      if (!item?.id || isHiddenListingAttribute(item.id)) continue;
+      const valor = item.valor;
+      const valueName =
+        typeof valor === "string"
+          ? valor
+          : valor && typeof valor === "object"
+            ? (valor as { value_name?: string }).value_name
+            : undefined;
+      const valueId =
+        valor && typeof valor === "object"
+          ? (valor as { value_id?: string | null }).value_id
+          : undefined;
       map.set(item.id, {
         name: item.name || labelFor(item.id),
-        value_name: item.valor?.value_name,
-        value_id: item.valor?.value_id,
+        value_name: valueName,
+        value_id: valueId,
       });
     }
   };

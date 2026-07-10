@@ -44,14 +44,22 @@ function ReviewFieldInput({
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
   const apply = (next: { value_name?: string; value_id?: string | null }) => {
-    if (field.kind === "sale_term") {
-      onDraftChange(updateDraftSaleTerm(draft, field.id, next));
-      return;
+    try {
+      if (field.kind === "sale_term") {
+        onDraftChange(updateDraftSaleTerm(draft, field.id, next));
+        return;
+      }
+      onDraftChange(
+        updateDraftAttributeValue(draft, field.id, {
+          ...(next.value_name !== undefined ? { value_name: next.value_name } : {}),
+          ...(next.value_id !== undefined && next.value_id !== null
+            ? { value_id: next.value_id }
+            : {}),
+        }),
+      );
+    } catch (err) {
+      console.error("Falha ao atualizar campo do anúncio", field.id, err);
     }
-    onDraftChange(updateDraftAttributeValue(draft, field.id, {
-      ...(next.value_name !== undefined ? { value_name: next.value_name } : {}),
-      ...(next.value_id !== undefined && next.value_id !== null ? { value_id: next.value_id } : {}),
-    }));
   };
 
   return (
@@ -72,7 +80,7 @@ function ReviewFieldInput({
               value_id: selected?.id ?? null,
             });
           }}
-          className={selectCls}
+          className={`${selectCls} relative z-10`}
         >
           <option value="">Selecione…</option>
           {field.options.map((opt) => (
@@ -84,9 +92,10 @@ function ReviewFieldInput({
       ) : (
         <Input
           type={field.inputType === "number" ? "number" : "text"}
-          value={field.valueName}
+          value={field.valueName ?? ""}
           onChange={(e) => apply({ value_name: e.target.value })}
-          className="h-9"
+          className="h-9 relative z-10"
+          autoComplete="off"
           placeholder={
             field.id === "WARRANTY_TIME"
               ? "Ex.: 3 meses"

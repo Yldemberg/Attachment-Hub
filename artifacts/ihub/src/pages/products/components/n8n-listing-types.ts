@@ -102,13 +102,16 @@ function syncCampoValue(campo: IhubUiCampo, value: { value_name?: string; value_
 }
 
 export function isCampoFilled(campo: IhubUiCampo, draft: N8nListingDraft): boolean {
+  if (!campo?.id) return false;
+
   if (campo.destino_payload === "description") {
     return Boolean(draft._description?.trim());
   }
 
   if (campo.destino_payload === "shipping") {
     const shipping = draft.payload.shipping ?? {};
-    const raw = shipping[campo.id];
+    const key = campo.id.includes(".") ? campo.id.split(".").pop()! : campo.id;
+    const raw = shipping[key];
     if (typeof raw === "boolean") return true;
     if (raw == null) return false;
     return String(raw).trim().length > 0;
@@ -119,15 +122,19 @@ export function isCampoFilled(campo: IhubUiCampo, draft: N8nListingDraft): boole
     return Boolean(term?.value_name?.trim() || term?.value_id);
   }
 
+  // Default / attributes (also when destino_payload is missing from N8N)
   const attr = draft.payload.attributes.find((item) => item.id === campo.id);
-  return Boolean(attr?.value_name?.trim() || attr?.value_id);
+  if (attr?.value_name?.trim() || attr?.value_id) return true;
+  if (campo.value_name?.trim() || campo.value_id) return true;
+  if (campo.valor != null && String(campo.valor).trim().length > 0) return true;
+  return false;
 }
 
 function refreshIhubUi(draft: N8nListingDraft, touchedFieldId?: string, touchedValue?: { value_name?: string; value_id?: string | null }): N8nListingDraft["_ihub_ui"] {
   if (!draft._ihub_ui) return draft._ihub_ui;
 
   const mapCampos = (campos: IhubUiCampo[] | undefined) =>
-    campos?.map((campo) => {
+    (campos ?? []).map((campo) => {
       if (!touchedFieldId || !touchedValue) return campo;
       const matchesId = campo.id === touchedFieldId;
       const matchesDescription =
@@ -136,12 +143,17 @@ function refreshIhubUi(draft: N8nListingDraft, touchedFieldId?: string, touchedV
     });
 
   const secoes = draft._ihub_ui.secoes?.map((secao) => {
-    const campos = mapCampos(secao.campos) ?? secao.campos;
-    if (secao.status === "somente_leitura") {
+    const campos = mapCampos(Array.isArray(secao.campos) ? secao.campos : undefined);
+    const statusRaw = String(secao.status ?? "");
+    if (statusRaw === "somente_leitura") {
       return { ...secao, campos };
     }
     const hasPendingRequired = campos.some(
-      (campo) => campo.obrigatorio && !campo.somente_leitura && !isCampoFilled(campo, draft),
+      (campo) =>
+        Boolean(campo?.obrigatorio) &&
+        !campo?.somente_leitura &&
+        Boolean(campo?.destino_payload) &&
+        !isCampoFilled(campo, draft),
     );
     return {
       ...secao,
@@ -153,7 +165,9 @@ function refreshIhubUi(draft: N8nListingDraft, touchedFieldId?: string, touchedV
   return {
     ...draft._ihub_ui,
     secoes,
-    campos_editaveis: mapCampos(draft._ihub_ui.campos_editaveis),
+    campos_editaveis: mapCampos(
+      Array.isArray(draft._ihub_ui.campos_editaveis) ? draft._ihub_ui.campos_editaveis : undefined,
+    ),
   };
 }
 
