@@ -252,21 +252,24 @@ export async function completeListingPrepareJobFromWebhook(input: {
     .where(eq(listingPrepareJobsTable.id, input.jobId));
 }
 
-function hasBlockingPendingIhubUiFields(draft: N8nListingDraft): boolean {
-  const secoes = draft._ihub_ui?.secoes ?? [];
-  return secoes.some(
-    (secao) =>
-      secao.status === "pendente" &&
-      (secao.campos ?? []).some((campo) => campo.obrigatorio === true),
-  );
-}
-
 export function assertDraftReadyToPublish(draft: N8nListingDraft): void {
-  if (hasBlockingPendingIhubUiFields(draft)) {
-    throw new N8nListingError(
-      "Há seções pendentes com campos obrigatórios. Complete a revisão antes de publicar.",
-      400,
-    );
+  const familyName =
+    draft.payload.family_name?.trim() ||
+    (draft.payload as { title?: string }).title?.trim() ||
+    "";
+  if (!familyName) {
+    throw new N8nListingError("Informe o nome da família / título do produto.", 400);
+  }
+  if (!draft.payload.pictures.length) {
+    throw new N8nListingError("Adicione ao menos uma foto.", 400);
+  }
+  if ((draft.payload.price ?? 0) <= 0) {
+    throw new N8nListingError("Informe um preço válido.", 400);
+  }
+
+  const sku = draft.payload.attributes.find((a) => a.id === "SELLER_SKU");
+  if (!(sku?.value_name?.trim() || sku?.value_id)) {
+    throw new N8nListingError("Informe o SKU antes de publicar.", 400);
   }
 
   const blockingMl = getBlockingMlValidationErrors(draft);
@@ -375,8 +378,8 @@ export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingIn
     }));
 
   return {
-    title: payload.family_name,
-    familyName: payload.family_name,
+    title: payload.family_name || (payload as { title?: string }).title || "",
+    familyName: payload.family_name || (payload as { title?: string }).title,
     categoryId: payload.category_id,
     price: payload.price ?? 0,
     availableQuantity: payload.available_quantity,

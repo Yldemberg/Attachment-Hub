@@ -8,7 +8,6 @@ import { MLB_LISTING_TYPES, LISTING_CONDITIONS } from "./listing-constants";
 import {
   REVIEW_GROUP_LABELS,
   buildReviewEditableFields,
-  isHiddenListingAttribute,
   type ReviewEditableField,
   type ReviewFieldGroup,
 } from "./listing-review-fields";
@@ -16,7 +15,7 @@ import {
   formatMlValidationMessage,
   getBlockingMlValidationErrors,
   getMlValidationWarnings,
-  getPendingRequiredIhubUiCampos,
+  getPublishBlockReasons,
   getRequiredAttributeIdsFromMlErrors,
   removeDraftPicture,
   updateDraftAttributeValue,
@@ -117,20 +116,12 @@ export function N8nListingReviewForm({
   jobNeedsReview = false,
 }: N8nListingReviewFormProps) {
   const { payload } = draft;
-  const pendingRequired = getPendingRequiredIhubUiCampos(draft).filter(
-    (campo) => !isHiddenListingAttribute(campo.id),
-  );
-  const pendingCount = pendingRequired.length;
   const blockingErrors = getBlockingMlValidationErrors(draft);
   const warnings = getMlValidationWarnings(draft);
   const requiredFromMl = getRequiredAttributeIdsFromMlErrors(draft);
   const reviewFields = buildReviewEditableFields(draft, requiredFromMl);
-  const missingEssentials = reviewFields.filter((field) => {
-    if (!field.required) return false;
-    return !(field.valueName.trim() || field.valueId);
-  });
-  const readyToPublish =
-    blockingErrors.length === 0 && pendingCount === 0 && missingEssentials.length === 0;
+  const publishBlockReasons = getPublishBlockReasons(draft);
+  const readyToPublish = publishBlockReasons.length === 0;
 
   const grouped = (Object.keys(REVIEW_GROUP_LABELS) as ReviewFieldGroup[])
     .map((group) => ({
@@ -143,25 +134,33 @@ export function N8nListingReviewForm({
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
+  const familyName =
+    payload.family_name ||
+    (payload as { title?: string }).title ||
+    "";
+
   return (
     <div className="space-y-5">
-      {jobNeedsReview ||
-      pendingCount > 0 ||
-      blockingErrors.length > 0 ||
-      missingEssentials.length > 0 ? (
+      {jobNeedsReview || publishBlockReasons.length > 0 ? (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <div>
+          <div className="space-y-1">
             <p className="font-medium">
-              {blockingErrors.length > 0 || missingEssentials.length > 0
-                ? "Complete os campos obrigatórios antes de publicar"
-                : jobNeedsReview
-                  ? "Revisão necessária antes de publicar"
-                  : `${pendingCount} campo(s) obrigatório(s) pendente(s)`}
+              {publishBlockReasons.length > 0
+                ? "Complete os itens abaixo para liberar a publicação"
+                : "Revisão necessária antes de publicar"}
             </p>
-            <p className="mt-0.5 text-amber-700">
-              Todos os atributos listados podem ser editados, inclusive os preenchidos automaticamente.
-            </p>
+            {publishBlockReasons.length > 0 ? (
+              <ul className="list-disc pl-4 text-amber-700 space-y-0.5">
+                {publishBlockReasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-amber-700">
+                Revise SKU, garantia e características antes de criar o anúncio.
+              </p>
+            )}
           </div>
         </div>
       ) : null}
@@ -205,8 +204,14 @@ export function N8nListingReviewForm({
       <div className="space-y-1.5">
         <Label>Nome da família do produto</Label>
         <Input
-          value={payload.family_name}
-          onChange={(e) => onDraftChange(updateDraftPayload(draft, { family_name: e.target.value }))}
+          value={familyName}
+          onChange={(e) =>
+            onDraftChange(
+              updateDraftPayload(draft, {
+                family_name: e.target.value,
+              }),
+            )
+          }
           className="h-9"
         />
       </div>

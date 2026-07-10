@@ -104,6 +104,13 @@ function syncCampoValue(campo: IhubUiCampo, value: { value_name?: string; value_
 export function isCampoFilled(campo: IhubUiCampo, draft: N8nListingDraft): boolean {
   if (!campo?.id) return false;
 
+  const row = campo as IhubUiCampo & {
+    preenchido?: boolean;
+    valor_atual?: unknown;
+    sugestao?: string;
+  };
+  if (row.preenchido === true) return true;
+
   if (campo.destino_payload === "description") {
     return Boolean(draft._description?.trim());
   }
@@ -127,6 +134,15 @@ export function isCampoFilled(campo: IhubUiCampo, draft: N8nListingDraft): boole
   if (attr?.value_name?.trim() || attr?.value_id) return true;
   if (campo.value_name?.trim() || campo.value_id) return true;
   if (campo.valor != null && String(campo.valor).trim().length > 0) return true;
+  if (row.valor_atual != null) {
+    if (typeof row.valor_atual === "object") {
+      const v = row.valor_atual as { value_name?: string; value_id?: string | null };
+      if (v.value_name?.trim() || v.value_id) return true;
+    } else if (String(row.valor_atual).trim()) {
+      return true;
+    }
+  }
+  if (row.sugestao?.trim()) return true;
   return false;
 }
 
@@ -486,35 +502,53 @@ export function hasBlockingPendingIhubUi(draft: N8nListingDraft): boolean {
   return getPendingRequiredIhubUiCampos(draft).length > 0;
 }
 
-export function canPublishDraft(draft: N8nListingDraft): boolean {
-  const basics =
-    draft.payload.family_name.trim().length > 0 &&
-    draft.payload.pictures.length > 0 &&
-    draft.payload.available_quantity >= 0 &&
-    (draft.payload.price ?? 0) > 0;
+/** Motivos que impedem publicar — usados no botão e no alerta. */
+export function getPublishBlockReasons(draft: N8nListingDraft): string[] {
+  const reasons: string[] = [];
+  const familyName = (draft.payload.family_name || (draft.payload as { title?: string }).title || "").trim();
+  if (!familyName) reasons.push("Informe o nome da família / título do produto.");
+  if (!draft.payload.pictures.length) reasons.push("Adicione ao menos uma foto.");
+  if ((draft.payload.price ?? 0) <= 0) reasons.push("Informe um preço válido.");
+  if (draft.payload.available_quantity < 0) reasons.push("Informe o estoque.");
 
-  if (!basics) return false;
-  if (getBlockingMlValidationErrors(draft).length > 0) return false;
-  if (hasBlockingPendingIhubUi(draft)) return false;
+  const blockingMl = getBlockingMlValidationErrors(draft);
+  for (const err of blockingMl.slice(0, 3)) {
+    reasons.push(formatMlValidationMessage(err));
+  }
+
   const missingRequired = getRequiredAttributeIdsFromMlErrors(draft).filter((id) => {
     const current = draft.payload.attributes.find((a) => a.id === id);
     return !(current?.value_name?.trim() || current?.value_id);
   });
-  if (missingRequired.length > 0) return false;
-
-  const sku = draft.payload.attributes.find((a) => a.id === "SELLER_SKU");
-  if (!(sku?.value_name?.trim() || sku?.value_id)) return false;
-
-  const warrantyType = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TYPE");
-  if (!(warrantyType?.value_name?.trim() || warrantyType?.value_id)) return false;
-  const isNoWarranty =
-    warrantyType.value_id === "6150835" || warrantyType.value_name === "Sem garantia";
-  if (!isNoWarranty) {
-    const warrantyTime = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TIME");
-    if (!(warrantyTime?.value_name?.trim() || warrantyTime?.value_id)) return false;
+  for (const id of missingRequired) {
+    reasons.push(`Preencha o campo obrigatório: ${id === "UNITS_PER_PACK" ? "Unidades por kit" : id}.`);
   }
 
-  return true;
+  const sku = draft.payload.attributes.find((a) => a.id === "SELLER_SKU");
+  if (!(sku?.value_name?.trim() || sku?.value_id)) {
+    reasons.push("Informe o SKU.");
+  }
+
+  const warrantyType = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TYPE");
+  if (!(warrantyType?.value_name?.trim() || warrantyType?.value_id)) {
+    reasons.push("Selecione o tipo de garantia.");
+  } else {
+    const isNoWarranty =
+      warrantyType.value_id === "6150835" ||
+      /sem garantia/i.test(warrantyType.value_name || "");
+    if (!isNoWarranty) {
+      const warrantyTime = draft.payload.sale_terms?.find((t) => t.id === "WARRANTY_TIME");
+      if (!(warrantyTime?.value_name?.trim() || warrantyTime?.value_id)) {
+        reasons.push("Informe o tempo de garantia (ex.: 3 meses).");
+      }
+    }
+  }
+
+  return reasons;
+}
+
+export function canPublishDraft(draft: N8nListingDraft): boolean {
+  return getPublishBlockReasons(draft).length === 0;
 }
 
 export function getCampoDisplayValue(campo: IhubUiCampo, draft: N8nListingDraft): string {
