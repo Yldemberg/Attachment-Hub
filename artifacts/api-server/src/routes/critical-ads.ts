@@ -8,6 +8,18 @@ import { desc, ilike, or, sql } from "drizzle-orm";
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
 
+function formatProblemas(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(String).join("\n");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, v]) => `${key}: ${String(v)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 router.get("/critical-ads", ...auth, async (req, res) => {
   try {
     const db = getDb();
@@ -21,7 +33,8 @@ router.get("/critical-ads", ...auth, async (req, res) => {
       ? or(
           ilike(mlDiagnosticoCriticoTable.nomeLoja, `%${searchTerm}%`),
           ilike(mlDiagnosticoCriticoTable.titulo, `%${searchTerm}%`),
-          ilike(mlDiagnosticoCriticoTable.problemas, `%${searchTerm}%`),
+          ilike(mlDiagnosticoCriticoTable.faltasRelevancia, `%${searchTerm}%`),
+          sql`${mlDiagnosticoCriticoTable.problemas}::text ILIKE ${`%${searchTerm}%`}`,
         )
       : undefined;
 
@@ -34,7 +47,10 @@ router.get("/critical-ads", ...auth, async (req, res) => {
         .select()
         .from(mlDiagnosticoCriticoTable)
         .where(where)
-        .orderBy(desc(mlDiagnosticoCriticoTable.diasSemVend))
+        .orderBy(
+          desc(mlDiagnosticoCriticoTable.updatedAt),
+          desc(mlDiagnosticoCriticoTable.itemId),
+        )
         .limit(limitNum)
         .offset(offset),
     ]);
@@ -43,15 +59,15 @@ router.get("/critical-ads", ...auth, async (req, res) => {
 
     res.json({
       data: rows.map((row) => ({
-        id: row.id,
+        itemId: row.itemId,
         nomeLoja: row.nomeLoja,
         titulo: row.titulo,
-        problemas: row.problemas,
+        problemas: formatProblemas(row.problemas),
         permalink: row.permalink,
-        status: row.status,
+        status: row.statusMl,
         tipoEnvio: row.tipoEnvio,
         faltasRelevancia: row.faltasRelevancia,
-        diasSemVend: row.diasSemVend,
+        diasSemVend: row.diasSemVenda,
       })),
       pagination: {
         page: pageNum,

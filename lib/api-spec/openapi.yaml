@@ -3137,7 +3137,7 @@ components:
     CriticalAd:
       type: object
       properties:
-        id:
+        itemId:
           type: string
         nomeLoja:
           type: string
@@ -3158,12 +3158,12 @@ components:
           type: string
           nullable: true
         faltasRelevancia:
-          type: integer
+          type: string
           nullable: true
         diasSemVend:
-          type: integer
+          type: string
           nullable: true
-      required: [id]
+      required: [itemId]
 
     CriticalAdListResponse:
       type: object

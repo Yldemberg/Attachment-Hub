@@ -1605,15 +1605,15 @@ export const ListCriticalAdsQueryParams = zod.object({
 export const ListCriticalAdsResponse = zod.object({
   data: zod.array(
     zod.object({
-      id: zod.string(),
+      itemId: zod.string(),
       nomeLoja: zod.string().nullish(),
       titulo: zod.string().nullish(),
       problemas: zod.string().nullish(),
       permalink: zod.string().nullish(),
       status: zod.string().nullish(),
       tipoEnvio: zod.string().nullish(),
-      faltasRelevancia: zod.number().nullish(),
-      diasSemVend: zod.number().nullish(),
+      faltasRelevancia: zod.string().nullish(),
+      diasSemVend: zod.string().nullish(),
     }),
   ),
   pagination: zod.object({

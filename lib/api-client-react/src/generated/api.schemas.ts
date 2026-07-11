@@ -698,15 +698,15 @@ export interface AnswerQuestionRequest {
 }
 
 export interface CriticalAd {
-  id: string;
+  itemId: string;
   nomeLoja?: string | null;
   titulo?: string | null;
   problemas?: string | null;
   permalink?: string | null;
   status?: string | null;
   tipoEnvio?: string | null;
-  faltasRelevancia?: number | null;
-  diasSemVend?: number | null;
+  faltasRelevancia?: string | null;
+  diasSemVend?: string | null;
 }
 
 export interface CriticalAdListResponse {

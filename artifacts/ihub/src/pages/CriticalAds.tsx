@@ -65,8 +65,8 @@ function CriticalAdCard({ ad }: { ad: CriticalAd }) {
         </div>
         <div className="bg-muted/40 rounded-lg px-2.5 py-2 col-span-2 sm:col-span-1">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Dias sem vender</p>
-          <p className={`text-sm font-medium ${(ad.diasSemVend ?? 0) > 30 ? "text-red-600" : "text-foreground"}`}>
-            {ad.diasSemVend != null ? `${ad.diasSemVend} dias` : "—"}
+          <p className="text-sm font-medium text-foreground">
+            {ad.diasSemVend ?? "—"}
           </p>
         </div>
       </div>
@@ -183,7 +183,7 @@ export default function CriticalAds() {
           <>
             <div className="space-y-3">
               {ads.map((ad) => (
-                <CriticalAdCard key={ad.id} ad={ad} />
+                <CriticalAdCard key={ad.itemId} ad={ad} />
               ))}
             </div>
 
