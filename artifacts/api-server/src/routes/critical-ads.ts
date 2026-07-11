@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
-import { getDb } from "../lib/db";
+import { getDiagnosticoDb } from "../lib/diagnostico-db";
 import { mlDiagnosticoCriticoTable } from "@workspace/db/schema";
 import { desc, ilike, or, sql } from "drizzle-orm";
 
@@ -22,7 +22,7 @@ function formatProblemas(value: unknown): string | null {
 
 router.get("/critical-ads", ...auth, async (req, res) => {
   try {
-    const db = getDb();
+    const db = getDiagnosticoDb();
     const { search, page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
@@ -78,6 +78,11 @@ router.get("/critical-ads", ...auth, async (req, res) => {
     });
   } catch (err) {
     console.error("GET /critical-ads error:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    if (message.includes("ML_DIAGNOSTICO_DATABASE_URL")) {
+      res.status(503).json({ error: "Critical ads database not configured" });
+      return;
+    }
     res.status(500).json({ error: "Failed to load critical ads" });
   }
 });
