@@ -36,6 +36,7 @@ function CriticalAdCard({ ad }: { ad: CriticalAd }) {
             <h3 className="text-foreground text-sm font-semibold leading-snug line-clamp-2">
               {ad.titulo ?? "Sem título"}
             </h3>
+            <p className="text-muted-foreground text-[10px] font-mono mt-0.5 truncate">{ad.itemId}</p>
           </div>
         </div>
         {ad.status && (
