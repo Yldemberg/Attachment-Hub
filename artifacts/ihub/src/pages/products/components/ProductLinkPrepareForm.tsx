@@ -3,55 +3,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isSupportedProductUrl } from "./n8n-listing-types";
-
-type AccountOption = {
-  id: string;
-  mlNickname?: string | null;
-  mlUserId?: string | null;
-};
+import {
+  MlAccountMultiSelect,
+  type MlAccountOption,
+} from "./MlAccountMultiSelect";
 
 type ProductLinkPrepareFormProps = {
-  accountId: string;
+  accountIds: string[];
   productUrl: string;
-  accounts: AccountOption[];
+  accounts: MlAccountOption[];
   preparing: boolean;
   statusMessage?: string;
-  onAccountIdChange: (value: string) => void;
+  onAccountIdsChange: (ids: string[]) => void;
   onProductUrlChange: (value: string) => void;
   onPrepare: () => void;
   onCancel?: () => void;
 };
 
 export function ProductLinkPrepareForm({
-  accountId,
+  accountIds,
   productUrl,
   accounts,
   preparing,
   statusMessage,
-  onAccountIdChange,
+  onAccountIdsChange,
   onProductUrlChange,
   onPrepare,
   onCancel,
 }: ProductLinkPrepareFormProps) {
   const urlValid = productUrl.trim().length > 0 && isSupportedProductUrl(productUrl);
-  const canPrepare = accountId.length > 0 && urlValid && !preparing;
-
-  const selectCls =
-    "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
+  const canPrepare = accountIds.length > 0 && urlValid && !preparing;
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label>Conta Mercado Livre</Label>
-        <select value={accountId} onChange={(e) => onAccountIdChange(e.target.value)} className={selectCls}>
-          <option value="">Selecione a conta…</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.mlNickname ?? a.mlUserId ?? a.id}
-            </option>
-          ))}
-        </select>
-      </div>
+      <MlAccountMultiSelect
+        accounts={accounts}
+        selectedIds={accountIds}
+        onChange={onAccountIdsChange}
+        disabled={preparing}
+      />
 
       <div className="space-y-1.5">
         <Label>Link do produto (Amazon ou Shopee)</Label>

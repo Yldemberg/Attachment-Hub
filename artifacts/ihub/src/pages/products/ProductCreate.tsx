@@ -24,6 +24,7 @@ import {
 } from "./components/n8n-listing-types";
 import { ProductLinkPrepareForm } from "./components/ProductLinkPrepareForm";
 import { N8nListingReviewForm } from "./components/N8nListingReviewForm";
+import { MlAccountMultiSelect } from "./components/MlAccountMultiSelect";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -33,23 +34,33 @@ function getErrorMessage(err: unknown): string {
   return "Ocorreu um erro inesperado.";
 }
 
+function accountDisplayName(
+  accounts: Array<{ id: string; mlNickname?: string | null; mlUserId?: string | null }>,
+  accountId: string,
+): string {
+  const account = accounts.find((a) => a.id === accountId);
+  return account?.mlNickname ?? account?.mlUserId ?? accountId;
+}
+
 export default function ProductCreate() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<1 | 2>(1);
-  const [accountId, setAccountId] = useState("");
+  const [accountIds, setAccountIds] = useState<string[]>([]);
   const [productUrl, setProductUrl] = useState("");
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
   const [prepareStartedAt, setPrepareStartedAt] = useState<number | null>(null);
   const [draft, setDraft] = useState<N8nListingDraft | null>(null);
   const [jobNeedsReview, setJobNeedsReview] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const { data: accountsData } = useListAccounts();
   const accounts = accountsData?.data ?? [];
 
   const { mutateAsync: startPrepare, isPending: startingPrepare } = usePrepareProductFromLink();
+  const { mutateAsync: publishDraftAsync } = usePublishProductDraft();
 
   const clearPrepareJob = useCallback(() => {
     setPrepareJobId(null);
@@ -151,30 +162,20 @@ export default function ProductCreate() {
     return () => window.clearTimeout(timer);
   }, [prepareJobId, prepareStartedAt, toast, clearPrepareJob]);
 
-  const { mutate: publishDraft, isPending: publishing } = usePublishProductDraft({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        toast({
-          title: "Anúncio publicado",
-          description: "O anúncio foi criado no Mercado Livre.",
-        });
-        navigate(buildProductsListReturnPath());
-      },
-      onError: (err: Error) => {
-        toast({
-          variant: "destructive",
-          title: "Falha ao publicar",
-          description: getErrorMessage(err),
-        });
-      },
-    },
-  });
-
   const handlePrepare = async () => {
+    const primaryAccountId = accountIds[0];
+    if (!primaryAccountId) {
+      toast({
+        variant: "destructive",
+        title: "Selecione uma conta",
+        description: "Escolha ao menos uma conta Mercado Livre.",
+      });
+      return;
+    }
+
     try {
       const result = await startPrepare({
-        data: { accountId, productUrl: productUrl.trim() },
+        data: { accountId: primaryAccountId, productUrl: productUrl.trim() },
       });
       setPrepareJobId(result.jobId);
       setPrepareStartedAt(Date.now());
@@ -195,13 +196,22 @@ export default function ProductCreate() {
     });
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!draft || !canPublishDraft(draft)) {
       const reasons = draft ? getPublishBlockReasons(draft) : ["Dados incompletos."];
       toast({
         variant: "destructive",
         title: "Revisão incompleta",
         description: reasons[0] ?? "Complete os campos obrigatórios antes de publicar.",
+      });
+      return;
+    }
+
+    if (accountIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Selecione uma conta",
+        description: "Escolha ao menos uma conta Mercado Livre para publicar.",
       });
       return;
     }
@@ -218,12 +228,58 @@ export default function ProductCreate() {
       _pronto_para_publicar: true,
     });
 
-    publishDraft({
-      data: {
-        accountId,
-        draft: readyDraft,
-      },
-    });
+    setPublishing(true);
+    const succeeded: string[] = [];
+    const failed: Array<{ accountId: string; message: string }> = [];
+
+    try {
+      for (const accountId of accountIds) {
+        try {
+          await publishDraftAsync({
+            data: {
+              accountId,
+              draft: readyDraft,
+            },
+          });
+          succeeded.push(accountId);
+        } catch (err) {
+          failed.push({ accountId, message: getErrorMessage(err) });
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+
+      if (failed.length === 0) {
+        toast({
+          title: succeeded.length > 1 ? "Anúncios publicados" : "Anúncio publicado",
+          description:
+            succeeded.length > 1
+              ? `Criado com sucesso em ${succeeded.length} contas.`
+              : "O anúncio foi criado no Mercado Livre.",
+        });
+        navigate(buildProductsListReturnPath());
+        return;
+      }
+
+      if (succeeded.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Falha ao publicar",
+          description: failed[0]?.message ?? "Não foi possível publicar o anúncio.",
+        });
+        return;
+      }
+
+      toast({
+        variant: "destructive",
+        title: "Publicação parcial",
+        description: `OK: ${succeeded.map((id) => accountDisplayName(accounts, id)).join(", ")}. Falhou: ${failed
+          .map((f) => `${accountDisplayName(accounts, f.accountId)} (${f.message})`)
+          .join("; ")}`,
+      });
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const handleBack = () => {
@@ -237,6 +293,9 @@ export default function ProductCreate() {
   const prepareStatusMessage = isPreparing
     ? "Extraindo dados do produto (Amazon/Shopee)… pode levar até alguns minutos. Aguarde o retorno do N8N."
     : undefined;
+
+  const publishLabel =
+    accountIds.length > 1 ? `Criar anúncio (${accountIds.length} contas)` : "Criar anúncio";
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -277,22 +336,31 @@ export default function ProductCreate() {
         <div className="bg-card border border-card-border rounded-xl p-5">
           {step === 1 ? (
             <ProductLinkPrepareForm
-              accountId={accountId}
+              accountIds={accountIds}
               productUrl={productUrl}
               accounts={accounts}
               preparing={isPreparing}
               statusMessage={prepareStatusMessage}
-              onAccountIdChange={setAccountId}
+              onAccountIdsChange={setAccountIds}
               onProductUrlChange={setProductUrl}
               onPrepare={handlePrepare}
               onCancel={isPreparing ? handleCancelPrepare : undefined}
             />
           ) : draft ? (
-            <N8nListingReviewForm
-              draft={draft}
-              onDraftChange={setDraft}
-              jobNeedsReview={jobNeedsReview}
-            />
+            <div className="space-y-5">
+              <MlAccountMultiSelect
+                accounts={accounts}
+                selectedIds={accountIds}
+                onChange={setAccountIds}
+                disabled={publishing}
+                hint="Confirme em quais contas o anúncio será publicado."
+              />
+              <N8nListingReviewForm
+                draft={draft}
+                onDraftChange={setDraft}
+                jobNeedsReview={jobNeedsReview}
+              />
+            </div>
           ) : null}
         </div>
 
@@ -301,9 +369,17 @@ export default function ProductCreate() {
             <Button variant="outline" onClick={handleBack} disabled={publishing}>
               Voltar
             </Button>
-            <Button onClick={handlePublish} disabled={publishing || !draft || !canPublishDraft(draft)}>
+            <Button
+              onClick={handlePublish}
+              disabled={
+                publishing ||
+                accountIds.length === 0 ||
+                !draft ||
+                !canPublishDraft(draft)
+              }
+            >
               {publishing ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Criar anúncio
+              {publishLabel}
             </Button>
           </div>
         ) : null}
