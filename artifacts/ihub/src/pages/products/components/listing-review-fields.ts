@@ -31,6 +31,7 @@ export const PRIORITY_ATTRIBUTE_IDS = [
   "GTIN",
   "BRAND",
   "MODEL",
+  "GENDER",
   "NET_VOLUME",
   "NET_WEIGHT",
   "SALE_FORMAT",
@@ -47,6 +48,7 @@ export const ATTR_LABELS: Record<string, string> = {
   GTIN: "Código universal de produto (GTIN)",
   BRAND: "Marca",
   MODEL: "Modelo",
+  GENDER: "Gênero",
   NET_VOLUME: "Volume líquido",
   NET_WEIGHT: "Peso líquido",
   SALE_FORMAT: "Formato de venda",
@@ -65,6 +67,15 @@ export const ATTR_LABELS: Record<string, string> = {
   SELLER_PACKAGE_LENGTH: "Comprimento da embalagem de envio",
   SELLER_PACKAGE_WEIGHT: "Peso da embalagem de envio",
 };
+
+/** Opções comuns de GENDER no MLB (value_name). */
+export const GENDER_OPTIONS = [
+  { id: "339666", name: "Feminino" },
+  { id: "339665", name: "Masculino" },
+  { id: "110461", name: "Sem gênero" },
+  { id: "371795", name: "Meninas" },
+  { id: "371794", name: "Meninos" },
+] as const;
 
 export const WARRANTY_TYPE_OPTIONS = [
   { id: "2230279", name: "Garantia de fábrica" },
@@ -108,6 +119,7 @@ function groupForAttribute(id: string): ReviewFieldGroup {
   }
   if (id.startsWith("SELLER_PACKAGE_")) return "embalagem_envio";
   if (
+    id === "GENDER" ||
     id === "NET_VOLUME" ||
     id === "NET_WEIGHT" ||
     id === "SALE_FORMAT" ||
@@ -184,7 +196,7 @@ export function buildReviewEditableFields(
   const fields: ReviewEditableField[] = [];
 
   for (const [id, meta] of attrs) {
-    fields.push({
+    const field: ReviewEditableField = {
       id,
       label: labelFor(id, meta.name),
       group: groupForAttribute(id),
@@ -192,8 +204,12 @@ export function buildReviewEditableFields(
       valueId: meta.value_id,
       required: required.has(id) || id === "SELLER_SKU",
       kind: "attribute",
-      inputType: id === "UNITS_PER_PACK" ? "number" : "text",
-    });
+      inputType: id === "UNITS_PER_PACK" ? "number" : id === "GENDER" ? "select" : "text",
+    };
+    if (id === "GENDER") {
+      field.options = GENDER_OPTIONS.map((o) => ({ id: o.id, name: o.name }));
+    }
+    fields.push(field);
   }
 
   // Garantia (sale_terms)

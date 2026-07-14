@@ -4,6 +4,7 @@ import type {
   N8nListingDraft,
   N8nListingSaleTerm,
 } from "@workspace/api-client-react";
+import { ATTR_LABELS } from "./listing-review-fields";
 
 /** Apify sync no N8N pode levar até ~5 min; dá folga para validação ML + callback. */
 export const PREPARE_JOB_TIMEOUT_MS = 6 * 60 * 1000;
@@ -291,7 +292,31 @@ function isMlErrorResolvedByDraft(item: MlValidationItem, draft: N8nListingDraft
     const units = draft.payload.attributes.find((a) => a.id === "UNITS_PER_PACK");
     return Boolean(units?.value_name?.trim() || units?.value_id);
   }
+
+  // "The attributes [GENDER] are required..." — resolved when all cited attrs are filled
+  const requiredIds = extractAttributeIdsFromMlText(blob);
+  if (requiredIds.length > 0 && /are required|são obrigat|is required/i.test(blob)) {
+    return requiredIds.every((id) => {
+      const attr = draft.payload.attributes.find((a) => a.id === id);
+      return Boolean(attr?.value_name?.trim() || attr?.value_id);
+    });
+  }
+
   return false;
+}
+
+/** Extrai IDs de atributos citados pelo ML: Attribute [X] / attributes [X, Y] */
+export function extractAttributeIdsFromMlText(text: string): string[] {
+  const ids = new Set<string>();
+  const bracketRe = /attributes?\s*\[([^\]]+)\]/gi;
+  let match: RegExpExecArray | null;
+  while ((match = bracketRe.exec(text)) !== null) {
+    for (const part of match[1].split(/[,;\s]+/)) {
+      const id = part.trim().toUpperCase();
+      if (/^[A-Z][A-Z0-9_]*$/.test(id)) ids.add(id);
+    }
+  }
+  return [...ids];
 }
 
 export function getBlockingMlValidationErrors(
@@ -312,22 +337,21 @@ export function formatMlValidationMessage(item: MlValidationItem): string {
   return item.message?.trim() || item.code || "Erro de validação do Mercado Livre";
 }
 
-/** Attribute IDs mentioned in blocking ML errors (e.g. UNITS_PER_PACK). */
+/** Attribute IDs mentioned in blocking ML errors (e.g. GENDER, UNITS_PER_PACK). */
 export function getRequiredAttributeIdsFromMlErrors(draft: N8nListingDraft): string[] {
   const ids = new Set<string>();
   for (const err of getBlockingMlValidationErrors(draft)) {
     const blob = `${err.code ?? ""} ${err.message ?? ""} ${JSON.stringify(err.raw ?? {})}`;
+    if (/ignored because it is not modifiable/i.test(blob)) continue;
+
     if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
       ids.add("UNITS_PER_PACK");
     }
-    const attrMatch = blob.match(/Attribute\s*\[([A-Z0-9_]+)\]/i);
-    if (attrMatch?.[1] && isBlockingMlValidation(err)) {
-      // Only from error-type items; warnings about ignored attrs are skipped above
-      if (!/ignored because it is not modifiable/i.test(blob)) {
-        ids.add(attrMatch[1]);
-      }
+    for (const id of extractAttributeIdsFromMlText(blob)) {
+      ids.add(id);
     }
   }
+
   return [...ids];
 }
 
@@ -521,7 +545,8 @@ export function getPublishBlockReasons(draft: N8nListingDraft): string[] {
     return !(current?.value_name?.trim() || current?.value_id);
   });
   for (const id of missingRequired) {
-    reasons.push(`Preencha o campo obrigatório: ${id === "UNITS_PER_PACK" ? "Unidades por kit" : id}.`);
+    const label = ATTR_LABELS[id] ?? id;
+    reasons.push(`Preencha o campo obrigatório: ${label}.`);
   }
 
   const sku = draft.payload.attributes.find((a) => a.id === "SELLER_SKU");
