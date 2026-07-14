@@ -329,22 +329,88 @@ function normalizeMlValidationItems(
   return out;
 }
 
+/** Extrai IDs de atributos citados pelo ML: Attribute [X] / attributes [X, Y] */
+function extractAttributeIdsFromMlText(text: string): string[] {
+  const ids = new Set<string>();
+  const bracketRe = /attributes?\s*\[([^\]]+)\]/gi;
+  let match: RegExpExecArray | null;
+  while ((match = bracketRe.exec(text)) !== null) {
+    for (const part of match[1].split(/[,;\s]+/)) {
+      const id = part.trim().toUpperCase();
+      if (/^[A-Z][A-Z0-9_]*$/.test(id)) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+function isAttributeFilled(
+  draft: N8nListingDraft,
+  attributeId: string,
+): boolean {
+  const attr = draft.payload.attributes.find((a) => a.id === attributeId);
+  return Boolean(attr?.value_name?.trim() || attr?.value_id);
+}
+
+/** Erros do N8N/ML que o usuário já corrigiu no rascunho deixam de bloquear a publicação. */
+function isMlErrorResolvedByDraft(
+  item: { type?: string; code?: string; message?: string },
+  draft: N8nListingDraft,
+): boolean {
+  const blob = `${item.code ?? ""} ${item.message ?? ""}`;
+  if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
+    return isAttributeFilled(draft, "UNITS_PER_PACK");
+  }
+
+  const requiredIds = extractAttributeIdsFromMlText(blob);
+  if (requiredIds.length > 0 && /are required|são obrigat|is required/i.test(blob)) {
+    return requiredIds.every((id) => isAttributeFilled(draft, id));
+  }
+
+  return false;
+}
+
 function getBlockingMlValidationErrors(draft: N8nListingDraft) {
   return normalizeMlValidationItems(draft._erros_validacao_ml).filter((item) => {
     const type = (item.type ?? "").toLowerCase();
     if (type === "warning" || type === "info") return false;
-
-    const blob = `${item.code ?? ""} ${item.message ?? ""}`;
-    if (/UNITS_PER_PACK|unidades por kit|invalid_sale_units/i.test(blob)) {
-      const units = draft.payload.attributes.find((a) => a.id === "UNITS_PER_PACK");
-      if (units?.value_name?.trim() || units?.value_id) return false;
-    }
+    if (isMlErrorResolvedByDraft(item, draft)) return false;
 
     if (type === "error") return true;
     if (item.code?.includes("invalid") || item.code?.includes("required")) return true;
     if (item.message && /preencha|obrigat|invalid|required/i.test(item.message)) return true;
     return type === "" && Boolean(item.message);
   });
+}
+
+const MLB_GENDER_BY_NAME: Record<string, string> = {
+  feminino: "339665",
+  masculino: "339666",
+  "sem gênero": "110461",
+  "sem genero": "110461",
+  meninas: "339668",
+  meninos: "339667",
+  "sem gênero infantil": "19159491",
+  "sem genero infantil": "19159491",
+};
+
+function normalizeAttributeForMl(attr: {
+  id: string;
+  value_name?: string;
+  value_id?: string | null;
+}): { id: string; value_name: string; value_id?: string } {
+  let valueName = attr.value_name?.trim() ?? "";
+  let valueId = attr.value_id?.trim() || undefined;
+
+  if (attr.id === "GENDER" && valueName) {
+    const mapped = MLB_GENDER_BY_NAME[valueName.toLowerCase()];
+    if (mapped) valueId = mapped;
+  }
+
+  return {
+    id: attr.id,
+    value_name: valueName,
+    ...(valueId ? { value_id: valueId } : {}),
+  };
 }
 
 export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingInput {
@@ -364,11 +430,7 @@ export function n8nDraftToCreateInput(draft: N8nListingDraft): CreateMlListingIn
   const attributes = payload.attributes
     .filter((attr) => !hiddenAttributeIds.has(attr.id))
     .filter((attr) => Boolean(attr.value_name?.trim() || attr.value_id))
-    .map((attr) => ({
-      id: attr.id,
-      value_name: attr.value_name ?? "",
-      ...(attr.value_id ? { value_id: attr.value_id } : {}),
-    }));
+    .map((attr) => normalizeAttributeForMl(attr));
   const saleTerms = payload.sale_terms
     ?.filter((term) => Boolean(term.value_name?.trim() || term.value_id))
     .map((term) => ({

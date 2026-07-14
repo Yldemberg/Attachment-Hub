@@ -68,13 +68,14 @@ export const ATTR_LABELS: Record<string, string> = {
   SELLER_PACKAGE_WEIGHT: "Peso da embalagem de envio",
 };
 
-/** Opções comuns de GENDER no MLB (value_name). */
+/** Opções de GENDER no MLB (ids oficiais da categoria). */
 export const GENDER_OPTIONS = [
-  { id: "339666", name: "Feminino" },
-  { id: "339665", name: "Masculino" },
+  { id: "339665", name: "Feminino" },
+  { id: "339666", name: "Masculino" },
   { id: "110461", name: "Sem gênero" },
-  { id: "371795", name: "Meninas" },
-  { id: "371794", name: "Meninos" },
+  { id: "339668", name: "Meninas" },
+  { id: "339667", name: "Meninos" },
+  { id: "19159491", name: "Sem gênero infantil" },
 ] as const;
 
 export const WARRANTY_TYPE_OPTIONS = [
