@@ -403,6 +403,11 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
           disabled={disabled}
           idPlaceholder="ID (ex.: BRAND)"
         />
+        <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+          Na publicação, o iHub consulta a categoria no Mercado Livre e remove atributos{" "}
+          <em>read_only</em>, <em>fixed</em> ou <em>inferred</em> (ex.: AGE_GROUP, marcas internas).
+          Você pode deixar a lista completa no modelo.
+        </p>
       </div>
 
       <div className="border-t border-border pt-4">

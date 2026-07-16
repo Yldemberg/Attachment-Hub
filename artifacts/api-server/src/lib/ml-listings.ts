@@ -32,6 +32,8 @@ export type MlCategoryAttribute = {
     catalog_required?: boolean;
     fixed?: boolean;
     read_only?: boolean;
+    inferred?: boolean;
+    hidden?: boolean;
   };
   values?: Array<{ id: string; name: string }>;
   allowedUnits?: Array<{ id: string; name: string }>;
@@ -150,6 +152,14 @@ function parseMlApiError(err: unknown): MlListingError {
     body.message ??
     "O Mercado Livre rejeitou a operação. Verifique os dados e tente novamente.";
 
+  // Prefer explicit attribute/sale_term rejection messages when present.
+  const ignoredMsgs = causes
+    .map((c) => c.message)
+    .filter((m): m is string => !!m && /ignored|not (allowed|modifiable)|not modifiable/i.test(m));
+  if (ignoredMsgs.length) {
+    message = ignoredMsgs.join(" · ");
+  }
+
   if (/family_name/i.test(message) || /\[family_name\]/i.test(raw)) {
     message =
       "Informe o nome da família do produto. Contas no modelo User Products do Mercado Livre exigem esse campo em vez do título.";
@@ -207,6 +217,107 @@ export async function getCategoryAttributes(
     defaultUnit: a.default_unit,
     hint: a.hint,
   }));
+}
+
+/** Atributos que o ML gerencia e costumam estourar HTTP 400 se reenviados no create. */
+const ATTRIBUTE_IDS_NEVER_SEND_ON_CREATE = new Set([
+  "ITEM_CONDITION",
+  "IS_EMERGING_BRAND",
+  "IS_HIGHLIGHT_BRAND",
+  "IS_TOM_BRAND",
+]);
+
+function isWritableCategoryAttribute(attr: MlCategoryAttribute): boolean {
+  const tags = attr.tags ?? {};
+  if (tags.read_only || tags.fixed || tags.inferred) return false;
+  return true;
+}
+
+function normalizeAttributeValueForCreate(attr: MlListingAttributeInput): MlListingAttributeInput | null {
+  if (!attr.id || ATTRIBUTE_IDS_NEVER_SEND_ON_CREATE.has(attr.id)) return null;
+  let valueName = attr.value_name?.trim() ?? "";
+  // Templates Full/catálogo às vezes trazem vários GTINs separados por vírgula.
+  if ((attr.id === "GTIN" || attr.id === "EAN" || attr.id === "UPC") && valueName.includes(",")) {
+    valueName = valueName.split(",")[0]!.trim();
+  }
+  if (!valueName && !attr.value_id) return null;
+  return {
+    id: attr.id,
+    value_name: valueName,
+    ...(attr.value_id ? { value_id: attr.value_id } : {}),
+  };
+}
+
+/**
+ * Remove atributos que a categoria marca como read_only/fixed/inferred,
+ * e qualquer ID que não exista na definição da categoria.
+ */
+export async function sanitizeAttributesForCreate(
+  accountId: string,
+  categoryId: string,
+  attributes: MlListingAttributeInput[],
+): Promise<MlListingAttributeInput[]> {
+  let categoryAttrs: MlCategoryAttribute[] = [];
+  try {
+    categoryAttrs = await getCategoryAttributes(accountId, categoryId);
+  } catch (err) {
+    logger.warn({ err, accountId, categoryId }, "Failed to load category attributes for create sanitize");
+  }
+
+  const writableIds = new Set(
+    categoryAttrs.filter(isWritableCategoryAttribute).map((a) => a.id),
+  );
+  const hasMeta = categoryAttrs.length > 0;
+
+  const out: MlListingAttributeInput[] = [];
+  for (const raw of attributes) {
+    if (hasMeta && !writableIds.has(raw.id)) continue;
+    const normalized = normalizeAttributeValueForCreate(raw);
+    if (normalized) out.push(normalized);
+  }
+  return out;
+}
+
+function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
+  const raw = err instanceof Error ? err.message : String(err);
+  const ids = new Set<string>();
+
+  const patterns = [
+    /Attribute\s*\[([^\]]+)\]\s*ignored/gi,
+    /not allowed to modify sale term\s+([A-Z0-9_]+)/gi,
+    /not allowed to modify attribute\s+\[?([A-Z0-9_]+)\]?/gi,
+    /sale term\s+([A-Z0-9_]+)/gi,
+  ];
+  for (const re of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(raw)) !== null) {
+      const id = match[1]?.trim();
+      if (id) ids.add(id);
+    }
+  }
+
+  try {
+    const jsonStart = raw.indexOf("{");
+    if (jsonStart >= 0) {
+      const body = JSON.parse(raw.slice(jsonStart)) as {
+        cause?: Array<{ message?: string }>;
+        message?: string;
+      };
+      for (const cause of body.cause ?? []) {
+        const msg = cause.message ?? "";
+        const bracket = /\[([A-Z0-9_]+)\]/.exec(msg);
+        if (bracket?.[1]) ids.add(bracket[1]);
+      }
+      if (body.message) {
+        const bracket = /\[([A-Z0-9_]+)\]/.exec(body.message);
+        if (bracket?.[1]) ids.add(bracket[1]);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return [...ids];
 }
 
 function pictureExtensionForMime(mimeType: string): string {
@@ -417,8 +528,42 @@ export async function createMlItem(accountId: string, input: CreateMlListingInpu
         "MISSING_FAMILY_NAME",
       );
     }
-    const payload = buildCreateItemPayload(input, isUpSeller);
-    const created = await ml.post<MlItem>(accountId, "/items", payload);
+
+    const sanitizedAttributes = await sanitizeAttributesForCreate(
+      accountId,
+      input.categoryId,
+      input.attributes ?? [],
+    );
+    let workingInput: CreateMlListingInput = {
+      ...input,
+      attributes: sanitizedAttributes,
+    };
+
+    const postItem = async (data: CreateMlListingInput) => {
+      const payload = buildCreateItemPayload(data, isUpSeller);
+      return ml.post<MlItem>(accountId, "/items", payload);
+    };
+
+    let created: MlItem;
+    try {
+      created = await postItem(workingInput);
+    } catch (firstErr) {
+      const blockedIds = extractBlockedFieldIdsFromMlError(firstErr);
+      if (blockedIds.length === 0) throw firstErr;
+
+      const blocked = new Set(blockedIds);
+      logger.warn(
+        { accountId, blockedIds, categoryId: input.categoryId },
+        "ML rejected create due to non-modifiable fields; retrying without them",
+      );
+      workingInput = {
+        ...workingInput,
+        attributes: workingInput.attributes.filter((a) => !blocked.has(a.id)),
+        saleTerms: workingInput.saleTerms?.filter((t) => !blocked.has(t.id)),
+      };
+      created = await postItem(workingInput);
+    }
+
     if (input.description?.trim()) {
       await setMlItemDescription(accountId, created.id, input.description);
     }
