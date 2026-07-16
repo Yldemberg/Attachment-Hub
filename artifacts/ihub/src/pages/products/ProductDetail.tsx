@@ -5,13 +5,15 @@ import {
   useDeleteProduct,
   useDuplicateProduct,
   useListAccounts,
+  useSaveListingTemplateFromProduct,
   getGetProductQueryKey,
   getListProductsQueryKey,
+  getListListingTemplatesQueryKey,
 } from "@workspace/api-client-react";
 import { formatCurrency, formatDateTime, stockBgColor } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Copy, ExternalLink, FileEdit, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, FileEdit, LayoutTemplate, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,6 +141,28 @@ export default function ProductDetail() {
     },
   });
 
+  const { mutate: saveAsTemplate, isPending: savingTemplate } = useSaveListingTemplateFromProduct({
+    mutation: {
+      onSuccess: (res) => {
+        queryClient.invalidateQueries({ queryKey: getListListingTemplatesQueryKey({}) });
+        toast({
+          title: "Modelo salvo",
+          description: "O anúncio foi salvo como modelo e pode ser usado para criar novos anúncios.",
+        });
+        const templateId = res.data?.id;
+        if (templateId) navigate(`/listing-templates/${templateId}`);
+      },
+      onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
+        toast({
+          variant: "destructive",
+          title: "Erro ao salvar modelo",
+          description:
+            err.payload?.error?.message ?? err.message ?? "Não foi possível salvar o modelo.",
+        });
+      },
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="h-full overflow-y-auto bg-background p-6 space-y-3">
@@ -198,6 +222,19 @@ export default function ProductDetail() {
               <div className="flex items-start justify-between gap-2">
                 <h1 className="text-lg font-bold text-foreground leading-tight">{p.title}</h1>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    disabled={savingTemplate}
+                    onClick={() => {
+                      if (!id) return;
+                      saveAsTemplate({ productId: id });
+                    }}
+                  >
+                    <LayoutTemplate className="w-3.5 h-3.5" />
+                    {savingTemplate ? "Salvando…" : "Salvar modelo"}
+                  </Button>
                   {canDuplicate && (
                     <Button
                       variant="outline"

@@ -32,6 +32,8 @@ import {
 import { buildMlOrderStoredPayload } from "../lib/ml-order-payload";
 import { verifyN8nWebhookSecret } from "../lib/n8n-listings";
 import { completeListingPrepareJobFromWebhook } from "../lib/listing-prepare-jobs";
+import { getMlItemDescription } from "../lib/ml-listings";
+import { upsertListingTemplateFromMlItem } from "../lib/listing-templates";
 
 const router = Router();
 
@@ -222,7 +224,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           accountId: account.id,
           type: "new_order",
           title: "Novo pedido",
-          message: `Pedido #${order.id} de ${order.buyer.nickname} ÔøΩ R$ ${order.total_amount}`,
+          message: `Pedido #${order.id} de ${order.buyer.nickname} ù R$ ${order.total_amount}`,
           isRead: false,
           resourceType: "order",
           resourceId: order.id.toString(),
@@ -249,7 +251,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         const pricesMap = await fetchMlItemPricesBatch(account.id, [item.id]);
         const itemPrices = pricesMap.get(item.id) ?? { amount: null, regularAmount: null };
 
-        await db
+        const [upsertedProduct] = await db
           .insert(productsTable)
           .values({
             accountId: account.id,
@@ -296,7 +298,21 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               variationsJson,
               lastSyncedAt: new Date(),
             },
+          })
+          .returning({ id: productsTable.id });
+
+        try {
+          const description = await getMlItemDescription(account.id, item.id);
+          await upsertListingTemplateFromMlItem({
+            userId: account.userId,
+            accountId: account.id,
+            productId: upsertedProduct?.id ?? null,
+            item,
+            description,
           });
+        } catch (err) {
+          logger.warn({ err, itemId }, "ML webhook: failed to upsert listing template");
+        }
 
         const previousQuantity = existingProduct?.availableQuantity ?? null;
         if (previousQuantity !== null && previousQuantity !== item.available_quantity) {
@@ -317,7 +333,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "low_stock",
-            title: "Estoque crÔøΩtico",
+            title: "Estoque crùtico",
             message: `"${item.title}" tem apenas ${item.available_quantity} unidade(s)`,
             isRead: false,
             resourceType: "product",
@@ -363,7 +379,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "promotion_candidate",
-            title: "Produto elegÔøΩvel para promoÔøΩÔøΩo",
+            title: "Produto elegùvel para promoùùo",
             message: `${productTitle ?? candidate.item_id} pode participar de ${typeLabel}`,
             isRead: false,
             resourceType: "promotion",
@@ -414,7 +430,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               userId: account.userId,
               accountId: account.id,
               type: "promotion_active",
-              title: "PromoÔøΩÔøΩo ativada",
+              title: "Promoùùo ativada",
               message: `${productTitle ?? offer.item_id} entrou em ${typeLabel}`,
               isRead: false,
               resourceType: "promotion",

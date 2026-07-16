@@ -35,6 +35,7 @@ import type {
   ErrorResponse,
   GetConnectUrl200,
   GetDashboardSummaryParams,
+  GetListingTemplate200,
   GetLowStockProducts200,
   GetLowStockProductsParams,
   GetMercadoPagoPaymentParams,
@@ -55,6 +56,7 @@ import type {
   InventorySkuFinancialsResponse,
   ListAccounts200,
   ListCriticalAdsParams,
+  ListListingTemplatesParams,
   ListNotificationsParams,
   ListOrdersParams,
   ListProductsParams,
@@ -63,6 +65,7 @@ import type {
   ListPromotionsParams,
   ListQuestionsParams,
   ListingPrepareJobResponse,
+  ListingTemplateListResponse,
   MandateAdjustRequest,
   MandateAdjustResponse,
   MarkAllNotificationsRead200,
@@ -88,6 +91,8 @@ import type {
   PromotionItemListResponse,
   PromotionListResponse,
   PromotionSummary,
+  PublishListingTemplateRequest,
+  PublishListingTemplateResponse,
   PublishProductDraftRequest,
   Question,
   QuestionListResponse,
@@ -95,10 +100,12 @@ import type {
   RemovePromotionItemParams,
   SalesChartResponse,
   SalesReportResponse,
+  SaveListingTemplateFromProduct201,
   SearchInventoryParams,
   SkuSyncRequest,
   SkuSyncResponse,
   SyncAccount202,
+  SyncListingTemplates202,
   UnauthorizedResponse,
   UpdateProductListingStatus200,
   UpdateProductListingStatusRequest,
@@ -3772,6 +3779,555 @@ export function useListCriticalAds<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+
+ * @summary Listar modelos de anúncio salvos
+ */
+export const getListListingTemplatesUrl = (
+  params?: ListListingTemplatesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/listing-templates?${stringifiedParams}`
+    : `/api/listing-templates`;
+};
+
+export const listListingTemplates = async (
+  params?: ListListingTemplatesParams,
+  options?: RequestInit,
+): Promise<ListingTemplateListResponse> => {
+  return customFetch<ListingTemplateListResponse>(
+    getListListingTemplatesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListListingTemplatesQueryKey = (
+  params?: ListListingTemplatesParams,
+) => {
+  return [`/api/listing-templates`, ...(params ? [params] : [])] as const;
+};
+
+export const getListListingTemplatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listListingTemplates>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListListingTemplatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listListingTemplates>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListListingTemplatesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listListingTemplates>>
+  > = ({ signal }) =>
+    listListingTemplates(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listListingTemplates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListListingTemplatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listListingTemplates>>
+>;
+export type ListListingTemplatesQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Listar modelos de anúncio salvos
+ */
+
+export function useListListingTemplates<
+  TData = Awaited<ReturnType<typeof listListingTemplates>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: ListListingTemplatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listListingTemplates>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListListingTemplatesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Busca todos os anúncios das contas sincronizadas no Mercado Livre (campos completos) e salva/atualiza na tabela de modelos. Processamento em background.
+
+ * @summary Sincronizar modelos a partir de todas as contas
+ */
+export const getSyncListingTemplatesUrl = () => {
+  return `/api/listing-templates/sync`;
+};
+
+export const syncListingTemplates = async (
+  options?: RequestInit,
+): Promise<SyncListingTemplates202> => {
+  return customFetch<SyncListingTemplates202>(getSyncListingTemplatesUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSyncListingTemplatesMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncListingTemplates>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncListingTemplates>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["syncListingTemplates"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncListingTemplates>>,
+    void
+  > = () => {
+    return syncListingTemplates(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncListingTemplatesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncListingTemplates>>
+>;
+
+export type SyncListingTemplatesMutationError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Sincronizar modelos a partir de todas as contas
+ */
+export const useSyncListingTemplates = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncListingTemplates>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncListingTemplates>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getSyncListingTemplatesMutationOptions(options));
+};
+
+/**
+ * @summary Salvar um produto existente como modelo
+ */
+export const getSaveListingTemplateFromProductUrl = (productId: string) => {
+  return `/api/listing-templates/from-product/${productId}`;
+};
+
+export const saveListingTemplateFromProduct = async (
+  productId: string,
+  options?: RequestInit,
+): Promise<SaveListingTemplateFromProduct201> => {
+  return customFetch<SaveListingTemplateFromProduct201>(
+    getSaveListingTemplateFromProductUrl(productId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getSaveListingTemplateFromProductMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveListingTemplateFromProduct>>,
+    TError,
+    { productId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveListingTemplateFromProduct>>,
+  TError,
+  { productId: string },
+  TContext
+> => {
+  const mutationKey = ["saveListingTemplateFromProduct"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveListingTemplateFromProduct>>,
+    { productId: string }
+  > = (props) => {
+    const { productId } = props ?? {};
+
+    return saveListingTemplateFromProduct(productId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveListingTemplateFromProductMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveListingTemplateFromProduct>>
+>;
+
+export type SaveListingTemplateFromProductMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Salvar um produto existente como modelo
+ */
+export const useSaveListingTemplateFromProduct = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveListingTemplateFromProduct>>,
+    TError,
+    { productId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveListingTemplateFromProduct>>,
+  TError,
+  { productId: string },
+  TContext
+> => {
+  return useMutation(getSaveListingTemplateFromProductMutationOptions(options));
+};
+
+/**
+ * @summary Obter modelo com payload completo
+ */
+export const getGetListingTemplateUrl = (id: string) => {
+  return `/api/listing-templates/${id}`;
+};
+
+export const getListingTemplate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GetListingTemplate200> => {
+  return customFetch<GetListingTemplate200>(getGetListingTemplateUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetListingTemplateQueryKey = (id: string) => {
+  return [`/api/listing-templates/${id}`] as const;
+};
+
+export const getGetListingTemplateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getListingTemplate>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getListingTemplate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetListingTemplateQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getListingTemplate>>
+  > = ({ signal }) => getListingTemplate(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getListingTemplate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetListingTemplateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getListingTemplate>>
+>;
+export type GetListingTemplateQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Obter modelo com payload completo
+ */
+
+export function useGetListingTemplate<
+  TData = Awaited<ReturnType<typeof getListingTemplate>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getListingTemplate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetListingTemplateQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Remover modelo de anúncio
+ */
+export const getDeleteListingTemplateUrl = (id: string) => {
+  return `/api/listing-templates/${id}`;
+};
+
+export const deleteListingTemplate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteListingTemplateUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteListingTemplateMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteListingTemplate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteListingTemplate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteListingTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteListingTemplate>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteListingTemplate(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteListingTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteListingTemplate>>
+>;
+
+export type DeleteListingTemplateMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Remover modelo de anúncio
+ */
+export const useDeleteListingTemplate = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteListingTemplate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteListingTemplate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteListingTemplateMutationOptions(options));
+};
+
+/**
+ * @summary Publicar novo anúncio a partir de um modelo
+ */
+export const getPublishListingTemplateUrl = (id: string) => {
+  return `/api/listing-templates/${id}/publish`;
+};
+
+export const publishListingTemplate = async (
+  id: string,
+  publishListingTemplateRequest: PublishListingTemplateRequest,
+  options?: RequestInit,
+): Promise<PublishListingTemplateResponse> => {
+  return customFetch<PublishListingTemplateResponse>(
+    getPublishListingTemplateUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(publishListingTemplateRequest),
+    },
+  );
+};
+
+export const getPublishListingTemplateMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishListingTemplate>>,
+    TError,
+    { id: string; data: BodyType<PublishListingTemplateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishListingTemplate>>,
+  TError,
+  { id: string; data: BodyType<PublishListingTemplateRequest> },
+  TContext
+> => {
+  const mutationKey = ["publishListingTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishListingTemplate>>,
+    { id: string; data: BodyType<PublishListingTemplateRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return publishListingTemplate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishListingTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishListingTemplate>>
+>;
+export type PublishListingTemplateMutationBody =
+  BodyType<PublishListingTemplateRequest>;
+export type PublishListingTemplateMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Publicar novo anúncio a partir de um modelo
+ */
+export const usePublishListingTemplate = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishListingTemplate>>,
+    TError,
+    { id: string; data: BodyType<PublishListingTemplateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishListingTemplate>>,
+  TError,
+  { id: string; data: BodyType<PublishListingTemplateRequest> },
+  TContext
+> => {
+  return useMutation(getPublishListingTemplateMutationOptions(options));
+};
 
 /**
  * @summary Promotion KPIs across connected accounts

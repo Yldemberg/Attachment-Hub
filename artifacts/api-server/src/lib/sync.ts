@@ -25,6 +25,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { applyMandateStockFromWebhookOrder } from "./order-mandate-stock";
+import { syncListingTemplatesForAccount } from "./listing-templates";
 
 const ALL_ML_STATUSES = ["active", "paused", "closed", "under_review"];
 
@@ -274,6 +275,13 @@ export async function syncAccount(accountId: string, userId: string): Promise<vo
   await syncProducts(accountId, account.mlUserId);
   await syncOrders(accountId, account.mlUserId);
   await syncQuestions(accountId, account.mlUserId);
+
+  // Snapshot completo dos anúncios (descrição, fotos, atributos, etc.) para uso como modelos.
+  try {
+    await syncListingTemplatesForAccount(accountId, userId);
+  } catch (err) {
+    logger.error({ err, accountId }, "Listing templates sync failed after account sync");
+  }
 
   await db
     .update(accountsTable)

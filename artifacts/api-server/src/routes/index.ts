@@ -11,6 +11,7 @@ import notificationsRouter from "./notifications";
 import dashboardRouter from "./dashboard";
 import promotionsRouter from "./promotions";
 import criticalAdsRouter from "./critical-ads";
+import listingTemplatesRouter from "./listing-templates";
 import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
@@ -28,5 +29,6 @@ router.use(notificationsRouter);
 router.use(dashboardRouter);
 router.use(promotionsRouter);
 router.use(criticalAdsRouter);
+router.use(listingTemplatesRouter);
 
 export default router;

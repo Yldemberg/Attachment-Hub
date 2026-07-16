@@ -32,6 +32,8 @@ tags:
     description: Mercado Livre seller promotions and campaigns
   - name: critical-ads
     description: Critical listing diagnostics from Mercado Livre
+  - name: listing-templates
+    description: Modelos de anúncio derivados das contas ML sincronizadas
   - name: webhooks
     description: External webhook receivers
 
@@ -233,7 +235,7 @@ paths:
       operationId: syncAccount
       tags: [accounts]
       summary: Trigger full sync for a ML account
-      description: Syncs products, orders, and questions from Mercado Livre
+      description: Syncs products, orders, questions, and listing templates (full ad fields) from Mercado Livre
       security:
         - bearerAuth: []
       parameters:
@@ -1233,6 +1235,183 @@ paths:
                 $ref: "#/components/schemas/CriticalAdListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Listing Templates (modelos de anúncio)
+  # ---------------------------------------------------------------------------
+  /listing-templates:
+    get:
+      operationId: listListingTemplates
+      tags: [listing-templates]
+      summary: Listar modelos de anúncio salvos
+      description: >
+        Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.)
+        sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Busca por título ou MLB
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Lista paginada de modelos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingTemplateListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /listing-templates/sync:
+    post:
+      operationId: syncListingTemplates
+      tags: [listing-templates]
+      summary: Sincronizar modelos a partir de todas as contas
+      description: >
+        Busca todos os anúncios das contas sincronizadas no Mercado Livre (campos completos)
+        e salva/atualiza na tabela de modelos. Processamento em background.
+      security:
+        - bearerAuth: []
+      responses:
+        "202":
+          description: Sync initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                required: [message]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /listing-templates/from-product/{productId}:
+    post:
+      operationId: saveListingTemplateFromProduct
+      tags: [listing-templates]
+      summary: Salvar um produto existente como modelo
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Modelo criado/atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ListingTemplateDetail"
+                required: [data]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /listing-templates/{id}:
+    get:
+      operationId: getListingTemplate
+      tags: [listing-templates]
+      summary: Obter modelo com payload completo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Modelo de anúncio
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ListingTemplateDetail"
+                required: [data]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteListingTemplate
+      tags: [listing-templates]
+      summary: Remover modelo de anúncio
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /listing-templates/{id}/publish:
+    post:
+      operationId: publishListingTemplate
+      tags: [listing-templates]
+      summary: Publicar novo anúncio a partir de um modelo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishListingTemplateRequest"
+      responses:
+        "201":
+          description: Anúncio publicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishListingTemplateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ---------------------------------------------------------------------------
   # Promotions
@@ -3792,6 +3971,178 @@ components:
           items:
             $ref: "#/components/schemas/SalesReportRow"
       required: [period, summary, rows]
+
+    # --------------------------------------------------------------------------
+    # Listing Templates
+    # --------------------------------------------------------------------------
+    ListingTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        sourceAccountId:
+          type: string
+          nullable: true
+        sourceProductId:
+          type: string
+          nullable: true
+        sourceMlItemId:
+          type: string
+        name:
+          type: string
+        thumbnail:
+          type: string
+          nullable: true
+        categoryId:
+          type: string
+          nullable: true
+        listingTypeId:
+          type: string
+          nullable: true
+        condition:
+          type: string
+          nullable: true
+        sourceStatus:
+          type: string
+          nullable: true
+        isFull:
+          type: boolean
+        isCatalog:
+          type: boolean
+        hasVariations:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - sourceMlItemId
+        - name
+        - isFull
+        - isCatalog
+        - hasVariations
+        - createdAt
+        - updatedAt
+
+    ListingTemplatePayload:
+      type: object
+      description: >
+        Campos completos do anúncio prontos para republicação (CreateMlListingInput-compatible).
+      additionalProperties: true
+      properties:
+        title:
+          type: string
+        familyName:
+          type: string
+        categoryId:
+          type: string
+        price:
+          type: number
+        availableQuantity:
+          type: integer
+        condition:
+          type: string
+          enum: [new, used]
+        listingTypeId:
+          type: string
+        pictures:
+          type: array
+          items:
+            type: string
+        pictureSources:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        description:
+          type: string
+        saleTerms:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        shipping:
+          type: object
+          additionalProperties: true
+        variations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        videoId:
+          type: string
+          nullable: true
+        sourcePermalink:
+          type: string
+
+    ListingTemplateDetail:
+      allOf:
+        - $ref: "#/components/schemas/ListingTemplate"
+        - type: object
+          properties:
+            payload:
+              $ref: "#/components/schemas/ListingTemplatePayload"
+          required: [payload]
+
+    ListingTemplateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListingTemplate"
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+          required: [page, limit, total, totalPages]
+      required: [data, pagination]
+
+    PublishListingTemplateRequest:
+      type: object
+      properties:
+        targetAccountId:
+          type: string
+          description: Conta ML de destino para publicar o novo anúncio
+        overrides:
+          type: object
+          description: Campos opcionais para sobrescrever o payload do modelo
+          additionalProperties: true
+      required: [targetAccountId]
+
+    PublishListingTemplateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            productId:
+              type: string
+            mlItemId:
+              type: string
+          required: [productId, mlItemId]
+      required: [data]
 
     # --------------------------------------------------------------------------
     # Webhooks

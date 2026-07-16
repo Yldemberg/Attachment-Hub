@@ -7,12 +7,14 @@ import { productsTable } from "./products";
 import { ordersTable } from "./orders";
 import { questionsTable } from "./questions";
 import { notificationsTable } from "./notifications";
+import { listingTemplatesTable } from "./listing-templates";
 
 export const profilesRelations = relations(profilesTable, ({ many }) => ({
   accounts: many(accountsTable),
   notifications: many(notificationsTable),
   skuMandateInventories: many(skuMandateInventoryTable),
   inventorySkuFinancials: many(inventorySkuFinancialsTable),
+  listingTemplates: many(listingTemplatesTable),
 }));
 
 export const accountsRelations = relations(accountsTable, ({ one, many }) => ({
@@ -23,6 +25,7 @@ export const accountsRelations = relations(accountsTable, ({ one, many }) => ({
   products: many(productsTable),
   orders: many(ordersTable),
   questions: many(questionsTable),
+  listingTemplates: many(listingTemplatesTable),
 }));
 
 export const skuMandateInventoryRelations = relations(skuMandateInventoryTable, ({ one }) => ({
@@ -39,10 +42,26 @@ export const inventorySkuFinancialsRelations = relations(inventorySkuFinancialsT
   }),
 }));
 
-export const productsRelations = relations(productsTable, ({ one }) => ({
+export const productsRelations = relations(productsTable, ({ one, many }) => ({
   account: one(accountsTable, {
     fields: [productsTable.accountId],
     references: [accountsTable.id],
+  }),
+  listingTemplates: many(listingTemplatesTable),
+}));
+
+export const listingTemplatesRelations = relations(listingTemplatesTable, ({ one }) => ({
+  profile: one(profilesTable, {
+    fields: [listingTemplatesTable.userId],
+    references: [profilesTable.id],
+  }),
+  sourceAccount: one(accountsTable, {
+    fields: [listingTemplatesTable.sourceAccountId],
+    references: [accountsTable.id],
+  }),
+  sourceProduct: one(productsTable, {
+    fields: [listingTemplatesTable.sourceProductId],
+    references: [productsTable.id],
   }),
 }));
 

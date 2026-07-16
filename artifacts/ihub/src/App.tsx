@@ -24,6 +24,8 @@ import SalesReport from "@/pages/reports/SalesReport";
 import Promotions from "@/pages/promotions/Promotions";
 import PromotionDetail from "@/pages/promotions/PromotionDetail";
 import CriticalAds from "@/pages/CriticalAds";
+import ListingTemplates from "@/pages/templates/ListingTemplates";
+import ListingTemplateDetail from "@/pages/templates/ListingTemplateDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,6 +94,24 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <Products />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/listing-templates/:id">
+        {() => (
+          <ProtectedRoute>
+            <AppLayout>
+              <ListingTemplateDetail />
+            </AppLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+
+      <Route path="/listing-templates">
+        <ProtectedRoute>
+          <AppLayout>
+            <ListingTemplates />
           </AppLayout>
         </ProtectedRoute>
       </Route>

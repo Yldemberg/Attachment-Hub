@@ -9,4 +9,5 @@ export * from "./notifications";
 export * from "./relations";
 export * from "./oauth-states";
 export * from "./listing-prepare-jobs";
+export * from "./listing-templates";
 export * from "./ml-diagnostico-critico";

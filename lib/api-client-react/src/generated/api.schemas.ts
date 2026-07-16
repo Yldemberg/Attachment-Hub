@@ -990,6 +990,103 @@ export interface SalesReportResponse {
   rows: SalesReportRow[];
 }
 
+export interface ListingTemplate {
+  id: string;
+  userId: string;
+  sourceAccountId?: string | null;
+  sourceProductId?: string | null;
+  sourceMlItemId: string;
+  name: string;
+  thumbnail?: string | null;
+  categoryId?: string | null;
+  listingTypeId?: string | null;
+  condition?: string | null;
+  sourceStatus?: string | null;
+  isFull: boolean;
+  isCatalog: boolean;
+  hasVariations: boolean;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ListingTemplatePayloadCondition =
+  (typeof ListingTemplatePayloadCondition)[keyof typeof ListingTemplatePayloadCondition];
+
+export const ListingTemplatePayloadCondition = {
+  new: "new",
+  used: "used",
+} as const;
+
+export type ListingTemplatePayloadAttributesItem = { [key: string]: unknown };
+
+export type ListingTemplatePayloadSaleTermsItem = { [key: string]: unknown };
+
+export type ListingTemplatePayloadShipping = { [key: string]: unknown };
+
+export type ListingTemplatePayloadVariationsItem = { [key: string]: unknown };
+
+/**
+ * Campos completos do anúncio prontos para republicação (CreateMlListingInput-compatible).
+
+ */
+export interface ListingTemplatePayload {
+  title?: string;
+  familyName?: string;
+  categoryId?: string;
+  price?: number;
+  availableQuantity?: number;
+  condition?: ListingTemplatePayloadCondition;
+  listingTypeId?: string;
+  pictures?: string[];
+  pictureSources?: string[];
+  attributes?: ListingTemplatePayloadAttributesItem[];
+  description?: string;
+  saleTerms?: ListingTemplatePayloadSaleTermsItem[];
+  shipping?: ListingTemplatePayloadShipping;
+  variations?: ListingTemplatePayloadVariationsItem[];
+  videoId?: string | null;
+  sourcePermalink?: string;
+  [key: string]: unknown;
+}
+
+export type ListingTemplateDetail = ListingTemplate & {
+  payload: ListingTemplatePayload;
+};
+
+export type ListingTemplateListResponsePagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export interface ListingTemplateListResponse {
+  data: ListingTemplate[];
+  pagination: ListingTemplateListResponsePagination;
+}
+
+/**
+ * Campos opcionais para sobrescrever o payload do modelo
+ */
+export type PublishListingTemplateRequestOverrides = { [key: string]: unknown };
+
+export interface PublishListingTemplateRequest {
+  /** Conta ML de destino para publicar o novo anúncio */
+  targetAccountId: string;
+  /** Campos opcionais para sobrescrever o payload do modelo */
+  overrides?: PublishListingTemplateRequestOverrides;
+}
+
+export type PublishListingTemplateResponseData = {
+  productId: string;
+  mlItemId: string;
+};
+
+export interface PublishListingTemplateResponse {
+  data: PublishListingTemplateResponseData;
+}
+
 export interface MercadoLivreWebhookPayload {
   _id?: string;
   resource: string;
@@ -1192,6 +1289,28 @@ export type ListCriticalAdsParams = {
   search?: string;
   page?: number;
   limit?: number;
+};
+
+export type ListListingTemplatesParams = {
+  account_id?: string;
+  /**
+   * Busca por título ou MLB
+   */
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type SyncListingTemplates202 = {
+  message: string;
+};
+
+export type SaveListingTemplateFromProduct201 = {
+  data: ListingTemplateDetail;
+};
+
+export type GetListingTemplate200 = {
+  data: ListingTemplateDetail;
 };
 
 export type GetPromotionsSummaryParams = {

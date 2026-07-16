@@ -1625,6 +1625,144 @@ export const ListCriticalAdsResponse = zod.object({
 });
 
 /**
+ * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+
+ * @summary Listar modelos de anúncio salvos
+ */
+export const listListingTemplatesQueryPageDefault = 1;
+export const listListingTemplatesQueryLimitDefault = 20;
+
+export const ListListingTemplatesQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional().describe("Busca por título ou MLB"),
+  page: zod.coerce.number().default(listListingTemplatesQueryPageDefault),
+  limit: zod.coerce.number().default(listListingTemplatesQueryLimitDefault),
+});
+
+export const ListListingTemplatesResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      sourceAccountId: zod.string().nullish(),
+      sourceProductId: zod.string().nullish(),
+      sourceMlItemId: zod.string(),
+      name: zod.string(),
+      thumbnail: zod.string().nullish(),
+      categoryId: zod.string().nullish(),
+      listingTypeId: zod.string().nullish(),
+      condition: zod.string().nullish(),
+      sourceStatus: zod.string().nullish(),
+      isFull: zod.boolean(),
+      isCatalog: zod.boolean(),
+      hasVariations: zod.boolean(),
+      lastSyncedAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
+
+/**
+ * @summary Salvar um produto existente como modelo
+ */
+export const SaveListingTemplateFromProductParams = zod.object({
+  productId: zod.coerce.string(),
+});
+
+/**
+ * @summary Obter modelo com payload completo
+ */
+export const GetListingTemplateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetListingTemplateResponse = zod.object({
+  data: zod
+    .object({
+      id: zod.string(),
+      userId: zod.string(),
+      sourceAccountId: zod.string().nullish(),
+      sourceProductId: zod.string().nullish(),
+      sourceMlItemId: zod.string(),
+      name: zod.string(),
+      thumbnail: zod.string().nullish(),
+      categoryId: zod.string().nullish(),
+      listingTypeId: zod.string().nullish(),
+      condition: zod.string().nullish(),
+      sourceStatus: zod.string().nullish(),
+      isFull: zod.boolean(),
+      isCatalog: zod.boolean(),
+      hasVariations: zod.boolean(),
+      lastSyncedAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    })
+    .and(
+      zod.object({
+        payload: zod
+          .object({
+            title: zod.string().optional(),
+            familyName: zod.string().optional(),
+            categoryId: zod.string().optional(),
+            price: zod.number().optional(),
+            availableQuantity: zod.number().optional(),
+            condition: zod.enum(["new", "used"]).optional(),
+            listingTypeId: zod.string().optional(),
+            pictures: zod.array(zod.string()).optional(),
+            pictureSources: zod.array(zod.string()).optional(),
+            attributes: zod
+              .array(zod.record(zod.string(), zod.unknown()))
+              .optional(),
+            description: zod.string().optional(),
+            saleTerms: zod
+              .array(zod.record(zod.string(), zod.unknown()))
+              .optional(),
+            shipping: zod.record(zod.string(), zod.unknown()).optional(),
+            variations: zod
+              .array(zod.record(zod.string(), zod.unknown()))
+              .optional(),
+            videoId: zod.string().nullish(),
+            sourcePermalink: zod.string().optional(),
+          })
+          .describe(
+            "Campos completos do anúncio prontos para republicação (CreateMlListingInput-compatible).\n",
+          ),
+      }),
+    ),
+});
+
+/**
+ * @summary Remover modelo de anúncio
+ */
+export const DeleteListingTemplateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * @summary Publicar novo anúncio a partir de um modelo
+ */
+export const PublishListingTemplateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const PublishListingTemplateBody = zod.object({
+  targetAccountId: zod
+    .string()
+    .describe("Conta ML de destino para publicar o novo anúncio"),
+  overrides: zod
+    .record(zod.string(), zod.unknown())
+    .optional()
+    .describe("Campos opcionais para sobrescrever o payload do modelo"),
+});
+
+/**
  * @summary Promotion KPIs across connected accounts
  */
 export const getPromotionsSummaryQueryRefreshDefault = false;
