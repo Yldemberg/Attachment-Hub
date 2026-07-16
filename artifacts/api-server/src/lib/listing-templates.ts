@@ -466,12 +466,6 @@ export async function publishListingTemplate(params: {
       "CATALOG_LISTING",
     );
   }
-  if (template.isFull) {
-    throw new MlListingError(
-      "Modelos Full (Fulfillment) não podem ser publicados automaticamente pelo iHub.",
-      "FULL_ITEM",
-    );
-  }
 
   const payload = template.payloadJson as ListingTemplatePayload;
   const input: CreateMlListingInput = {
@@ -482,6 +476,12 @@ export async function publishListingTemplate(params: {
   // Prefer public URLs so pictures work across accounts.
   if (input.pictureSources?.length) {
     input.pictures = [];
+  }
+
+  // Full (Fulfillment) templates are content-only: publish as a traditional listing,
+  // never carry over fulfillment shipping to the new item.
+  if (template.isFull) {
+    delete input.shipping;
   }
 
   const created = await createMlItem(params.targetAccountId, input);

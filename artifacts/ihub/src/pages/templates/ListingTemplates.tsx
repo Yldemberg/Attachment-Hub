@@ -43,9 +43,6 @@ function publishBlockedReason(t: ListingTemplate): string | null {
   if (t.isCatalog) {
     return "Modelos de catálogo compartilhado não podem ser publicados automaticamente.";
   }
-  if (t.isFull) {
-    return "Modelos Full (Fulfillment) não podem ser publicados automaticamente.";
-  }
   return null;
 }
 

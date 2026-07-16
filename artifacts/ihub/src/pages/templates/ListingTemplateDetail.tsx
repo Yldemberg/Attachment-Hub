@@ -50,13 +50,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 function publishBlockedReason(flags: {
   isCatalog: boolean;
-  isFull: boolean;
 }): string | null {
   if (flags.isCatalog) {
     return "Modelos de catálogo compartilhado não podem ser publicados automaticamente.";
-  }
-  if (flags.isFull) {
-    return "Modelos Full (Fulfillment) não podem ser publicados automaticamente.";
   }
   return null;
 }
@@ -104,7 +100,7 @@ export default function ListingTemplateDetail() {
     : "Sem conta";
 
   const blocked = template
-    ? publishBlockedReason({ isCatalog: template.isCatalog, isFull: template.isFull })
+    ? publishBlockedReason({ isCatalog: template.isCatalog })
     : null;
 
   const resetFormFromTemplate = () => {
@@ -295,6 +291,13 @@ export default function ListingTemplateDetail() {
               {blocked && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-3">
                   {blocked}
+                </p>
+              )}
+
+              {!blocked && template.isFull && (
+                <p className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 mt-3">
+                  Este modelo veio de um anúncio Full. Ao publicar, será criado um anúncio{" "}
+                  <strong>tradicional</strong> (sem Fulfillment), com os mesmos dados editáveis abaixo.
                 </p>
               )}
 
