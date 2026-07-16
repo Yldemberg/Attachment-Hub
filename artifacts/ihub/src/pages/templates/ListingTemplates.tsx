@@ -1,13 +1,11 @@
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import {
   useListListingTemplates,
   useListAccounts,
   useSyncListingTemplates,
   useDeleteListingTemplate,
-  usePublishListingTemplate,
   getListListingTemplatesQueryKey,
-  getListProductsQueryKey,
   type ListingTemplate,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,7 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { PublishTemplateDialog } from "./components/PublishTemplateDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,12 +52,10 @@ function publishBlockedReason(t: ListingTemplate): string | null {
 function TemplateCard({
   template,
   accountLabel,
-  onPublish,
   onDelete,
 }: {
   template: ListingTemplate;
   accountLabel: string;
-  onPublish: () => void;
   onDelete: () => void;
 }) {
   const blocked = publishBlockedReason(template);
@@ -99,7 +94,7 @@ function TemplateCard({
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0"
-                title="Ver modelo"
+                title="Editar e publicar"
                 asChild
               >
                 <Link href={`/listing-templates/${template.id}`}>
@@ -110,11 +105,19 @@ function TemplateCard({
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0"
-                title={blocked ?? "Publicar anúncio"}
+                title={blocked ?? "Editar e publicar"}
                 disabled={!!blocked}
-                onClick={onPublish}
+                asChild={!blocked}
               >
-                <Upload className="w-3.5 h-3.5" />
+                {blocked ? (
+                  <span>
+                    <Upload className="w-3.5 h-3.5" />
+                  </span>
+                ) : (
+                  <Link href={`/listing-templates/${template.id}`}>
+                    <Upload className="w-3.5 h-3.5" />
+                  </Link>
+                )}
               </Button>
               <Button
                 variant="ghost"
@@ -174,7 +177,6 @@ function SkeletonCard() {
 }
 
 export default function ListingTemplates() {
-  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -182,8 +184,6 @@ export default function ListingTemplates() {
   const [search, setSearch] = useState("");
   const [accountId, setAccountId] = useState("all");
   const [page, setPage] = useState(1);
-  const [publishTarget, setPublishTarget] = useState<ListingTemplate | null>(null);
-  const [targetAccountId, setTargetAccountId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ListingTemplate | null>(null);
 
   const params = {
@@ -230,28 +230,6 @@ export default function ListingTemplates() {
           variant: "destructive",
           title: "Erro ao sincronizar",
           description: err.payload?.error?.message ?? err.message ?? "Não foi possível sincronizar.",
-        });
-      },
-    },
-  });
-
-  const { mutate: publishTemplate, isPending: publishing } = usePublishListingTemplate({
-    mutation: {
-      onSuccess: (res) => {
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-        setPublishTarget(null);
-        toast({
-          title: "Anúncio publicado",
-          description: `Novo anúncio ${res.data.mlItemId} criado com sucesso.`,
-        });
-        navigate(`/products/${res.data.productId}`);
-      },
-      onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
-        toast({
-          variant: "destructive",
-          title: "Erro ao publicar",
-          description:
-            err.payload?.error?.message ?? err.message ?? "Não foi possível publicar o anúncio.",
         });
       },
     },
@@ -386,10 +364,6 @@ export default function ListingTemplates() {
                   ? (accountLabelById.get(template.sourceAccountId) ?? "Conta desconectada")
                   : "Sem conta"
               }
-              onPublish={() => {
-                setTargetAccountId(template.sourceAccountId ?? accounts[0]?.id ?? "");
-                setPublishTarget(template);
-              }}
               onDelete={() => setDeleteTarget(template)}
             />
           ))}
@@ -422,28 +396,6 @@ export default function ListingTemplates() {
           </div>
         )}
       </div>
-
-      <PublishTemplateDialog
-        open={!!publishTarget}
-        onOpenChange={(o) => {
-          if (!o) setPublishTarget(null);
-        }}
-        templateName={publishTarget?.name ?? ""}
-        sourceMlItemId={publishTarget?.sourceMlItemId}
-        sourceAccountId={publishTarget?.sourceAccountId}
-        accounts={accounts}
-        targetAccountId={targetAccountId}
-        onTargetAccountChange={setTargetAccountId}
-        isPending={publishing}
-        blockedReason={publishTarget ? publishBlockedReason(publishTarget) : null}
-        onConfirm={() => {
-          if (!publishTarget || !targetAccountId) return;
-          publishTemplate({
-            id: publishTarget.id,
-            data: { targetAccountId },
-          });
-        }}
-      />
 
       <AlertDialog
         open={!!deleteTarget}

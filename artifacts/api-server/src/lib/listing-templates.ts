@@ -149,6 +149,7 @@ export function templatePayloadToCreateInput(payload: ListingTemplatePayload): C
     saleTerms: payload.saleTerms,
     shipping: payload.shipping,
     variations: payload.variations,
+    videoId: payload.videoId ?? null,
   };
 }
 

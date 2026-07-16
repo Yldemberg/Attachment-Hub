@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import {
   useGetListingTemplate,
@@ -8,21 +8,28 @@ import {
   getGetListingTemplateQueryKey,
   getListListingTemplatesQueryKey,
   getListProductsQueryKey,
-  type ListingTemplatePayload,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ExternalLink,
   LayoutTemplate,
+  Loader2,
   Package,
+  RotateCcw,
   Trash2,
   Upload,
-  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/utils";
-import { PublishTemplateDialog } from "./components/PublishTemplateDialog";
+import { type PublishedListingRef } from "./components/PublishTemplateDialog";
+import {
+  TemplatePayloadEditor,
+  formToPublishOverrides,
+  payloadToForm,
+  type EditableTemplateForm,
+} from "./components/TemplatePayloadEditor";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,131 +61,16 @@ function publishBlockedReason(flags: {
   return null;
 }
 
-function attrLabel(attr: { [key: string]: unknown }): string {
-  const id = typeof attr.id === "string" ? attr.id : "";
-  const value =
-    typeof attr.value_name === "string"
-      ? attr.value_name
-      : typeof attr.valueName === "string"
-        ? attr.valueName
-        : "—";
-  return id ? `${id}: ${value}` : value;
-}
-
-function PayloadPreview({ payload }: { payload: ListingTemplatePayload }) {
-  const photos = payload.pictureSources?.length
-    ? payload.pictureSources
-    : [];
-  const attributes = payload.attributes ?? [];
-  const variations = payload.variations ?? [];
-
-  return (
-    <div className="space-y-4">
-      {photos.length > 0 && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-2">Fotos ({photos.length})</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {photos.slice(0, 8).map((url, i) => (
-              <img
-                key={`${url}-${i}`}
-                src={url}
-                alt=""
-                className="w-16 h-16 rounded-lg object-cover bg-muted flex-shrink-0 border border-border"
-              />
-            ))}
-            {photos.length > 8 && (
-              <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground flex-shrink-0">
-                +{photos.length - 8}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-muted/40 rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Preço</p>
-          <p className="text-sm font-semibold text-foreground">
-            {payload.price != null ? formatCurrency(payload.price) : "—"}
-          </p>
-        </div>
-        <div className="bg-muted/40 rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Estoque</p>
-          <p className="text-sm font-semibold text-foreground">
-            {payload.availableQuantity ?? "—"}
-          </p>
-        </div>
-        <div className="bg-muted/40 rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Categoria</p>
-          <p className="text-sm font-mono text-foreground truncate">{payload.categoryId ?? "—"}</p>
-        </div>
-        <div className="bg-muted/40 rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Tipo</p>
-          <p className="text-sm text-foreground truncate">{payload.listingTypeId ?? "—"}</p>
-        </div>
-      </div>
-
-      {payload.familyName && payload.familyName !== payload.title && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Família</p>
-          <p className="text-sm text-foreground">{payload.familyName}</p>
-        </div>
-      )}
-
-      {attributes.length > 0 && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-2">
-            Atributos ({attributes.length})
-          </p>
-          <ul className="space-y-1 max-h-40 overflow-y-auto">
-            {attributes.slice(0, 20).map((attr, i) => (
-              <li
-                key={i}
-                className="text-xs text-foreground/80 bg-muted/30 rounded px-2 py-1 truncate"
-              >
-                {attrLabel(attr)}
-              </li>
-            ))}
-            {attributes.length > 20 && (
-              <li className="text-[10px] text-muted-foreground px-1">
-                +{attributes.length - 20} atributos
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
-
-      {variations.length > 0 && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">
-            Variações ({variations.length})
-          </p>
-          <p className="text-xs text-foreground/80">
-            Este modelo inclui variações e será publicado com elas.
-          </p>
-        </div>
-      )}
-
-      {payload.description && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Descrição</p>
-          <p className="text-xs text-foreground/80 whitespace-pre-wrap line-clamp-8 bg-muted/30 rounded-lg px-3 py-2">
-            {payload.description}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ListingTemplateDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [publishOpen, setPublishOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [targetAccountId, setTargetAccountId] = useState("");
+  const [form, setForm] = useState<EditableTemplateForm | null>(null);
+  const [formReadyForId, setFormReadyForId] = useState<string | null>(null);
+  const [publishedListings, setPublishedListings] = useState<PublishedListingRef[]>([]);
 
   const { data, isLoading, isError } = useGetListingTemplate(id, {
     query: { queryKey: getGetListingTemplateQueryKey(id), enabled: !!id },
@@ -187,10 +79,23 @@ export default function ListingTemplateDetail() {
   const template = data?.data;
   const payload = template?.payload;
 
+  useEffect(() => {
+    if (!template?.id || !payload) return;
+    if (formReadyForId === template.id) return;
+    setForm(payloadToForm(payload));
+    setFormReadyForId(template.id);
+    setPublishedListings([]);
+  }, [template?.id, payload, formReadyForId]);
+
   const { data: accountsData } = useListAccounts();
   const accounts =
     (accountsData as { data?: { id: string; mlNickname?: string | null; mlUserId?: string | null }[] } | null)
       ?.data ?? [];
+
+  useEffect(() => {
+    if (!template || targetAccountId) return;
+    setTargetAccountId(template.sourceAccountId ?? accounts[0]?.id ?? "");
+  }, [template, accounts, targetAccountId]);
 
   const sourceAccountLabel = template?.sourceAccountId
     ? (accounts.find((a) => a.id === template.sourceAccountId)?.mlNickname ??
@@ -202,16 +107,34 @@ export default function ListingTemplateDetail() {
     ? publishBlockedReason({ isCatalog: template.isCatalog, isFull: template.isFull })
     : null;
 
+  const resetFormFromTemplate = () => {
+    if (!payload) return;
+    setForm(payloadToForm(payload));
+    toast({ title: "Campos restaurados", description: "Valores originais do modelo foram recarregados." });
+  };
+
+  const validateForm = (): string | null => {
+    if (!form) return "Formulário não carregado.";
+    if (!form.title.trim()) return "Informe o título do anúncio.";
+    if (!form.categoryId.trim()) return "Informe a categoria.";
+    if (!(Number(form.price) > 0)) return "Informe um preço válido.";
+    if (Number(form.availableQuantity) < 0) return "Informe um estoque válido.";
+    if (form.pictureSources.map((u) => u.trim()).filter(Boolean).length === 0) {
+      return "Adicione ao menos uma foto (URL pública).";
+    }
+    return null;
+  };
+
   const { mutate: publishTemplate, isPending: publishing } = usePublishListingTemplate({
     mutation: {
       onSuccess: (res) => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
-        setPublishOpen(false);
+        const entry = { productId: res.data.productId, mlItemId: res.data.mlItemId };
+        setPublishedListings((prev) => [...prev, entry]);
         toast({
           title: "Anúncio publicado",
-          description: `Novo anúncio ${res.data.mlItemId} criado com sucesso.`,
+          description: `${res.data.mlItemId} criado. Ajuste os campos e publique outro quando quiser.`,
         });
-        navigate(`/products/${res.data.productId}`);
       },
       onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
         toast({
@@ -223,6 +146,30 @@ export default function ListingTemplateDetail() {
       },
     },
   });
+
+  const handlePublish = () => {
+    if (!template || !form) return;
+    const err = validateForm();
+    if (err) {
+      toast({ variant: "destructive", title: "Campos incompletos", description: err });
+      return;
+    }
+    if (!targetAccountId) {
+      toast({
+        variant: "destructive",
+        title: "Conta obrigatória",
+        description: "Escolha a conta de destino para publicar.",
+      });
+      return;
+    }
+    publishTemplate({
+      id: template.id,
+      data: {
+        targetAccountId,
+        overrides: formToPublishOverrides(form),
+      },
+    });
+  };
 
   const { mutate: deleteTemplate, isPending: deleting } = useDeleteListingTemplate({
     mutation: {
@@ -241,16 +188,16 @@ export default function ListingTemplateDetail() {
     },
   });
 
-  if (isLoading) {
+  if (isLoading || (template && !form)) {
     return (
-      <div className="h-full overflow-y-auto bg-background p-6 space-y-3">
-        <div className="h-5 w-24 bg-muted rounded animate-pulse" />
-        <div className="h-40 bg-card border border-card-border rounded-xl animate-pulse" />
+      <div className="h-full overflow-y-auto bg-background p-6 flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Carregando modelo…
       </div>
     );
   }
 
-  if (isError || !template || !payload) {
+  if (isError || !template || !payload || !form) {
     return (
       <div className="h-full overflow-y-auto bg-background p-6 text-center">
         <LayoutTemplate className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
@@ -262,9 +209,11 @@ export default function ListingTemplateDetail() {
     );
   }
 
+  const lastPublished = publishedListings[publishedListings.length - 1];
+
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="p-6 space-y-4 max-w-2xl mx-auto">
+      <div className="p-6 space-y-4 max-w-2xl mx-auto pb-28">
         <button
           onClick={() => navigate("/listing-templates")}
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm transition-colors"
@@ -299,16 +248,14 @@ export default function ListingTemplateDetail() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <Button
+                    variant="outline"
                     size="sm"
                     className="h-7 text-xs gap-1"
-                    disabled={!!blocked}
-                    onClick={() => {
-                      setTargetAccountId(template.sourceAccountId ?? accounts[0]?.id ?? "");
-                      setPublishOpen(true);
-                    }}
+                    onClick={resetFormFromTemplate}
+                    disabled={publishing}
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    Publicar
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Restaurar
                   </Button>
                   <Button
                     variant="outline"
@@ -326,11 +273,6 @@ export default function ListingTemplateDetail() {
                 {template.sourceStatus && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-md border bg-muted/50 text-muted-foreground">
                     {STATUS_LABELS[template.sourceStatus] ?? template.sourceStatus}
-                  </span>
-                )}
-                {template.condition && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md border bg-muted/50 text-muted-foreground">
-                    {template.condition === "used" ? "Usado" : "Novo"}
                   </span>
                 )}
                 {template.isFull && (
@@ -371,28 +313,77 @@ export default function ListingTemplateDetail() {
           </div>
         </div>
 
+        {lastPublished && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-medium">
+                Último anúncio: <span className="font-mono">{lastPublished.mlItemId}</span>
+              </p>
+              <p className="text-xs text-emerald-700/80 mt-0.5">
+                {publishedListings.length} publicado{publishedListings.length === 1 ? "" : "s"} nesta
+                sessão — edite os campos abaixo e publique outro quando quiser.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
+              <Link href={`/products/${lastPublished.productId}`}>Abrir anúncio</Link>
+            </Button>
+          </div>
+        )}
+
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Campos do modelo</h2>
-          <PayloadPreview payload={payload} />
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Campos do anúncio</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Edite livremente antes de publicar. As alterações valem para esta publicação.
+              </p>
+            </div>
+          </div>
+          <TemplatePayloadEditor form={form} onChange={setForm} disabled={publishing} />
+          {template.hasVariations && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-4">
+              Este modelo tem variações: elas serão enviadas junto com os campos editados acima.
+            </p>
+          )}
         </div>
       </div>
 
-      <PublishTemplateDialog
-        open={publishOpen}
-        onOpenChange={setPublishOpen}
-        templateName={template.name}
-        sourceMlItemId={template.sourceMlItemId}
-        sourceAccountId={template.sourceAccountId}
-        accounts={accounts}
-        targetAccountId={targetAccountId}
-        onTargetAccountChange={setTargetAccountId}
-        isPending={publishing}
-        blockedReason={blocked}
-        onConfirm={() => {
-          if (!targetAccountId) return;
-          publishTemplate({ id: template.id, data: { targetAccountId } });
-        }}
-      />
+      <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-4 py-3">
+        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1 space-y-1.5">
+            <Label className="text-xs">Conta de destino</Label>
+            <select
+              value={targetAccountId}
+              onChange={(e) => setTargetAccountId(e.target.value)}
+              disabled={publishing || !!blocked || accounts.length === 0}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+            >
+              {accounts.length === 0 ? (
+                <option value="">Nenhuma conta conectada</option>
+              ) : (
+                accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.mlNickname ?? a.mlUserId ?? a.id}
+                    {a.id === template.sourceAccountId ? " (mesma conta)" : ""}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <Button
+            className="gap-1 sm:min-w-[180px]"
+            disabled={publishing || !!blocked || !targetAccountId}
+            onClick={handlePublish}
+          >
+            {publishing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4" />
+            )}
+            {lastPublished ? "Publicar outro" : "Publicar anúncio"}
+          </Button>
+        </div>
+      </div>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

@@ -82,6 +82,8 @@ export type CreateMlListingInput = {
   saleTerms?: MlSaleTermInput[];
   shipping?: CreateMlListingShippingInput;
   variations?: MlListingVariationInput[];
+  /** Mercado Livre Clips / legacy video id from GET /items → video_id. */
+  videoId?: string | null;
 };
 
 type MlItemForDuplicate = MlItem & {
@@ -360,6 +362,11 @@ function buildCreateItemPayload(
     payload.shipping = input.shipping;
   }
 
+  const videoId = input.videoId?.trim();
+  if (videoId) {
+    payload.video_id = videoId;
+  }
+
   if (isUpSeller) {
     const familyName = (input.familyName ?? input.title).trim();
     payload.family_name = familyName;
@@ -404,6 +411,17 @@ export async function createMlItem(accountId: string, input: CreateMlListingInpu
     const created = await ml.post<MlItem>(accountId, "/items", payload);
     if (input.description?.trim()) {
       await setMlItemDescription(accountId, created.id, input.description);
+    }
+    const videoId = input.videoId?.trim();
+    if (videoId && !created.video_id) {
+      try {
+        await ml.put(accountId, `/items/${encodeURIComponent(created.id)}`, { video_id: videoId });
+      } catch (err) {
+        logger.warn(
+          { err, accountId, itemId: created.id, videoId },
+          "Item created but video_id/clip could not be attached",
+        );
+      }
     }
     return created;
   } catch (err) {
@@ -534,6 +552,7 @@ export async function buildCreateInputFromMlItem(
     attributes: mapItemAttributesForCreate(item.attributes),
     description: description.trim() || undefined,
     saleTerms: mapItemSaleTermsForCreate(item.sale_terms),
+    videoId: item.video_id ?? null,
   };
 }
 
