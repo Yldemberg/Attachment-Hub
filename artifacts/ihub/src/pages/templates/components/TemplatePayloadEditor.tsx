@@ -101,7 +101,13 @@ export function formToPublishOverrides(form: EditableTemplateForm): {
     pictureSources,
     pictures: [],
     attributes: form.attributes.filter((a) => a.id && a.value_name.trim()),
-    saleTerms: form.saleTerms.filter((a) => a.id && (a.value_name.trim() || a.value_id)),
+    // PURCHASE_MAX_QUANTITY e similares costumam ser read_only no ML e geram HTTP 400.
+    saleTerms: form.saleTerms.filter(
+      (a) =>
+        a.id &&
+        (a.value_name.trim() || a.value_id) &&
+        ["WARRANTY_TYPE", "WARRANTY_TIME", "MANUFACTURING_TIME"].includes(a.id),
+    ),
     videoId: videoId || null,
   };
 }
@@ -407,6 +413,11 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
           disabled={disabled}
           idPlaceholder="ID (ex.: WARRANTY_TYPE)"
         />
+        <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+          Na publicação, o iHub envia apenas garantia e prazo de fabricação. Termos como{" "}
+          <span className="font-mono">PURCHASE_MAX_QUANTITY</span> o Mercado Livre costuma rejeitar
+          (read_only).
+        </p>
       </div>
     </div>
   );

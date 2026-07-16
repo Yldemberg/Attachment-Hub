@@ -350,12 +350,22 @@ function buildCreateItemPayload(
   }
 
   if (input.saleTerms?.length) {
-    payload.sale_terms = input.saleTerms.map((term) => {
-      const row: Record<string, string> = { id: term.id };
-      if (term.value_id) row.value_id = term.value_id;
-      if (term.value_name) row.value_name = term.value_name;
-      return row;
-    });
+    // Alguns sale_terms vêm no GET do anúncio, mas o ML rejeita no POST/PUT
+    // (ex.: PURCHASE_MAX_QUANTITY com tag read_only na categoria).
+    const ALLOWED_ON_CREATE = new Set([
+      "WARRANTY_TYPE",
+      "WARRANTY_TIME",
+      "MANUFACTURING_TIME",
+    ]);
+    const saleTerms = input.saleTerms.filter((term) => ALLOWED_ON_CREATE.has(term.id));
+    if (saleTerms.length) {
+      payload.sale_terms = saleTerms.map((term) => {
+        const row: Record<string, string> = { id: term.id };
+        if (term.value_id) row.value_id = term.value_id;
+        if (term.value_name) row.value_name = term.value_name;
+        return row;
+      });
+    }
   }
 
   if (input.shipping && Object.keys(input.shipping).length > 0) {
