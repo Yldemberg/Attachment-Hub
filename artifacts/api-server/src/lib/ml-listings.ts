@@ -289,6 +289,96 @@ function resolveListValueId(
   };
 }
 
+type SaleFormatKind = "pack" | "unit" | "weight" | "unknown" | "missing";
+
+function classifySaleFormat(attr: MlListingAttributeInput | undefined): SaleFormatKind {
+  if (!attr) return "missing";
+  const name = (attr.value_name ?? "").trim().toLowerCase();
+  if (/^pack$/.test(name)) return "pack";
+  if (/^(unidad|unidade|unit)$/.test(name)) return "unit";
+  if (/^(peso|weight)$/.test(name)) return "weight";
+  return "unknown";
+}
+
+function findSaleFormatOption(
+  categoryAttr: MlCategoryAttribute | undefined,
+  kind: "pack" | "unit" | "weight",
+): { id: string; name: string } | null {
+  const values = categoryAttr?.values ?? [];
+  const re =
+    kind === "pack"
+      ? /^pack$/i
+      : kind === "unit"
+        ? /^(unidad|unidade|unit)$/i
+        : /^(peso|weight)$/i;
+  const match = values.find((v) => re.test(v.name.trim()));
+  return match ? { id: match.id, name: match.name } : null;
+}
+
+function parseUnitsPerPack(attr: MlListingAttributeInput | undefined): number | null {
+  if (!attr?.value_name?.trim()) return null;
+  const n = Number(attr.value_name.trim().replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Alinha SALE_FORMAT ↔ UNITS_PER_PACK conforme regras do ML (cause 3709):
+ * - Se UNITS_PER_PACK está preenchido, SALE_FORMAT deve existir
+ * - Unidad → UNITS_PER_PACK = 1
+ * - Pack → UNITS_PER_PACK > 1
+ *
+ * Templates Full costumam trazer UNITS_PER_PACK > 1 sem SALE_FORMAT (ou com Unidad),
+ * e o ML responde: "UNITS_PER_PACK to be modified … should be [(null,1)]".
+ */
+function alignSaleFormatAndUnitsPerPack(
+  attributes: MlListingAttributeInput[],
+  categoryById: Map<string, MlCategoryAttribute>,
+): MlListingAttributeInput[] {
+  const saleFormatCat = categoryById.get("SALE_FORMAT");
+  // Sem definição de SALE_FORMAT na categoria, não dá para inferir Pack/Unidad.
+  if (categoryById.size > 0 && !saleFormatCat) return attributes;
+
+  const byId = new Map(attributes.map((a) => [a.id, a]));
+  const unitsAttr = byId.get("UNITS_PER_PACK");
+  const saleAttr = byId.get("SALE_FORMAT");
+  const units = parseUnitsPerPack(unitsAttr);
+  let saleKind = classifySaleFormat(saleAttr);
+
+  const setSaleFormat = (kind: "pack" | "unit") => {
+    const option =
+      findSaleFormatOption(saleFormatCat, kind) ??
+      (kind === "pack"
+        ? { id: "", name: "Pack" }
+        : { id: "", name: "Unidade" });
+    byId.set("SALE_FORMAT", {
+      id: "SALE_FORMAT",
+      value_name: option.name,
+      ...(option.id ? { value_id: option.id } : {}),
+    });
+    saleKind = kind;
+  };
+
+  if (units != null && units > 1) {
+    // Pack explícito: unidades > 1 exige SALE_FORMAT = Pack
+    if (saleKind === "missing" || saleKind === "unit" || saleKind === "unknown") {
+      setSaleFormat("pack");
+    }
+  } else if (units === 1) {
+    if (saleKind === "missing" || saleKind === "pack") {
+      setSaleFormat("unit");
+    }
+  } else if (units == null && saleKind === "unit") {
+    byId.set("UNITS_PER_PACK", { id: "UNITS_PER_PACK", value_name: "1" });
+  }
+
+  const alignedSale = byId.get("SALE_FORMAT");
+  if (alignedSale) {
+    byId.set("SALE_FORMAT", resolveListValueId(alignedSale, saleFormatCat));
+  }
+
+  return [...byId.values()];
+}
+
 /**
  * Remove atributos que a categoria marca como read_only/fixed/inferred,
  * e qualquer ID que não exista na definição da categoria.
@@ -327,11 +417,11 @@ export async function sanitizeAttributesForCreate(
     if (!normalized) continue;
     out.push(resolveListValueId(normalized, categoryById.get(raw.id)));
   }
-  return out;
+  return alignSaleFormatAndUnitsPerPack(out, categoryById);
 }
 
 function isBusinessConditionalMlErrorMessage(msg: string): boolean {
-  return /to be added|business_conditional|invalid_sale_units/i.test(msg);
+  return /to be added|to be modified|business_conditional|invalid_sale_units/i.test(msg);
 }
 
 function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
