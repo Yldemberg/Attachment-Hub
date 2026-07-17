@@ -327,22 +327,25 @@ function parseUnitsPerPack(attr: MlListingAttributeInput | undefined): number | 
  * - Unidad → UNITS_PER_PACK = 1
  * - Pack → UNITS_PER_PACK > 1
  *
- * Templates Full costumam trazer UNITS_PER_PACK > 1 sem SALE_FORMAT (ou com Unidad),
- * e o ML responde: "UNITS_PER_PACK to be modified … should be [(null,1)]".
+ * Com variações clássicas (`variations[]`), o ML exige venda por unidade no
+ * nível do item: UNITS_PER_PACK=1 e SALE_FORMAT=Unidad. Templates de família
+ * Full/User Products costumam copiar UNITS_PER_PACK do pai (ex.: 16) e o ML
+ * responde: "UNITS_PER_PACK to be modified … should be [(null,1)]".
  */
 function alignSaleFormatAndUnitsPerPack(
   attributes: MlListingAttributeInput[],
   categoryById: Map<string, MlCategoryAttribute>,
+  options?: { hasVariations?: boolean },
 ): MlListingAttributeInput[] {
   const saleFormatCat = categoryById.get("SALE_FORMAT");
-  // Sem definição de SALE_FORMAT na categoria, não dá para inferir Pack/Unidad.
-  if (categoryById.size > 0 && !saleFormatCat) return attributes;
+  // Sem definição de SALE_FORMAT na categoria, não dá para inferir Pack/Unidad
+  // — exceto no caso de variações, em que ainda forçamos UNITS_PER_PACK=1.
+  if (categoryById.size > 0 && !saleFormatCat && !options?.hasVariations) {
+    return attributes;
+  }
 
   const byId = new Map(attributes.map((a) => [a.id, a]));
-  const unitsAttr = byId.get("UNITS_PER_PACK");
-  const saleAttr = byId.get("SALE_FORMAT");
-  const units = parseUnitsPerPack(unitsAttr);
-  let saleKind = classifySaleFormat(saleAttr);
+  let saleKind = classifySaleFormat(byId.get("SALE_FORMAT"));
 
   const setSaleFormat = (kind: "pack" | "unit") => {
     const option =
@@ -358,17 +361,23 @@ function alignSaleFormatAndUnitsPerPack(
     saleKind = kind;
   };
 
-  if (units != null && units > 1) {
-    // Pack explícito: unidades > 1 exige SALE_FORMAT = Pack
-    if (saleKind === "missing" || saleKind === "unit" || saleKind === "unknown") {
-      setSaleFormat("pack");
-    }
-  } else if (units === 1) {
-    if (saleKind === "missing" || saleKind === "pack") {
-      setSaleFormat("unit");
-    }
-  } else if (units == null && saleKind === "unit") {
+  if (options?.hasVariations) {
+    // Cada variação = 1 unidade vendável; atributos de pack do anúncio-pai não se aplicam.
     byId.set("UNITS_PER_PACK", { id: "UNITS_PER_PACK", value_name: "1" });
+    setSaleFormat("unit");
+  } else {
+    const units = parseUnitsPerPack(byId.get("UNITS_PER_PACK"));
+    if (units != null && units > 1) {
+      if (saleKind === "missing" || saleKind === "unit" || saleKind === "unknown") {
+        setSaleFormat("pack");
+      }
+    } else if (units === 1) {
+      if (saleKind === "missing" || saleKind === "pack") {
+        setSaleFormat("unit");
+      }
+    } else if (units == null && saleKind === "unit") {
+      byId.set("UNITS_PER_PACK", { id: "UNITS_PER_PACK", value_name: "1" });
+    }
   }
 
   const alignedSale = byId.get("SALE_FORMAT");
@@ -377,6 +386,22 @@ function alignSaleFormatAndUnitsPerPack(
   }
 
   return [...byId.values()];
+}
+
+/** Remove do nível raiz atributos que já entram em attribute_combinations das variações. */
+function stripVariationAxesFromRootAttributes(
+  attributes: MlListingAttributeInput[],
+  variations: MlListingVariationInput[] | undefined,
+): MlListingAttributeInput[] {
+  if (!variations?.length) return attributes;
+  const axisIds = new Set<string>();
+  for (const v of variations) {
+    for (const c of v.attribute_combinations ?? []) {
+      if (c.id) axisIds.add(c.id);
+    }
+  }
+  if (axisIds.size === 0) return attributes;
+  return attributes.filter((a) => !axisIds.has(a.id));
 }
 
 /**
@@ -389,6 +414,10 @@ export async function sanitizeAttributesForCreate(
   accountId: string,
   categoryId: string,
   attributes: MlListingAttributeInput[],
+  options?: {
+    hasVariations?: boolean;
+    variations?: MlListingVariationInput[];
+  },
 ): Promise<MlListingAttributeInput[]> {
   let categoryAttrs: MlCategoryAttribute[] = [];
   try {
@@ -402,9 +431,12 @@ export async function sanitizeAttributesForCreate(
     categoryAttrs.filter(isWritableCategoryAttribute).map((a) => a.id),
   );
   const hasMeta = categoryAttrs.length > 0;
+  const hasVariations = Boolean(options?.hasVariations || options?.variations?.length);
+
+  const filtered = stripVariationAxesFromRootAttributes(attributes, options?.variations);
 
   const out: MlListingAttributeInput[] = [];
-  for (const raw of attributes) {
+  for (const raw of filtered) {
     if (hasMeta) {
       const cat = categoryById.get(raw.id);
       if (!cat) continue;
@@ -417,7 +449,7 @@ export async function sanitizeAttributesForCreate(
     if (!normalized) continue;
     out.push(resolveListValueId(normalized, categoryById.get(raw.id)));
   }
-  return alignSaleFormatAndUnitsPerPack(out, categoryById);
+  return alignSaleFormatAndUnitsPerPack(out, categoryById, { hasVariations });
 }
 
 function isBusinessConditionalMlErrorMessage(msg: string): boolean {
@@ -681,10 +713,12 @@ export async function createMlItem(accountId: string, input: CreateMlListingInpu
       );
     }
 
+    const hasVariations = Array.isArray(input.variations) && input.variations.length > 0;
     const sanitizedAttributes = await sanitizeAttributesForCreate(
       accountId,
       input.categoryId,
       input.attributes ?? [],
+      { hasVariations, variations: input.variations },
     );
     let workingInput: CreateMlListingInput = {
       ...input,

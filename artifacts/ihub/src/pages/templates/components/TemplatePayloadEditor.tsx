@@ -408,9 +408,9 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
           <em>read_only</em>, <em>fixed</em> ou <em>inferred</em> gerenciados pelo ML (ex.: AGE_GROUP,
           marcas internas). Atributos de regra de venda como{" "}
           <span className="font-mono">SALE_FORMAT</span> e{" "}
-          <span className="font-mono">UNITS_PER_PACK</span> são enviados quando preenchidos; se{" "}
-          <span className="font-mono">UNITS_PER_PACK</span> for maior que 1, o formato de venda é
-          ajustado para Pack automaticamente.
+          <span className="font-mono">UNITS_PER_PACK</span> são enviados quando preenchidos. Com
+          variações clássicas, <span className="font-mono">UNITS_PER_PACK</span> vai como{" "}
+          <strong>1</strong> (Unidade); sem variações, se for maior que 1 o formato vira Pack.
           Você pode deixar a lista completa no modelo.
         </p>
       </div>

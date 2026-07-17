@@ -345,7 +345,11 @@ export default function ListingTemplateDetail() {
           <TemplatePayloadEditor form={form} onChange={setForm} disabled={publishing} />
           {template.hasVariations && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-4">
-              Este modelo tem variações: elas serão enviadas junto com os campos editados acima.
+              Este modelo tem variações clássicas: elas serão enviadas junto com os campos acima.
+              Na publicação, <span className="font-mono">UNITS_PER_PACK</span> é forçado para{" "}
+              <strong>1</strong> (venda por unidade). Se o anúncio de origem for uma família User
+              Products (pai + filhos MLB separados), publique o modelo de cada filho — republicar
+              o pai não recria os irmãos.
             </p>
           )}
         </div>
