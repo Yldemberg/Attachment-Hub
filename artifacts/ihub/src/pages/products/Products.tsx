@@ -210,6 +210,14 @@ function ProductCard({
   const canEditListing = p.status !== "closed";
   const canDuplicate = !isFull && !p.catalogListing;
 
+  const [, navigate] = useLocation();
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+
+  const openProduct = () => {
+    if (window.getSelection()?.toString()) return;
+    navigate(`/products/${p.id}`);
+  };
+
   const thumbCls =
     "size-[4.5rem] rounded-lg flex-shrink-0 bg-muted object-cover";
 
@@ -229,9 +237,31 @@ function ProductCard({
           />
         </div>
       ) : null}
-      <Link
-        to={`/products/${p.id}`}
-        className="flex flex-1 min-w-0 items-center gap-2 cursor-pointer"
+      <div
+        role="link"
+        tabIndex={0}
+        aria-label={p.title ?? `Abrir produto ${p.id}`}
+        onPointerDown={(e) => {
+          pointerDownRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onClick={(e) => {
+          const start = pointerDownRef.current;
+          pointerDownRef.current = null;
+          if (start) {
+            const dx = Math.abs(e.clientX - start.x);
+            const dy = Math.abs(e.clientY - start.y);
+            // Drag to select text — don't navigate
+            if (dx > 5 || dy > 5) return;
+          }
+          openProduct();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openProduct();
+          }
+        }}
+        className="flex flex-1 min-w-0 items-center gap-2 cursor-pointer select-text"
       >
         {p.thumbnail ? (
           <img
@@ -353,7 +383,7 @@ function ProductCard({
             <p className="text-muted-foreground text-[10px] line-through">{formatCurrency(listPrice)}</p>
           ) : null}
         </div>
-      </Link>
+      </div>
 
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
         <div className="flex items-center gap-1">
