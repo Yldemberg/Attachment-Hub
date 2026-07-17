@@ -227,10 +227,27 @@ const ATTRIBUTE_IDS_NEVER_SEND_ON_CREATE = new Set([
   "IS_TOM_BRAND",
 ]);
 
+/**
+ * Atributos de regra de negócio (Pack/Unidad, peso, etc.).
+ * A categoria costuma marcá-los como `inferred`, mas o ML ainda exige o valor
+ * explícito no create — removê-los causa HTTP 400 (ex.: UNITS_PER_PACK → (null,1)).
+ */
+const BUSINESS_CONDITIONAL_ATTR_IDS = new Set([
+  "SALE_FORMAT",
+  "UNITS_PER_PACK",
+  "UNITS_PER_PACKAGE",
+  "NET_WEIGHT",
+  "UNIT_VOLUME",
+]);
+
 function isWritableCategoryAttribute(attr: MlCategoryAttribute): boolean {
   const tags = attr.tags ?? {};
   if (tags.read_only || tags.fixed || tags.inferred) return false;
   return true;
+}
+
+function hasAttributeValue(attr: MlListingAttributeInput): boolean {
+  return Boolean(attr.value_name?.trim() || attr.value_id);
 }
 
 function normalizeAttributeValueForCreate(attr: MlListingAttributeInput): MlListingAttributeInput | null {
@@ -248,9 +265,35 @@ function normalizeAttributeValueForCreate(attr: MlListingAttributeInput): MlList
   };
 }
 
+/** Resolve value_id de atributos list/boolean a partir da definição da categoria. */
+function resolveListValueId(
+  attr: MlListingAttributeInput,
+  categoryAttr: MlCategoryAttribute | undefined,
+): MlListingAttributeInput {
+  if (attr.value_id || !attr.value_name?.trim() || !categoryAttr?.values?.length) {
+    return attr;
+  }
+  const valueType = categoryAttr.valueType;
+  if (valueType && valueType !== "list" && valueType !== "boolean") {
+    return attr;
+  }
+  const needle = attr.value_name.trim().toLowerCase();
+  const match = categoryAttr.values.find(
+    (v) => v.name.toLowerCase() === needle || v.id.toLowerCase() === needle,
+  );
+  if (!match) return attr;
+  return {
+    id: attr.id,
+    value_name: match.name,
+    value_id: match.id,
+  };
+}
+
 /**
  * Remove atributos que a categoria marca como read_only/fixed/inferred,
  * e qualquer ID que não exista na definição da categoria.
+ * Mantém atributos de regra de negócio (SALE_FORMAT, UNITS_PER_PACK, …) quando
+ * o usuário enviou valor, mesmo se a categoria marcar inferred.
  */
 export async function sanitizeAttributesForCreate(
   accountId: string,
@@ -264,6 +307,7 @@ export async function sanitizeAttributesForCreate(
     logger.warn({ err, accountId, categoryId }, "Failed to load category attributes for create sanitize");
   }
 
+  const categoryById = new Map(categoryAttrs.map((a) => [a.id, a]));
   const writableIds = new Set(
     categoryAttrs.filter(isWritableCategoryAttribute).map((a) => a.id),
   );
@@ -271,11 +315,23 @@ export async function sanitizeAttributesForCreate(
 
   const out: MlListingAttributeInput[] = [];
   for (const raw of attributes) {
-    if (hasMeta && !writableIds.has(raw.id)) continue;
+    if (hasMeta) {
+      const cat = categoryById.get(raw.id);
+      if (!cat) continue;
+      const writable = writableIds.has(raw.id);
+      const forceKeep =
+        BUSINESS_CONDITIONAL_ATTR_IDS.has(raw.id) && hasAttributeValue(raw);
+      if (!writable && !forceKeep) continue;
+    }
     const normalized = normalizeAttributeValueForCreate(raw);
-    if (normalized) out.push(normalized);
+    if (!normalized) continue;
+    out.push(resolveListValueId(normalized, categoryById.get(raw.id)));
   }
   return out;
+}
+
+function isBusinessConditionalMlErrorMessage(msg: string): boolean {
+  return /to be added|business_conditional|invalid_sale_units/i.test(msg);
 }
 
 function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
@@ -300,15 +356,21 @@ function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
     const jsonStart = raw.indexOf("{");
     if (jsonStart >= 0) {
       const body = JSON.parse(raw.slice(jsonStart)) as {
-        cause?: Array<{ message?: string }>;
+        cause?: Array<{ message?: string; type?: string; code?: string }>;
         message?: string;
       };
       for (const cause of body.cause ?? []) {
         const msg = cause.message ?? "";
+        // "Attribute [UNITS_PER_PACK] to be added…" means the attr is missing/required —
+        // not that it should be stripped on retry.
+        if (isBusinessConditionalMlErrorMessage(msg)) continue;
+        if (/business_conditional/i.test(cause.type ?? "") || /business_conditional/i.test(cause.code ?? "")) {
+          continue;
+        }
         const bracket = /\[([A-Z0-9_]+)\]/.exec(msg);
         if (bracket?.[1]) ids.add(bracket[1]);
       }
-      if (body.message) {
+      if (body.message && !isBusinessConditionalMlErrorMessage(body.message)) {
         const bracket = /\[([A-Z0-9_]+)\]/.exec(body.message);
         if (bracket?.[1]) ids.add(bracket[1]);
       }

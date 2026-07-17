@@ -405,7 +405,10 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         />
         <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
           Na publicação, o iHub consulta a categoria no Mercado Livre e remove atributos{" "}
-          <em>read_only</em>, <em>fixed</em> ou <em>inferred</em> (ex.: AGE_GROUP, marcas internas).
+          <em>read_only</em>, <em>fixed</em> ou <em>inferred</em> gerenciados pelo ML (ex.: AGE_GROUP,
+          marcas internas). Atributos de regra de venda como{" "}
+          <span className="font-mono">SALE_FORMAT</span> e{" "}
+          <span className="font-mono">UNITS_PER_PACK</span> são enviados quando preenchidos.
           Você pode deixar a lista completa no modelo.
         </p>
       </div>
