@@ -284,7 +284,7 @@ export default function ListingTemplates() {
             <Input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Buscar por título ou MLB…"
+              placeholder="Buscar por SKU, MLB ou título…"
               className="h-8 pl-8 text-xs"
             />
           </div>

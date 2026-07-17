@@ -4,7 +4,7 @@ import {
   productsTable,
   accountsTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { ml, type MlItem, type MlVariation } from "./mercadolivre";
 import {
   getMlItemDescription,
@@ -20,6 +20,10 @@ import {
 import { logger } from "./logger";
 
 const TEMPLATE_SYNC_CONCURRENCY = 3;
+
+function escapeIlikePattern(token: string): string {
+  return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
 
 export type ListingTemplatePayload = {
   title: string;
@@ -378,13 +382,25 @@ export async function listListingTemplatesForUser(params: {
     conditions.push(eq(listingTemplatesTable.sourceAccountId, params.accountId));
   }
   if (params.search?.trim()) {
-    const q = `%${params.search.trim()}%`;
-    conditions.push(
-      or(
-        ilike(listingTemplatesTable.name, q),
-        ilike(listingTemplatesTable.sourceMlItemId, q),
-      )!,
-    );
+    // Mesma lógica de /products: várias palavras = AND; cada token casa título, MLB ou SKU.
+    const tokens = params.search
+      .trim()
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    for (const token of tokens) {
+      const pat = `%${escapeIlikePattern(token)}%`;
+      conditions.push(
+        sql`(
+          coalesce(${listingTemplatesTable.name}, '') ILIKE ${pat} ESCAPE '\\'
+          OR coalesce(${listingTemplatesTable.sourceMlItemId}, '') ILIKE ${pat} ESCAPE '\\'
+          OR coalesce(${listingTemplatesTable.payloadJson}::text, '') ILIKE ${pat} ESCAPE '\\'
+          OR coalesce(${productsTable.sku}, '') ILIKE ${pat} ESCAPE '\\'
+          OR coalesce(${productsTable.title}, '') ILIKE ${pat} ESCAPE '\\'
+          OR coalesce(${productsTable.variationsJson}::text, '') ILIKE ${pat} ESCAPE '\\'
+        )`,
+      );
+    }
   }
 
   const where = and(...conditions);
@@ -392,18 +408,28 @@ export async function listListingTemplatesForUser(params: {
   const [countRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(listingTemplatesTable)
+    .leftJoin(
+      productsTable,
+      eq(listingTemplatesTable.sourceProductId, productsTable.id),
+    )
     .where(where);
 
   const rows = await db
-    .select()
+    .select({
+      template: listingTemplatesTable,
+    })
     .from(listingTemplatesTable)
+    .leftJoin(
+      productsTable,
+      eq(listingTemplatesTable.sourceProductId, productsTable.id),
+    )
     .where(where)
     .orderBy(desc(listingTemplatesTable.updatedAt))
     .limit(limit)
     .offset(offset);
 
   return {
-    data: rows.map((row) => serializeListingTemplate(row)),
+    data: rows.map((row) => serializeListingTemplate(row.template)),
     pagination: {
       page,
       limit,

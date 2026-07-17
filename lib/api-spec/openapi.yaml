@@ -1256,7 +1256,9 @@ paths:
             type: string
         - name: search
           in: query
-          description: Busca por título ou MLB
+          description: >
+            Busca por MLB (ID do anúncio), SKU, título ou texto em atributos/variações.
+            Várias palavras: todas devem aparecer (ordem irrelevante).
           schema:
             type: string
         - name: page
