@@ -84,6 +84,11 @@ export function matchesPromotionStatusFilter(promo: MlPromotion, status?: string
   return promo.status === status;
 }
 
+/** Anúncio ainda não ativado na campanha (elegível para participação). */
+export function isPromotionItemCandidate(status: string | null | undefined): boolean {
+  return status === "candidate";
+}
+
 export type MlPromotionItemStock =
   | number
   | {
@@ -534,6 +539,7 @@ export async function aggregateInboxForAccount(
           });
           const enriched = await enrichItemsWithProducts(accountId, items);
           for (const item of enriched) {
+            if (!isPromotionItemCandidate(item.status)) continue;
             const suggested = resolveMlSuggestedPrice(item);
             const original = item.original_price;
             const stockBounds = parsePromotionStockBounds(item.stock);

@@ -56,6 +56,10 @@ function entrySelectionKey(entry: PromotionInboxEntry): string {
   return `${entry.promotionId}:${entry.itemId}`;
 }
 
+function isNonActivatedItem(entry: PromotionInboxEntry): boolean {
+  return entry.itemStatus === "candidate";
+}
+
 function parseCampaignValue(value: string): {
   accountId: string;
   promotionId: string;
@@ -290,7 +294,7 @@ function CandidateCard({
 
 export default function Promotions() {
   const [accountId, setAccountId] = useState<string>("all");
-  const [selectedCampaign, setSelectedCampaign] = useState(ALL_CAMPAIGNS);
+  const [selectedCampaign, setSelectedCampaign] = useState(ALL_CANDIDATES);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
@@ -444,12 +448,13 @@ export default function Promotions() {
 
   const candidateEntries: PromotionInboxEntry[] = useMemo(() => {
     if (viewMode !== "candidates") return [];
-    if (campaignFilter && selectedCampaignMeta) {
-      return (itemsData?.data ?? []).map((item) =>
-        promotionItemToInboxEntry(item, selectedCampaignMeta),
-      );
-    }
-    return inboxData?.data ?? [];
+    const entries =
+      campaignFilter && selectedCampaignMeta
+        ? (itemsData?.data ?? []).map((item) =>
+            promotionItemToInboxEntry(item, selectedCampaignMeta),
+          )
+        : (inboxData?.data ?? []);
+    return entries.filter(isNonActivatedItem);
   }, [viewMode, campaignFilter, selectedCampaignMeta, itemsData?.data, inboxData?.data]);
 
   const pagination =
@@ -607,7 +612,7 @@ export default function Promotions() {
             value={accountId}
             onValueChange={(v) => {
               setAccountId(v);
-              setSelectedCampaign(ALL_CAMPAIGNS);
+              setSelectedCampaign(ALL_CANDIDATES);
               setPage(1);
               setSelected(new Set());
             }}

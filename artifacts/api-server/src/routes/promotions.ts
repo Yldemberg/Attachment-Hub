@@ -23,6 +23,7 @@ import {
   resolveOfferIdFromMlItem,
   findPromotionItemContext,
   matchesPromotionStatusFilter,
+  isPromotionItemCandidate,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -190,6 +191,8 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
           matchesSearch(e.title, search),
       );
     }
+
+    inbox = inbox.filter((e) => isPromotionItemCandidate(e.itemStatus));
 
     inbox.sort((a, b) => {
       const da = a.deadlineDate ? new Date(a.deadlineDate).getTime() : Infinity;
@@ -373,6 +376,10 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
           matchesSearch(e.sku, search) ||
           matchesSearch(e.id, search),
       );
+    }
+
+    if (status === "candidate") {
+      enriched = enriched.filter((e) => isPromotionItemCandidate(e.status));
     }
 
     const mapped = enriched.map(mapPromotionItem);
