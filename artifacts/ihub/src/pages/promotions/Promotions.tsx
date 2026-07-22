@@ -10,7 +10,7 @@ import {
   getListPromotionItemsQueryKey,
   getGetPromotionsSummaryQueryKey,
 } from "@workspace/api-client-react";
-import type { Promotion, PromotionInboxEntry, PromotionItem } from "@workspace/api-client-react";
+import type { PromotionInboxEntry, PromotionItem } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -47,10 +47,7 @@ import {
   activatePromotionItemsSequentially,
 } from "./components/bulkActivateFeedback";
 
-const ALL_CAMPAIGNS = "all";
 const ALL_CANDIDATES = "all-candidates";
-
-type ViewMode = "campaigns" | "candidates";
 
 function entrySelectionKey(entry: PromotionInboxEntry): string {
   return `${entry.promotionId}:${entry.itemId}`;
@@ -65,7 +62,7 @@ function parseCampaignValue(value: string): {
   promotionId: string;
   promotionType: string;
 } | null {
-  if (value === ALL_CAMPAIGNS) return null;
+  if (value === ALL_CANDIDATES) return null;
   const [accountId, promotionId, promotionType] = value.split("::");
   if (!accountId || !promotionId || !promotionType) return null;
   return { accountId, promotionId, promotionType };
@@ -121,67 +118,6 @@ function KpiCard({ label, value, accent }: { label: string; value: number; accen
       <p className={cn("text-2xl font-bold tabular-nums", accent ?? "text-foreground")}>{value}</p>
       <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
     </div>
-  );
-}
-
-function CampaignCard({ promo }: { promo: Promotion }) {
-  const deadline = formatDeadline(promo.deadlineDate);
-  const detailHref = `/promotions/${encodeURIComponent(promo.id)}?account_id=${promo.accountId}&promotion_type=${promo.type}`;
-
-  return (
-    <Link href={detailHref}>
-      <div className="bg-card border border-card-border rounded-xl px-4 py-3 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">{promo.name ?? promo.id}</p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-              <PromotionTypeBadge type={promo.type} label={promo.typeLabel ?? undefined} />
-              <span
-                className={cn(
-                  "text-[10px] font-medium px-1.5 py-0.5 rounded-md border",
-                  promo.status === "started"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : promo.status === "pending"
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-slate-100 text-slate-500 border-slate-200",
-                )}
-              >
-                {promo.status === "started" ? "Ativa" : promo.status === "pending" ? "Pendente" : "Encerrada"}
-              </span>
-              {(promo.candidateCount ?? 0) > 0 && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200">
-                  {promo.candidateCount} candidatos
-                </span>
-              )}
-            </div>
-            {promo.benefits && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {promo.benefits.meliPercent != null && `ML ${promo.benefits.meliPercent}%`}
-                {promo.benefits.sellerPercent != null && ` · Você ${promo.benefits.sellerPercent}%`}
-                {promo.benefits.buyQuantity != null &&
-                  promo.benefits.payQuantity != null &&
-                  ` · Leve ${promo.benefits.buyQuantity} pague ${promo.benefits.payQuantity}`}
-              </p>
-            )}
-          </div>
-          <div className="text-right flex-shrink-0">
-            {deadline && (
-              <p
-                className={cn(
-                  "text-xs font-medium",
-                  deadline.includes("Vence") ? "text-red-600" : "text-muted-foreground",
-                )}
-              >
-                {deadline}
-              </p>
-            )}
-            {promo.accountNickname && (
-              <p className="text-[10px] text-muted-foreground mt-1">{promo.accountNickname}</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </Link>
   );
 }
 
@@ -313,13 +249,6 @@ export default function Promotions() {
   const campaignFilter = parseCampaignValue(selectedCampaign);
   const skuQuery = search.trim();
 
-  const viewMode: ViewMode = useMemo(() => {
-    if (selectedCampaign === ALL_CANDIDATES) return "candidates";
-    if (selectedCampaign !== ALL_CAMPAIGNS) return "candidates";
-    if (skuQuery.length > 0) return "candidates";
-    return "campaigns";
-  }, [selectedCampaign, skuQuery]);
-
   const { data: summary, isLoading: summaryLoading } = useGetPromotionsSummary({
     account_id: accountFilter,
     refresh: refreshing,
@@ -333,14 +262,6 @@ export default function Promotions() {
     refresh: refreshing,
   };
 
-  const campaignsListParams = {
-    account_id: accountFilter,
-    status: "active" as const,
-    page,
-    limit: 20,
-    refresh: refreshing,
-  };
-
   const { data: campaignsDropdownData, isLoading: campaignsDropdownLoading } = useListPromotions(
     campaignsDropdownParams,
     {
@@ -350,20 +271,9 @@ export default function Promotions() {
     },
   );
 
-  const { data: campaignsListData, isLoading: campaignsListLoading } = useListPromotions(
-    campaignsListParams,
-    {
-      query: {
-        queryKey: getListPromotionsQueryKey(campaignsListParams),
-        enabled: viewMode === "campaigns",
-      },
-    },
-  );
-
   const campaignOptions = useMemo(() => {
     const campaigns = campaignsDropdownData?.data ?? [];
     return [
-      { value: ALL_CAMPAIGNS, label: "Todas as campanhas", hint: undefined as string | undefined },
       {
         value: ALL_CANDIDATES,
         label: "Todos os anúncios candidatos",
@@ -402,10 +312,7 @@ export default function Promotions() {
     refresh: refreshing,
   };
 
-  const inboxEnabled =
-    viewMode === "candidates" &&
-    (selectedCampaign === ALL_CANDIDATES ||
-      (selectedCampaign === ALL_CAMPAIGNS && skuQuery.length > 0));
+  const inboxEnabled = !campaignFilter;
 
   const { data: inboxData, isLoading: inboxLoading } = useListPromotionInbox(inboxParams, {
     query: {
@@ -441,13 +348,12 @@ export default function Promotions() {
           campaignFilter?.promotionId ?? "",
           itemsParams ?? { account_id: "", promotion_type: "", page: 1, limit: 20 },
         ),
-        enabled: viewMode === "candidates" && !!campaignFilter && !!itemsParams,
+        enabled: !!campaignFilter && !!itemsParams,
       },
     },
   );
 
   const candidateEntries: PromotionInboxEntry[] = useMemo(() => {
-    if (viewMode !== "candidates") return [];
     const entries =
       campaignFilter && selectedCampaignMeta
         ? (itemsData?.data ?? []).map((item) =>
@@ -455,21 +361,11 @@ export default function Promotions() {
           )
         : (inboxData?.data ?? []);
     return entries.filter(isNonActivatedItem);
-  }, [viewMode, campaignFilter, selectedCampaignMeta, itemsData?.data, inboxData?.data]);
+  }, [campaignFilter, selectedCampaignMeta, itemsData?.data, inboxData?.data]);
 
-  const pagination =
-    viewMode === "campaigns"
-      ? campaignsListData?.pagination
-      : campaignFilter
-        ? itemsData?.pagination
-        : inboxData?.pagination;
+  const pagination = campaignFilter ? itemsData?.pagination : inboxData?.pagination;
 
-  const isLoading =
-    viewMode === "campaigns"
-      ? campaignsListLoading
-      : campaignFilter
-        ? itemsLoading
-        : inboxLoading;
+  const isLoading = campaignFilter ? itemsLoading : inboxLoading;
 
   async function invalidateAfterBulkActivate() {
     await queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
@@ -581,9 +477,7 @@ export default function Promotions() {
     }
   }
 
-  const campaigns = campaignsListData?.data ?? [];
-  const showCampaignNameInCards =
-    selectedCampaign === ALL_CAMPAIGNS || selectedCampaign === ALL_CANDIDATES;
+  const showCampaignNameInCards = !campaignFilter;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -667,7 +561,7 @@ export default function Promotions() {
           </div>
         </div>
 
-        {viewMode === "candidates" && candidateEntries.length > 0 && (
+        {candidateEntries.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2">
             <button
               type="button"
@@ -727,27 +621,15 @@ export default function Promotions() {
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : viewMode === "campaigns" ? (
-          campaigns.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              Nenhuma campanha ativa no momento.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {campaigns.map((promo) => (
-                <CampaignCard key={`${promo.accountId}-${promo.id}`} promo={promo} />
-              ))}
-            </div>
-          )
         ) : candidateEntries.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            {selectedCampaign === ALL_CANDIDATES
-              ? "Nenhum anúncio candidato no momento."
-              : campaignFilter
-                ? skuQuery
-                  ? `Nenhum anúncio candidato para "${skuQuery}" nesta campanha.`
-                  : "Nenhum anúncio candidato nesta campanha."
-                : `Nenhuma campanha disponível para "${skuQuery}".`}
+            {!campaignFilter
+              ? skuQuery
+                ? `Nenhum anúncio candidato para "${skuQuery}".`
+                : "Nenhum anúncio candidato no momento."
+              : skuQuery
+                ? `Nenhum anúncio candidato para "${skuQuery}" nesta campanha.`
+                : "Nenhum anúncio candidato nesta campanha."}
           </div>
         ) : (
           <div className="space-y-2">
@@ -757,9 +639,9 @@ export default function Promotions() {
                 {campaignFilter ? " nesta campanha" : ""} para &quot;{skuQuery}&quot;
               </p>
             )}
-            {selectedCampaign === ALL_CANDIDATES && pagination && (
+            {!campaignFilter && pagination && (
               <p className="text-xs text-muted-foreground">
-                {pagination.total} anúncio(s) candidato(s) em todas as campanhas
+                {pagination.total} anúncio(s) não ativado(s) em todas as campanhas
               </p>
             )}
             {!skuQuery && campaignFilter && selectedCampaignMeta && (

@@ -19,6 +19,11 @@ backend).
 | `ML_CLIENT_SECRET` | `AbCd1234…` | both | OAuth 2.0 client secret from Mercado Livre Developer Console. |
 | `ML_REDIRECT_URI` | `https://ihub.example.com/api/mercadolivre/callback` | both | Must match the redirect URI registered in Mercado Livre Developer Console. |
 | `ML_WEBHOOK_SECRET` | `your-ml-webhook-secret` | both | Used to verify the HMAC signature on incoming Mercado Livre webhook notifications. |
+| `AMAZON_LWA_CLIENT_ID` | `amzn1.application-oa2-client.…` | both* | LWA Client ID from Amazon SP-API private app (production). |
+| `AMAZON_LWA_CLIENT_SECRET` | `…` | both* | LWA Client Secret from Amazon SP-API private app. |
+| `AMAZON_REFRESH_TOKEN` | `Atzr|…` | both* | Production refresh token from self-authorization. |
+| `AMAZON_SELLER_ID` | `AXXXXXXXXXXXX` | both* | Selling Partner / merchant ID used in Listings Items API paths. |
+| `AMAZON_MARKETPLACE_ID` | `A2Q3Y263D00KWC` | both | Amazon Brazil marketplace id (default `A2Q3Y263D00KWC`). |
 | `STRIPE_SECRET_KEY` | `sk_live_…` | both | Found in Stripe Dashboard › Developers › API Keys. Use `sk_test_…` in dev. |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | both | Stripe webhook endpoint signing secret from Stripe Dashboard › Webhooks. |
 | `CORS_ALLOWED_ORIGINS` | `https://ihub.example.com` | prod | Comma-separated list of allowed origins for the CORS middleware. When absent (local dev), all origins are permitted. When set, the server also enables `credentials: true` on CORS responses, which is required for cookie/header-based auth from a cross-origin frontend. |

@@ -25,6 +25,13 @@ import {
   type CreateMlListingInput,
   type UpdateMlListingInput,
 } from "../lib/ml-listings";
+import {
+  createAmazonListing,
+  patchAmazonListingQuantity,
+  updateAmazonListing,
+  AmazonListingError,
+  type CreateAmazonListingInput,
+} from "../lib/amazon-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import {
   bulkChangeProductListingStatus,
@@ -57,6 +64,9 @@ async function enrichRowsWithMlItemPrices(
       chunk.map(async (p) => {
         let mlAmount: number | null = null;
         let mlRegularAmount: number | null = null;
+        if (!p.mlItemId) {
+          return { row: p, mlAmount, mlRegularAmount };
+        }
         try {
           const data = await fetchMlItemPrices(p.accountId, p.mlItemId);
           const r = resolveProductPricesFromMlPricesApi(data);
@@ -104,6 +114,9 @@ async function enrichRowsWithCatalogListing(
       chunk.map(async ({ row: p, mlAmount, mlRegularAmount }) => {
         let liveCatalogListing = p.catalogListing;
         let videoId: string | null = null;
+        if (!p.mlItemId) {
+          return { row: p, mlAmount, mlRegularAmount, liveCatalogListing, videoId };
+        }
         try {
           const item = await ml.get<MlItem>(p.accountId, `/items/${encodeURIComponent(p.mlItemId)}`);
           const apiValue = item.catalog_listing === true;
@@ -147,6 +160,12 @@ function handleMlListingRouteError(
     res.status(err.statusCode).json({ error: { code: err.code, message: err.message } });
     return;
   }
+  if (err instanceof AmazonListingError) {
+    const status =
+      err.code === "NOT_FOUND" ? 404 : err.code === "VALIDATION_ERROR" || err.code === "BAD_REQUEST" ? 400 : 502;
+    res.status(status).json({ error: { code: err.code, message: err.message } });
+    return;
+  }
   if (err instanceof N8nListingError) {
     res.status(err.statusCode).json({ error: { code: "N8N_ERROR", message: err.message } });
     return;
@@ -158,7 +177,14 @@ function handleMlListingRouteError(
 async function formatProductResponse(product: ProductRow) {
   const db = getDb();
   const [account] = await db
-    .select({ id: accountsTable.id, mlNickname: accountsTable.mlNickname, mlUserId: accountsTable.mlUserId })
+    .select({
+      id: accountsTable.id,
+      platform: accountsTable.platform,
+      mlNickname: accountsTable.mlNickname,
+      mlUserId: accountsTable.mlUserId,
+      amazonStoreName: accountsTable.amazonStoreName,
+      amazonSellerId: accountsTable.amazonSellerId,
+    })
     .from(accountsTable)
     .where(eq(accountsTable.id, product.accountId));
 
@@ -166,6 +192,8 @@ async function formatProductResponse(product: ProductRow) {
     ...product,
     price: product.price !== null ? Number(product.price) : null,
     originalPrice: product.originalPrice !== null ? Number(product.originalPrice) : null,
+    amount: product.amount !== null ? Number(product.amount) : null,
+    regularAmount: product.regularAmount !== null ? Number(product.regularAmount) : null,
     account: account ?? null,
   };
 }
@@ -497,7 +525,13 @@ router.post("/products/publish-draft", ...auth, async (req, res) => {
 
 router.post("/products", ...auth, async (req, res) => {
   try {
-    const body = req.body as CreateMlListingInput & { accountId?: string };
+    const body = req.body as CreateMlListingInput &
+      CreateAmazonListingInput & {
+        accountId?: string;
+        platform?: string;
+        sellerSku?: string;
+        productType?: string;
+      };
     const accountId = body.accountId;
     if (!accountId) {
       res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId" } });
@@ -505,6 +539,41 @@ router.post("/products", ...auth, async (req, res) => {
     }
     if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
       res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const db = getDb();
+    const [account] = await db
+      .select({ platform: accountsTable.platform })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, accountId));
+
+    if (account?.platform === "amazon") {
+      const amazonInput: CreateAmazonListingInput = {
+        sellerSku: body.sellerSku || body.title?.slice(0, 40) || "",
+        productType: body.productType || "",
+        title: body.title,
+        price: body.price,
+        availableQuantity: body.availableQuantity,
+        condition: (body as { condition?: string }).condition,
+        externalProductId: (body as { externalProductId?: string }).externalProductId,
+        externalProductIdType: (body as { externalProductIdType?: string }).externalProductIdType,
+        imageUrls: Array.isArray(body.pictures)
+          ? body.pictures.map((p: string | { source?: string }) =>
+              typeof p === "string" ? p : p.source ?? "",
+            ).filter(Boolean)
+          : (body as { imageUrls?: string[] }).imageUrls,
+        brand: (body as { brand?: string }).brand,
+        description: body.description,
+        attributes: (body as { amazonAttributes?: Record<string, unknown> }).amazonAttributes,
+      };
+      const { productId } = await createAmazonListing(accountId, amazonInput);
+      const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
+      if (!product) {
+        res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+        return;
+      }
+      res.status(201).json(await formatProductResponse(product));
       return;
     }
 
@@ -525,7 +594,6 @@ router.post("/products", ...auth, async (req, res) => {
     const created = await createMlItem(accountId, input);
     const productId = await upsertProductFromMlItem(accountId, created);
 
-    const db = getDb();
     const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
     if (!product) {
       res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -603,6 +671,13 @@ router.post("/products/:id/duplicate", ...auth, async (req, res) => {
       return;
     }
 
+    if (!product.mlItemId) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Duplicação disponível apenas para anúncios Mercado Livre" },
+      });
+      return;
+    }
+
     const { productId: newProductId } = await duplicateMlListing(
       product.accountId,
       product.mlItemId,
@@ -641,6 +716,13 @@ router.get("/products/:id/listing-detail", ...auth, async (req, res) => {
 
     if (!product) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Product not found" } });
+      return;
+    }
+
+    if (!product.mlItemId) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Detalhe de listing ML indisponível para produtos Amazon" },
+      });
       return;
     }
 
@@ -683,6 +765,37 @@ router.put("/products/:id", ...auth, async (req, res) => {
       res.status(400).json({
         error: { code: "CLOSED_LISTING", message: "Não é possível editar anúncios encerrados" },
       });
+      return;
+    }
+
+    const [account] = await db
+      .select({ platform: accountsTable.platform })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, product.accountId));
+
+    if (account?.platform === "amazon") {
+      const sellerSku = product.amazonSku || product.sku;
+      if (!sellerSku) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "Produto Amazon sem SKU" } });
+        return;
+      }
+      const body = req.body as { price?: number; availableQuantity?: number };
+      await updateAmazonListing(product.accountId, sellerSku, {
+        price: body.price,
+        availableQuantity: body.availableQuantity,
+        productType: product.amazonProductType,
+      });
+      const [refreshed] = await db.select().from(productsTable).where(eq(productsTable.id, product.id));
+      if (!refreshed) {
+        res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+        return;
+      }
+      res.json(await formatProductResponse(refreshed));
+      return;
+    }
+
+    if (!product.mlItemId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Produto sem mlItemId" } });
       return;
     }
 
@@ -737,6 +850,13 @@ router.delete("/products/:id", ...auth, async (req, res) => {
     if (product.status === "closed") {
       res.status(400).json({
         error: { code: "ALREADY_CLOSED", message: "Este anúncio já está encerrado" },
+      });
+      return;
+    }
+
+    if (!product.mlItemId) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Encerrar anúncio via API disponível apenas para Mercado Livre nesta fase" },
       });
       return;
     }
@@ -853,8 +973,39 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
       return;
     }
 
+    const [account] = await db
+      .select({ platform: accountsTable.platform })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, product.accountId));
+
+    if (account?.platform === "amazon") {
+      const sellerSku = product.amazonSku || product.sku;
+      if (!sellerSku) {
+        res.status(400).json({ error: { code: "BAD_REQUEST", message: "Produto Amazon sem SKU" } });
+        return;
+      }
+      const after = await patchAmazonListingQuantity(
+        product.accountId,
+        sellerSku,
+        quantity,
+        product.amazonProductType,
+      );
+      const qty = after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? quantity;
+      await db
+        .update(productsTable)
+        .set({ availableQuantity: qty, updatedAt: new Date() })
+        .where(eq(productsTable.id, product.id));
+      res.json({ success: true, productId: product.id, quantity: qty });
+      return;
+    }
+
     if (product.isFull) {
       res.status(400).json({ error: { code: "FULL_ITEM", message: "Estoque FULL é gerenciado pelo armazém do Mercado Livre" } });
+      return;
+    }
+
+    if (!product.mlItemId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Produto sem mlItemId" } });
       return;
     }
 
@@ -875,6 +1026,12 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
 
     res.json({ success: true, productId: product.id, quantity: after.available_quantity });
   } catch (err) {
+    if (err instanceof AmazonListingError) {
+      const status =
+        err.code === "NOT_FOUND" ? 404 : err.code === "VALIDATION_ERROR" || err.code === "BAD_REQUEST" ? 400 : 502;
+      res.status(status).json({ error: { code: err.code, message: err.message } });
+      return;
+    }
     req.log.error({ err }, "Failed to update single product stock");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
@@ -902,13 +1059,52 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
       .from(productsTable)
       .where(and(eq(productsTable.sku, req.params.sku as string), inArray(productsTable.accountId, accountIds)));
 
-    const results: Array<{ productId: string; mlItemId: string; success: boolean; reason: string | null }> = [];
+    const results: Array<{ productId: string; mlItemId: string | null; success: boolean; reason: string | null }> = [];
     let updated = 0, skipped = 0, failed = 0;
 
     for (const product of products) {
+      const [account] = await db
+        .select({ platform: accountsTable.platform })
+        .from(accountsTable)
+        .where(eq(accountsTable.id, product.accountId));
+
+      if (account?.platform === "amazon") {
+        const sellerSku = product.amazonSku || product.sku || (req.params.sku as string);
+        try {
+          const after = await patchAmazonListingQuantity(
+            product.accountId,
+            sellerSku,
+            quantity,
+            product.amazonProductType,
+          );
+          const qty = after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? quantity;
+          await db
+            .update(productsTable)
+            .set({ availableQuantity: qty, updatedAt: new Date() })
+            .where(eq(productsTable.id, product.id));
+          updated++;
+          results.push({ productId: product.id, mlItemId: product.mlItemId, success: true, reason: null });
+        } catch (err) {
+          failed++;
+          results.push({
+            productId: product.id,
+            mlItemId: product.mlItemId,
+            success: false,
+            reason: (err as Error).message,
+          });
+        }
+        continue;
+      }
+
       if (product.isFull) {
         skipped++;
         results.push({ productId: product.id, mlItemId: product.mlItemId, success: false, reason: "FULL (Fulfillment) — stock managed by ML warehouse" });
+        continue;
+      }
+
+      if (!product.mlItemId) {
+        failed++;
+        results.push({ productId: product.id, mlItemId: null, success: false, reason: "missing mlItemId" });
         continue;
       }
 

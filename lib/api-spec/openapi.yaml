@@ -123,6 +123,47 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /accounts/amazon/connect:
+    post:
+      operationId: connectAmazonAccount
+      tags: [accounts]
+      summary: Connect private Amazon SP-API seller account using server env credentials
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sellerId:
+                  type: string
+                  description: Optional override for AMAZON_SELLER_ID
+      responses:
+        "201":
+          description: Amazon account connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Amazon API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Amazon credentials not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /accounts/connect/callback:
     get:
       operationId: handleConnectCallback
@@ -2200,6 +2241,10 @@ components:
           type: string
         userId:
           type: string
+        platform:
+          type: string
+          description: mercadolivre | amazon
+          enum: [mercadolivre, amazon]
         mlUserId:
           type: string
           nullable: true
@@ -2207,6 +2252,15 @@ components:
           type: string
           nullable: true
         mlEmail:
+          type: string
+          nullable: true
+        amazonSellerId:
+          type: string
+          nullable: true
+        amazonMarketplaceId:
+          type: string
+          nullable: true
+        amazonStoreName:
           type: string
           nullable: true
         isActive:
@@ -2232,7 +2286,7 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [id, userId, isActive, hasMpCredentials, createdAt, updatedAt]
+      required: [id, userId, platform, isActive, hasMpCredentials, createdAt, updatedAt]
 
     UpsertMpCredentialsRequest:
       type: object
@@ -2273,6 +2327,16 @@ components:
           type: string
         mlItemId:
           type: string
+          nullable: true
+        amazonSku:
+          type: string
+          nullable: true
+        amazonAsin:
+          type: string
+          nullable: true
+        amazonProductType:
+          type: string
+          nullable: true
         title:
           type: string
           nullable: true
@@ -2345,17 +2409,26 @@ components:
         account:
           $ref: "#/components/schemas/AccountSummary"
           nullable: true
-      required: [id, accountId, mlItemId, availableQuantity, soldQuantity, isFull, isFlex, catalogListing, createdAt, updatedAt]
+      required: [id, accountId, availableQuantity, soldQuantity, isFull, isFlex, catalogListing, createdAt, updatedAt]
 
     AccountSummary:
       type: object
       properties:
         id:
           type: string
+        platform:
+          type: string
+          nullable: true
         mlNickname:
           type: string
           nullable: true
         mlUserId:
+          type: string
+          nullable: true
+        amazonStoreName:
+          type: string
+          nullable: true
+        amazonSellerId:
           type: string
           nullable: true
       required: [id]
@@ -2550,6 +2623,26 @@ components:
             (tag user_product_seller). Use uma descrição genérica do produto; o ML gera o título automaticamente.
         categoryId:
           type: string
+        sellerSku:
+          type: string
+          description: SKU do vendedor (obrigatório para Amazon)
+        productType:
+          type: string
+          description: Product type Amazon SP-API (ex. SHOES)
+        brand:
+          type: string
+          nullable: true
+        externalProductId:
+          type: string
+          nullable: true
+        externalProductIdType:
+          type: string
+          nullable: true
+        imageUrls:
+          type: array
+          items:
+            type: string
+          nullable: true
         price:
           type: number
         availableQuantity:

@@ -8,6 +8,9 @@
 
 export interface AccountSummary {
   id: string;
+  platform?: string | null;
   mlNickname?: string | null;
   mlUserId?: string | null;
+  amazonStoreName?: string | null;
+  amazonSellerId?: string | null;
 }

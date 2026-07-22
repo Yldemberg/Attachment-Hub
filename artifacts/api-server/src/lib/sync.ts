@@ -266,7 +266,17 @@ export async function syncAccount(accountId: string, userId: string): Promise<vo
     .from(accountsTable)
     .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
 
-  if (!account || !account.mlUserId) {
+  if (!account) {
+    throw new Error("Account not found");
+  }
+
+  if (account.platform === "amazon") {
+    const { syncAmazonAccount } = await import("./amazon-sync");
+    await syncAmazonAccount(accountId, userId);
+    return;
+  }
+
+  if (!account.mlUserId) {
     throw new Error("Account not found or ml_user_id missing");
   }
 

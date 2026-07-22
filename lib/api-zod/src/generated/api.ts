@@ -39,9 +39,15 @@ export const ListAccountsResponse = zod.object({
     zod.object({
       id: zod.string(),
       userId: zod.string(),
+      platform: zod
+        .enum(["mercadolivre", "amazon"])
+        .describe("mercadolivre | amazon"),
       mlUserId: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlEmail: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
+      amazonMarketplaceId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
       isActive: zod.boolean(),
       lastSyncAt: zod.coerce.date().nullish(),
       hasMpCredentials: zod
@@ -74,6 +80,16 @@ export const GetConnectUrlResponse = zod.object({
 });
 
 /**
+ * @summary Connect private Amazon SP-API seller account using server env credentials
+ */
+export const ConnectAmazonAccountBody = zod.object({
+  sellerId: zod
+    .string()
+    .optional()
+    .describe("Optional override for AMAZON_SELLER_ID"),
+});
+
+/**
  * No JWT auth. Handles Mercado Livre OAuth redirect.
  * @summary OAuth callback — exchange code for tokens
  */
@@ -92,9 +108,15 @@ export const GetAccountParams = zod.object({
 export const GetAccountResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  platform: zod
+    .enum(["mercadolivre", "amazon"])
+    .describe("mercadolivre | amazon"),
   mlUserId: zod.string().nullish(),
   mlNickname: zod.string().nullish(),
   mlEmail: zod.string().nullish(),
+  amazonSellerId: zod.string().nullish(),
+  amazonMarketplaceId: zod.string().nullish(),
+  amazonStoreName: zod.string().nullish(),
   isActive: zod.boolean(),
   lastSyncAt: zod.coerce.date().nullish(),
   hasMpCredentials: zod
@@ -156,7 +178,7 @@ export const DeleteMpCredentialsResponse = zod.object({
 });
 
 /**
- * Syncs products, orders, and questions from Mercado Livre
+ * Syncs products, orders, questions, and listing templates (full ad fields) from Mercado Livre
  * @summary Trigger full sync for a ML account
  */
 export const SyncAccountParams = zod.object({
@@ -208,7 +230,10 @@ export const ListProductsResponse = zod.object({
     zod.object({
       id: zod.string(),
       accountId: zod.string(),
-      mlItemId: zod.string(),
+      mlItemId: zod.string().nullish(),
+      amazonSku: zod.string().nullish(),
+      amazonAsin: zod.string().nullish(),
+      amazonProductType: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
       price: zod.number().nullish(),
@@ -252,8 +277,11 @@ export const ListProductsResponse = zod.object({
       account: zod
         .object({
           id: zod.string(),
+          platform: zod.string().nullish(),
           mlNickname: zod.string().nullish(),
           mlUserId: zod.string().nullish(),
+          amazonStoreName: zod.string().nullish(),
+          amazonSellerId: zod.string().nullish(),
         })
         .nullish(),
     }),
@@ -281,6 +309,18 @@ export const CreateProductBody = zod.object({
       "Nome da família do produto. Obrigatório para vendedores no modelo User Products do Mercado Livre (tag user_product_seller). Use uma descrição genérica do produto; o ML gera o título automaticamente.\n",
     ),
   categoryId: zod.string(),
+  sellerSku: zod
+    .string()
+    .optional()
+    .describe("SKU do vendedor (obrigatório para Amazon)"),
+  productType: zod
+    .string()
+    .optional()
+    .describe("Product type Amazon SP-API (ex. SHOES)"),
+  brand: zod.string().nullish(),
+  externalProductId: zod.string().nullish(),
+  externalProductIdType: zod.string().nullish(),
+  imageUrls: zod.array(zod.string()).nullish(),
   price: zod.number().optional(),
   availableQuantity: zod.number(),
   condition: zod.enum(["new", "used"]),
@@ -747,7 +787,10 @@ export const GetLowStockProductsResponse = zod.object({
     zod.object({
       id: zod.string(),
       accountId: zod.string(),
-      mlItemId: zod.string(),
+      mlItemId: zod.string().nullish(),
+      amazonSku: zod.string().nullish(),
+      amazonAsin: zod.string().nullish(),
+      amazonProductType: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),
       price: zod.number().nullish(),
@@ -791,8 +834,11 @@ export const GetLowStockProductsResponse = zod.object({
       account: zod
         .object({
           id: zod.string(),
+          platform: zod.string().nullish(),
           mlNickname: zod.string().nullish(),
           mlUserId: zod.string().nullish(),
+          amazonStoreName: zod.string().nullish(),
+          amazonSellerId: zod.string().nullish(),
         })
         .nullish(),
     }),
@@ -809,7 +855,10 @@ export const GetProductParams = zod.object({
 export const GetProductResponse = zod.object({
   id: zod.string(),
   accountId: zod.string(),
-  mlItemId: zod.string(),
+  mlItemId: zod.string().nullish(),
+  amazonSku: zod.string().nullish(),
+  amazonAsin: zod.string().nullish(),
+  amazonProductType: zod.string().nullish(),
   title: zod.string().nullish(),
   sku: zod.string().nullish(),
   price: zod.number().nullish(),
@@ -853,8 +902,11 @@ export const GetProductResponse = zod.object({
   account: zod
     .object({
       id: zod.string(),
+      platform: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlUserId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
     })
     .nullish(),
 });
@@ -892,7 +944,10 @@ export const UpdateProductBody = zod.object({
 export const UpdateProductResponse = zod.object({
   id: zod.string(),
   accountId: zod.string(),
-  mlItemId: zod.string(),
+  mlItemId: zod.string().nullish(),
+  amazonSku: zod.string().nullish(),
+  amazonAsin: zod.string().nullish(),
+  amazonProductType: zod.string().nullish(),
   title: zod.string().nullish(),
   sku: zod.string().nullish(),
   price: zod.number().nullish(),
@@ -936,8 +991,11 @@ export const UpdateProductResponse = zod.object({
   account: zod
     .object({
       id: zod.string(),
+      platform: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlUserId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
     })
     .nullish(),
 });
@@ -984,7 +1042,10 @@ export const GetProductListingDetailResponse = zod.object({
   product: zod.object({
     id: zod.string(),
     accountId: zod.string(),
-    mlItemId: zod.string(),
+    mlItemId: zod.string().nullish(),
+    amazonSku: zod.string().nullish(),
+    amazonAsin: zod.string().nullish(),
+    amazonProductType: zod.string().nullish(),
     title: zod.string().nullish(),
     sku: zod.string().nullish(),
     price: zod.number().nullish(),
@@ -1028,8 +1089,11 @@ export const GetProductListingDetailResponse = zod.object({
     account: zod
       .object({
         id: zod.string(),
+        platform: zod.string().nullish(),
         mlNickname: zod.string().nullish(),
         mlUserId: zod.string().nullish(),
+        amazonStoreName: zod.string().nullish(),
+        amazonSellerId: zod.string().nullish(),
       })
       .nullish(),
   }),
@@ -1349,8 +1413,11 @@ export const ListOrdersResponse = zod.object({
       account: zod
         .object({
           id: zod.string(),
+          platform: zod.string().nullish(),
           mlNickname: zod.string().nullish(),
           mlUserId: zod.string().nullish(),
+          amazonStoreName: zod.string().nullish(),
+          amazonSellerId: zod.string().nullish(),
         })
         .nullish(),
     }),
@@ -1402,8 +1469,11 @@ export const GetOrderResponse = zod.object({
   account: zod
     .object({
       id: zod.string(),
+      platform: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlUserId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
     })
     .nullish(),
 });
@@ -1482,8 +1552,11 @@ export const ListQuestionsResponse = zod.object({
       account: zod
         .object({
           id: zod.string(),
+          platform: zod.string().nullish(),
           mlNickname: zod.string().nullish(),
           mlUserId: zod.string().nullish(),
+          amazonStoreName: zod.string().nullish(),
+          amazonSellerId: zod.string().nullish(),
         })
         .nullish(),
     }),
@@ -1533,8 +1606,11 @@ export const GetQuestionResponse = zod.object({
   account: zod
     .object({
       id: zod.string(),
+      platform: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlUserId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
     })
     .nullish(),
 });
@@ -1581,8 +1657,11 @@ export const AnswerQuestionResponse = zod.object({
   account: zod
     .object({
       id: zod.string(),
+      platform: zod.string().nullish(),
       mlNickname: zod.string().nullish(),
       mlUserId: zod.string().nullish(),
+      amazonStoreName: zod.string().nullish(),
+      amazonSellerId: zod.string().nullish(),
     })
     .nullish(),
 });
@@ -1634,7 +1713,12 @@ export const listListingTemplatesQueryLimitDefault = 20;
 
 export const ListListingTemplatesQueryParams = zod.object({
   account_id: zod.coerce.string().optional(),
-  search: zod.coerce.string().optional().describe("Busca por título ou MLB"),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Busca por MLB (ID do anúncio), SKU, título ou texto em atributos\/variações. Várias palavras: todas devem aparecer (ordem irrelevante).\n",
+    ),
   page: zod.coerce.number().default(listListingTemplatesQueryPageDefault),
   limit: zod.coerce.number().default(listListingTemplatesQueryLimitDefault),
 });

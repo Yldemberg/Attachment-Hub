@@ -289,6 +289,9 @@ export async function syncListingTemplatesForAccount(
   logger.info({ accountId, count: products.length }, "Starting listing templates sync");
 
   await mapPool(products, TEMPLATE_SYNC_CONCURRENCY, async (product) => {
+    if (!product.mlItemId) {
+      return;
+    }
     try {
       await syncListingTemplateForProduct({
         userId,

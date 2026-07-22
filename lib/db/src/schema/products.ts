@@ -8,7 +8,13 @@ export const productsTable = pgTable("products", {
   accountId: uuid("account_id")
     .notNull()
     .references(() => accountsTable.id, { onDelete: "cascade" }),
-  mlItemId: text("ml_item_id").notNull(),
+  /** Mercado Livre item id — null for Amazon listings. */
+  mlItemId: text("ml_item_id"),
+  /** Amazon seller SKU (Listings Items API key). */
+  amazonSku: text("amazon_sku"),
+  amazonAsin: text("amazon_asin"),
+  /** Amazon product type (e.g. SHOES) — needed for patch/put. */
+  amazonProductType: text("amazon_product_type"),
   title: text("title"),
   sku: text("sku"),
   price: decimal("price", { precision: 10, scale: 2 }),
@@ -35,6 +41,7 @@ export const productsTable = pgTable("products", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   uniqueIndex("products_account_id_ml_item_id_unique").on(t.accountId, t.mlItemId),
+  uniqueIndex("products_account_id_amazon_sku_unique").on(t.accountId, t.amazonSku),
 ]);
 
 export const insertProductSchema = createInsertSchema(productsTable).omit({

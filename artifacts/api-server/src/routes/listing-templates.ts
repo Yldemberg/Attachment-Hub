@@ -82,6 +82,13 @@ router.post("/listing-templates/from-product/:productId", ...auth, async (req, r
       return;
     }
 
+    if (!row.mlItemId) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Templates disponíveis apenas para anúncios Mercado Livre" },
+      });
+      return;
+    }
+
     const templateId = await syncListingTemplateForProduct({
       userId: req.user!.id,
       accountId: row.accountId,

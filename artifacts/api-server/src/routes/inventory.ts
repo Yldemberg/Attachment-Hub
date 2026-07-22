@@ -418,6 +418,17 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
     let failed = 0;
 
     for (const product of products) {
+      if (!product.mlItemId) {
+        // Amazon / non-ML listings: mandate stock is ML-only in this phase
+        failed++;
+        results.push({
+          productId: product.id,
+          mlItemId: "",
+          success: false,
+          reason: "skipped non-ML listing",
+        });
+        continue;
+      }
       try {
         await putMlItemStockForSellerSku(product.accountId, product.mlItemId, sku, mandateQty);
         const after = await ml.get<MlItem>(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`);
@@ -496,6 +507,13 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
     } else {
       const active = products.find((p) => p.status === "active");
       if (active) sourceProduct = active;
+    }
+
+    if (!sourceProduct.mlItemId) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Sync de SKU via ML disponível apenas para anúncios Mercado Livre" },
+      });
+      return;
     }
 
     const mlItem = await ml.get<MlItem>(

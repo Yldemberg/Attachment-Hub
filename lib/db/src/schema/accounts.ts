@@ -8,9 +8,14 @@ export const accountsTable = pgTable("accounts", {
   userId: uuid("user_id")
     .notNull()
     .references(() => profilesTable.id, { onDelete: "cascade" }),
+  /** mercadolivre | amazon */
+  platform: text("platform").notNull().default("mercadolivre"),
   mlUserId: text("ml_user_id").unique(),
   mlNickname: text("ml_nickname"),
   mlEmail: text("ml_email"),
+  amazonSellerId: text("amazon_seller_id"),
+  amazonMarketplaceId: text("amazon_marketplace_id"),
+  amazonStoreName: text("amazon_store_name"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),

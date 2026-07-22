@@ -5,13 +5,19 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { AccountPlatform } from "./accountPlatform";
 
 export interface Account {
   id: string;
   userId: string;
+  /** mercadolivre | amazon */
+  platform: AccountPlatform;
   mlUserId?: string | null;
   mlNickname?: string | null;
   mlEmail?: string | null;
+  amazonSellerId?: string | null;
+  amazonMarketplaceId?: string | null;
+  amazonStoreName?: string | null;
   isActive: boolean;
   lastSyncAt?: Date | null;
   /** Indica se a conta tem credenciais MP configuradas (client_id + access_token) */

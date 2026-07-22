@@ -5,6 +5,12 @@ import { getDb } from "../lib/db";
 import { accountsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
+import {
+  exchangeRefreshTokenForAccess,
+  fetchMarketplaceParticipationsWithToken,
+  getAmazonEnvCredentials,
+  getAmazonMarketplaceId,
+} from "../lib/amazon";
 import { syncAccount } from "../lib/sync";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
 const router = Router();
@@ -26,9 +32,13 @@ function serializeAccount(row: typeof accountsTable.$inferSelect) {
   return {
     id: row.id,
     userId: row.userId,
+    platform: row.platform ?? "mercadolivre",
     mlUserId: row.mlUserId,
     mlNickname: row.mlNickname,
     mlEmail: row.mlEmail,
+    amazonSellerId: row.amazonSellerId,
+    amazonMarketplaceId: row.amazonMarketplaceId,
+    amazonStoreName: row.amazonStoreName,
     isActive: row.isActive,
     lastSyncAt: row.lastSyncAt,
     createdAt: row.createdAt,
@@ -63,6 +73,89 @@ router.get("/accounts/connect/url", ...auth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get connect URL");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
+  try {
+    const env = getAmazonEnvCredentials();
+    const body = (req.body ?? {}) as { sellerId?: string };
+    const sellerId = (typeof body.sellerId === "string" && body.sellerId.trim()) || env.sellerId;
+
+    const tokenData = await exchangeRefreshTokenForAccess(env.refreshToken, env.clientId, env.clientSecret);
+    const participations = await fetchMarketplaceParticipationsWithToken(tokenData.access_token);
+    const marketplaceId = getAmazonMarketplaceId();
+    const br = participations.find((p) => p.marketplace.id === marketplaceId) ?? participations[0];
+
+    if (!br?.participation?.isParticipating) {
+      res.status(400).json({
+        error: {
+          code: "AMAZON_NOT_PARTICIPATING",
+          message: "Conta Amazon sem participação ativa no marketplace configurado",
+        },
+      });
+      return;
+    }
+
+    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    const db = getDb();
+    const userId = req.user!.id;
+
+    const [existing] = await db
+      .select()
+      .from(accountsTable)
+      .where(and(eq(accountsTable.userId, userId), eq(accountsTable.platform, "amazon")));
+
+    let account: typeof accountsTable.$inferSelect;
+    if (existing) {
+      const [updated] = await db
+        .update(accountsTable)
+        .set({
+          amazonSellerId: sellerId,
+          amazonMarketplaceId: br.marketplace.id,
+          amazonStoreName: br.storeName ?? existing.amazonStoreName,
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token ?? env.refreshToken,
+          tokenExpiresAt: expiresAt,
+          isActive: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(accountsTable.id, existing.id))
+        .returning();
+      account = updated;
+    } else {
+      const [inserted] = await db
+        .insert(accountsTable)
+        .values({
+          userId,
+          platform: "amazon",
+          amazonSellerId: sellerId,
+          amazonMarketplaceId: br.marketplace.id,
+          amazonStoreName: br.storeName ?? "Amazon",
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token ?? env.refreshToken,
+          tokenExpiresAt: expiresAt,
+          isActive: true,
+        })
+        .returning();
+      account = inserted;
+    }
+
+    setImmediate(() => {
+      syncAccount(account.id, userId).catch((err) => {
+        console.error({ err, accountId: account.id }, "Background Amazon sync failed");
+      });
+    });
+
+    res.status(201).json(serializeAccount(account));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Falha ao conectar Amazon";
+    req.log.error({ err }, "Amazon connect failed");
+    if (message.includes("não configurada") || message.includes("AMAZON_")) {
+      res.status(503).json({ error: { code: "AMAZON_NOT_CONFIGURED", message } });
+      return;
+    }
+    res.status(502).json({ error: { code: "AMAZON_API_ERROR", message } });
   }
 });
 
@@ -110,6 +203,7 @@ async function handleOAuthCallback(
       .insert(accountsTable)
       .values({
         userId,
+        platform: "mercadolivre",
         mlUserId: mlUserIdStr,
         mlNickname: mlUser.nickname,
         mlEmail: mlUser.email,
@@ -127,6 +221,7 @@ async function handleOAuthCallback(
           mlNickname: mlUser.nickname,
           mlEmail: mlUser.email,
           isActive: true,
+          platform: "mercadolivre",
         },
       })
       .returning();

@@ -21,6 +21,9 @@ async function setProductListingStatus(
   status: ListingStatus,
 ): Promise<void> {
   const db = getDb();
+  if (!product.mlItemId) {
+    throw new ProductListingStatusError("Produto sem mlItemId (não ML)", "INVALID_STATUS");
+  }
   await ml.put(product.accountId, `/items/${encodeURIComponent(product.mlItemId)}`, { status });
   await db
     .update(productsTable)

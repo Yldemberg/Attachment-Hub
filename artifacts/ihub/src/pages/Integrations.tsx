@@ -35,9 +35,13 @@ import { useSearch, useLocation } from "wouter";
 
 interface Account {
   id: string;
+  platform?: string | null;
   mlNickname?: string | null;
   mlEmail?: string | null;
   mlUserId?: string | null;
+  amazonStoreName?: string | null;
+  amazonSellerId?: string | null;
+  amazonMarketplaceId?: string | null;
   isActive?: boolean | null;
   lastSyncAt?: string | null;
   hasMpCredentials?: boolean;
@@ -105,7 +109,7 @@ function ConnectButton() {
   );
 }
 
-function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" | "Amazon" }) {
+function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" }) {
   const { toast } = useToast();
 
   return (
@@ -121,6 +125,53 @@ function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" | "Ama
       }
     >
       Conectar {marketplace}
+    </Button>
+  );
+}
+
+function ConnectAmazonButton() {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleConnect = async () => {
+    setLoading(true);
+    try {
+      const { connectAmazonAccount } = await import("@workspace/api-client-react");
+      await connectAmazonAccount({});
+      toast({
+        title: "Amazon conectada",
+        description: "Conta Amazon vinculada. A sincronização do catálogo foi iniciada.",
+      });
+      queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+    } catch (err) {
+      let description = "Não foi possível conectar a Amazon. Verifique as credenciais SP-API no servidor.";
+      if (err instanceof ApiError) {
+        if (err.status === 503) {
+          description = "Credenciais Amazon não configuradas no servidor (AMAZON_LWA_* / AMAZON_SELLER_ID).";
+        } else if (err.status === 502 || err.status === 400) {
+          const body = err.data as { error?: { message?: string } } | undefined;
+          description = body?.error?.message ?? description;
+        } else if (err.status === 401) {
+          description = "Sessão expirada. Faça login novamente.";
+        }
+      }
+      toast({ variant: "destructive", title: "Erro ao conectar Amazon", description });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="mt-3 h-8 text-xs w-full"
+      disabled={loading}
+      onClick={handleConnect}
+    >
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+      Conectar Amazon
     </Button>
   );
 }
@@ -532,8 +583,8 @@ export default function Integrations() {
                   Em breve
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">Conector planejado para catálogo, pedidos e status logístico.</p>
-              <ConnectComingSoonButton marketplace="Amazon" />
+              <p className="text-xs text-muted-foreground mt-1.5">Conector para catálogo, estoque e anúncios via SP-API.</p>
+              <ConnectAmazonButton />
             </div>
           </div>
         </div>
@@ -557,20 +608,32 @@ export default function Integrations() {
           <div className="space-y-3">
             {accounts.map((account) => {
               const isSyncing = account.id in syncingAccounts;
+              const isAmazon = account.platform === "amazon";
+              const displayName = isAmazon
+                ? (account.amazonStoreName ?? account.amazonSellerId ?? account.id)
+                : (account.mlNickname ?? account.mlUserId ?? account.id);
               return (
                 <div
                   key={account.id}
                   className="bg-card border border-card-border rounded-xl p-4"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
-                      <span className="text-amber-700 font-bold text-sm">ML</span>
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+                        isAmazon
+                          ? "bg-orange-50 border-orange-200"
+                          : "bg-amber-50 border-amber-200"
+                      }`}
+                    >
+                      <span className={`font-bold text-sm ${isAmazon ? "text-orange-700" : "text-amber-700"}`}>
+                        {isAmazon ? "AMZ" : "ML"}
+                      </span>
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="text-foreground font-medium text-sm">
-                          {account.mlNickname ?? account.mlUserId ?? account.id}
+                          {displayName}
                         </h3>
                         {account.isActive ? (
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
@@ -584,8 +647,13 @@ export default function Integrations() {
                           </span>
                         )}
                       </div>
-                      {account.mlEmail && (
+                      {!isAmazon && account.mlEmail && (
                         <p className="text-muted-foreground text-xs mt-0.5">{account.mlEmail}</p>
+                      )}
+                      {isAmazon && account.amazonMarketplaceId && (
+                        <p className="text-muted-foreground text-xs mt-0.5">
+                          Marketplace {account.amazonMarketplaceId}
+                        </p>
                       )}
                       {account.lastSyncAt && (
                         <p className="text-muted-foreground/60 text-xs mt-0.5">
@@ -625,7 +693,7 @@ export default function Integrations() {
                             <AlertDialogTitle>Remover conta</AlertDialogTitle>
                             <AlertDialogDescription>
                               Tem certeza que deseja remover a conta{" "}
-                              <span className="text-foreground font-medium">{account.mlNickname}</span>?
+                              <span className="text-foreground font-medium">{displayName}</span>?
                               Todos os dados sincronizados serão mantidos, mas a conta será desconectada.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
@@ -646,7 +714,9 @@ export default function Integrations() {
                     </div>
                   </div>
 
-                  <MpCredentialsPanel account={account} onUpdated={() => refetchAccounts()} />
+                  {!isAmazon && (
+                    <MpCredentialsPanel account={account} onUpdated={() => refetchAccounts()} />
+                  )}
                 </div>
               );
             })}
@@ -656,10 +726,10 @@ export default function Integrations() {
         <div className="bg-card border border-card-border rounded-xl p-4">
           <h3 className="text-foreground text-sm font-medium mb-2">Como funciona</h3>
           <div className="space-y-2 text-muted-foreground text-xs">
-            <p>1. Clique em "Conectar conta ML" — você será redirecionado para o Mercado Livre</p>
-            <p>2. Autorize o iHub a acessar sua conta</p>
-            <p>3. Você será redirecionado de volta e a sincronização iniciará automaticamente</p>
-            <p>4. Produtos, pedidos e perguntas serão importados para o iHub</p>
+            <p>1. Mercado Livre: clique em "Conectar conta ML" e autorize no OAuth</p>
+            <p>2. Amazon: configure AMAZON_* no servidor e clique em "Conectar Amazon"</p>
+            <p>3. A sincronização inicia automaticamente após conectar</p>
+            <p>4. Use "Sincronizar" para atualizar catálogo e estoque</p>
           </div>
         </div>
 

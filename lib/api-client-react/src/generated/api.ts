@@ -26,6 +26,7 @@ import type {
   BulkActivatePromotionItemsResponse,
   BulkUpdateProductListingStatusRequest,
   BulkUpdateProductListingStatusResponse,
+  ConnectAmazonAccountBody,
   CreateProductRequest,
   CriticalAdListResponse,
   DashboardSummary,
@@ -419,6 +420,95 @@ export function useGetConnectUrl<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Connect private Amazon SP-API seller account using server env credentials
+ */
+export const getConnectAmazonAccountUrl = () => {
+  return `/api/accounts/amazon/connect`;
+};
+
+export const connectAmazonAccount = async (
+  connectAmazonAccountBody?: ConnectAmazonAccountBody,
+  options?: RequestInit,
+): Promise<Account> => {
+  return customFetch<Account>(getConnectAmazonAccountUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(connectAmazonAccountBody),
+  });
+};
+
+export const getConnectAmazonAccountMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof connectAmazonAccount>>,
+    TError,
+    { data: BodyType<ConnectAmazonAccountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof connectAmazonAccount>>,
+  TError,
+  { data: BodyType<ConnectAmazonAccountBody> },
+  TContext
+> => {
+  const mutationKey = ["connectAmazonAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof connectAmazonAccount>>,
+    { data: BodyType<ConnectAmazonAccountBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return connectAmazonAccount(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConnectAmazonAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof connectAmazonAccount>>
+>;
+export type ConnectAmazonAccountMutationBody =
+  BodyType<ConnectAmazonAccountBody>;
+export type ConnectAmazonAccountMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Connect private Amazon SP-API seller account using server env credentials
+ */
+export const useConnectAmazonAccount = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof connectAmazonAccount>>,
+    TError,
+    { data: BodyType<ConnectAmazonAccountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof connectAmazonAccount>>,
+  TError,
+  { data: BodyType<ConnectAmazonAccountBody> },
+  TContext
+> => {
+  return useMutation(getConnectAmazonAccountMutationOptions(options));
+};
 
 /**
  * No JWT auth. Handles Mercado Livre OAuth redirect.
@@ -881,7 +971,7 @@ export const useDeleteMpCredentials = <
 };
 
 /**
- * Syncs products, orders, and questions from Mercado Livre
+ * Syncs products, orders, questions, and listing templates (full ad fields) from Mercado Livre
  * @summary Trigger full sync for a ML account
  */
 export const getSyncAccountUrl = (id: string) => {

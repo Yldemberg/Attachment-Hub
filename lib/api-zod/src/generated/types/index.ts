@@ -9,6 +9,7 @@
 export * from "./_n8nListingDraftAttributesAindaPendentesItem";
 export * from "./_n8nListingDraftErrosValidacaoMlItem";
 export * from "./account";
+export * from "./accountPlatform";
 export * from "./accountSummary";
 export * from "./activatePromotionItem200";
 export * from "./activatePromotionItemRequest";
@@ -24,6 +25,7 @@ export * from "./bulkUpdateProductListingStatusResponse";
 export * from "./bulkUpdateProductListingStatusResponseStatus";
 export * from "./bulkUpdateProductListingStatusResponseSummary";
 export * from "./bulkUpdateProductListingStatusResult";
+export * from "./connectAmazonAccountBody";
 export * from "./createProductRequest";
 export * from "./createProductRequestCondition";
 export * from "./criticalAd";

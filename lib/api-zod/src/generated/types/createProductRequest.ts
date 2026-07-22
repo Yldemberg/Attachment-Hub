@@ -16,6 +16,14 @@ export interface CreateProductRequest {
    */
   familyName?: string;
   categoryId: string;
+  /** SKU do vendedor (obrigatório para Amazon) */
+  sellerSku?: string;
+  /** Product type Amazon SP-API (ex. SHOES) */
+  productType?: string;
+  brand?: string | null;
+  externalProductId?: string | null;
+  externalProductIdType?: string | null;
+  imageUrls?: string[] | null;
   price?: number;
   availableQuantity: number;
   condition: CreateProductRequestCondition;

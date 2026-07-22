@@ -174,6 +174,7 @@ export async function propagateStockBySku(params: {
     .map((r) => r.product)
     .filter(
       (product) =>
+        !!product.mlItemId &&
         !(excludeMlItemId && product.mlItemId === excludeMlItemId && product.accountId === excludeAccountId),
     );
 
@@ -184,8 +185,9 @@ export async function propagateStockBySku(params: {
     siblings,
     SIBLING_UPDATE_CONCURRENCY,
     async (target) => {
+      const mlItemId = target.mlItemId!;
       const logCtx = {
-        mlItemId: target.mlItemId,
+        mlItemId,
         accountId: target.accountId,
         sku: effectiveSku,
         sourceListingStock,
@@ -195,13 +197,13 @@ export async function propagateStockBySku(params: {
           async () => {
             await putMlItemStockForSellerSku(
               target.accountId,
-              target.mlItemId,
+              mlItemId,
               effectiveSku,
               sourceListingStock,
             );
             const after = await ml.get<MlItem>(
               target.accountId,
-              `/items/${encodeURIComponent(target.mlItemId)}`,
+              `/items/${encodeURIComponent(mlItemId)}`,
             );
             await db
               .update(productsTable)
@@ -212,7 +214,7 @@ export async function propagateStockBySku(params: {
         );
         logger.info(
           {
-            mlItemId: target.mlItemId,
+            mlItemId,
             accountId: target.accountId,
             sku: effectiveSku,
             sourceListingStock,

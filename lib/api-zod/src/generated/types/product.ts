@@ -10,7 +10,10 @@ import type { AccountSummary } from "./accountSummary";
 export interface Product {
   id: string;
   accountId: string;
-  mlItemId: string;
+  mlItemId?: string | null;
+  amazonSku?: string | null;
+  amazonAsin?: string | null;
+  amazonProductType?: string | null;
   title?: string | null;
   sku?: string | null;
   price?: number | null;

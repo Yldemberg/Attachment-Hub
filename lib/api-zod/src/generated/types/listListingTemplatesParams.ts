@@ -9,8 +9,9 @@
 export type ListListingTemplatesParams = {
   account_id?: string;
   /**
-   * Busca por título ou MLB
-   */
+ * Busca por MLB (ID do anúncio), SKU, título ou texto em atributos/variações. Várias palavras: todas devem aparecer (ordem irrelevante).
+
+ */
   search?: string;
   page?: number;
   limit?: number;

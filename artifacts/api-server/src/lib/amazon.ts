@@ -1,0 +1,397 @@
+import { getDb } from "./db";
+import { accountsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { logger } from "./logger";
+
+const LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token";
+const SP_API_BASE_URL = "https://sellingpartnerapi-na.amazon.com";
+const AMAZON_TIMEOUT_MS = 30_000;
+const MAX_RETRIES = 3;
+
+export const AMAZON_BR_MARKETPLACE_ID = "A2Q3Y263D00KWC";
+
+export function getAmazonMarketplaceId(): string {
+  return process.env.AMAZON_MARKETPLACE_ID?.trim() || AMAZON_BR_MARKETPLACE_ID;
+}
+
+export function getAmazonEnvCredentials(): {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  sellerId: string;
+  marketplaceId: string;
+} {
+  const clientId = process.env.AMAZON_LWA_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.AMAZON_LWA_CLIENT_SECRET?.trim() ?? "";
+  const refreshToken = process.env.AMAZON_REFRESH_TOKEN?.trim() ?? "";
+  const sellerId = process.env.AMAZON_SELLER_ID?.trim() ?? "";
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      "Amazon SP-API não configurada: defina AMAZON_LWA_CLIENT_ID, AMAZON_LWA_CLIENT_SECRET e AMAZON_REFRESH_TOKEN",
+    );
+  }
+  if (!sellerId) {
+    throw new Error("Amazon SP-API: defina AMAZON_SELLER_ID (ID do vendedor / Selling Partner)");
+  }
+  return {
+    clientId,
+    clientSecret,
+    refreshToken,
+    sellerId,
+    marketplaceId: getAmazonMarketplaceId(),
+  };
+}
+
+export type AmazonMarketplaceParticipation = {
+  marketplace: {
+    id: string;
+    countryCode: string;
+    name: string;
+    defaultCurrencyCode: string;
+    defaultLanguageCode: string;
+    domainName: string;
+  };
+  storeName?: string;
+  participation: {
+    isParticipating: boolean;
+    hasSuspendedListings: boolean;
+  };
+};
+
+type LwaTokenResponse = {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token?: string;
+};
+
+export async function exchangeRefreshTokenForAccess(
+  refreshToken: string,
+  clientId?: string,
+  clientSecret?: string,
+): Promise<LwaTokenResponse> {
+  const id = clientId ?? process.env.AMAZON_LWA_CLIENT_ID?.trim();
+  const secret = clientSecret ?? process.env.AMAZON_LWA_CLIENT_SECRET?.trim();
+  if (!id || !secret) {
+    throw new Error("AMAZON_LWA_CLIENT_ID / AMAZON_LWA_CLIENT_SECRET não configurados");
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: id,
+    client_secret: secret,
+  });
+
+  const res = await fetch(LWA_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amazon LWA token exchange failed: ${res.status} ${text}`);
+  }
+
+  return res.json() as Promise<LwaTokenResponse>;
+}
+
+async function refreshAccessToken(accountId: string): Promise<string> {
+  const db = getDb();
+  const [account] = await db
+    .select()
+    .from(accountsTable)
+    .where(eq(accountsTable.id, accountId));
+
+  if (!account) throw new Error("Account not found");
+
+  const env = getAmazonEnvCredentials();
+  const refreshToken = account.refreshToken || env.refreshToken;
+
+  try {
+    const data = await exchangeRefreshTokenForAccess(refreshToken, env.clientId, env.clientSecret);
+    const expiresAt = new Date(Date.now() + data.expires_in * 1000);
+    await db
+      .update(accountsTable)
+      .set({
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token ?? refreshToken,
+        tokenExpiresAt: expiresAt,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(accountsTable.id, accountId));
+    return data.access_token;
+  } catch (err) {
+    logger.warn({ accountId, err }, "Amazon token refresh failed");
+    await db
+      .update(accountsTable)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(accountsTable.id, accountId));
+    throw err;
+  }
+}
+
+async function getValidToken(accountId: string): Promise<string> {
+  const db = getDb();
+  const [account] = await db
+    .select()
+    .from(accountsTable)
+    .where(eq(accountsTable.id, accountId));
+
+  if (!account) throw new Error("Account not found");
+  if (!account.isActive) throw new Error("Account is inactive");
+
+  const fiveMinFromNow = new Date(Date.now() + 5 * 60 * 1000);
+  if (!account.tokenExpiresAt || account.tokenExpiresAt < fiveMinFromNow || !account.accessToken) {
+    return refreshAccessToken(accountId);
+  }
+
+  return account.accessToken;
+}
+
+export async function getAmazonAccessToken(accountId: string): Promise<string> {
+  return getValidToken(accountId);
+}
+
+async function amazonFetch<T>(
+  accountId: string,
+  path: string,
+  options: RequestInit = {},
+  retries = MAX_RETRIES,
+): Promise<T> {
+  const token = await getValidToken(accountId);
+  const url = path.startsWith("http") ? path : `${SP_API_BASE_URL}${path}`;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    if (attempt > 0) {
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30_000);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AMAZON_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          "x-amz-access-token": token,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(options.headers as Record<string, string>),
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (res.status === 429) {
+        lastError = new Error("Rate limited by Amazon SP-API");
+        continue;
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Amazon SP-API ${res.status}: ${text}`);
+      }
+
+      if (res.status === 204) {
+        return undefined as T;
+      }
+
+      const text = await res.text();
+      if (!text) return undefined as T;
+      return JSON.parse(text) as T;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err as Error;
+      if ((err as Error).name === "AbortError") {
+        lastError = new Error("Amazon SP-API request timed out");
+      }
+      if (attempt === retries - 1) break;
+      // Don't retry deterministic client errors except 429
+      if (lastError.message.includes("Amazon SP-API 4") && !lastError.message.includes("429")) {
+        break;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Amazon SP-API request failed");
+}
+
+export const amazon = {
+  get: <T>(accountId: string, path: string) =>
+    amazonFetch<T>(accountId, path, { method: "GET" }),
+
+  post: <T>(accountId: string, path: string, body: unknown) =>
+    amazonFetch<T>(accountId, path, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  put: <T>(accountId: string, path: string, body: unknown) =>
+    amazonFetch<T>(accountId, path, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  patch: <T>(accountId: string, path: string, body: unknown) =>
+    amazonFetch<T>(accountId, path, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  delete: <T>(accountId: string, path: string) =>
+    amazonFetch<T>(accountId, path, { method: "DELETE" }),
+};
+
+/** Grantless / env-token call used during connect before account row exists. */
+export async function amazonFetchWithAccessToken<T>(
+  accessToken: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const url = path.startsWith("http") ? path : `${SP_API_BASE_URL}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "x-amz-access-token": accessToken,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(options.headers as Record<string, string>),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amazon SP-API ${res.status}: ${text}`);
+  }
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+export async function fetchMarketplaceParticipationsWithToken(
+  accessToken: string,
+): Promise<AmazonMarketplaceParticipation[]> {
+  const data = await amazonFetchWithAccessToken<{ payload?: AmazonMarketplaceParticipation[] }>(
+    accessToken,
+    "/sellers/v1/marketplaceParticipations",
+  );
+  return data.payload ?? [];
+}
+
+export async function getMarketplaceParticipations(
+  accountId: string,
+): Promise<AmazonMarketplaceParticipation[]> {
+  const data = await amazon.get<{ payload?: AmazonMarketplaceParticipation[] }>(
+    accountId,
+    "/sellers/v1/marketplaceParticipations",
+  );
+  return data.payload ?? [];
+}
+
+export type AmazonListingsItemSummary = {
+  marketplaceId?: string;
+  asin?: string;
+  productType?: string;
+  status?: string[];
+  itemName?: string;
+  mainImage?: { link?: string };
+};
+
+export type AmazonListingsItem = {
+  sku: string;
+  summaries?: AmazonListingsItemSummary[];
+  attributes?: Record<string, unknown>;
+  offers?: Array<{
+    marketplaceId?: string;
+    offerType?: string;
+    price?: { currencyCode?: string; amount?: string | number };
+  }>;
+  fulfillmentAvailability?: Array<{
+    fulfillmentChannelCode?: string;
+    quantity?: number;
+  }>;
+};
+
+export type AmazonListingsSearchResponse = {
+  numberOfResults?: number;
+  pagination?: { nextToken?: string };
+  items?: AmazonListingsItem[];
+};
+
+export function resolveAmazonSellerId(account: {
+  amazonSellerId?: string | null;
+}): string {
+  return account.amazonSellerId?.trim() || getAmazonEnvCredentials().sellerId;
+}
+
+export function listingsItemPath(
+  sellerId: string,
+  sku: string,
+  marketplaceId: string,
+  includedData?: string[],
+): string {
+  const params = new URLSearchParams({ marketplaceIds: marketplaceId });
+  if (includedData?.length) {
+    params.set("includedData", includedData.join(","));
+  }
+  return `/listings/2021-08-01/items/${encodeURIComponent(sellerId)}/${encodeURIComponent(sku)}?${params}`;
+}
+
+export async function searchListingsItems(
+  accountId: string,
+  sellerId: string,
+  marketplaceId: string,
+  nextToken?: string,
+): Promise<AmazonListingsSearchResponse> {
+  const params = new URLSearchParams({
+    marketplaceIds: marketplaceId,
+    pageSize: "20",
+    includedData: "summaries,attributes,offers,fulfillmentAvailability",
+  });
+  if (nextToken) params.set("pageToken", nextToken);
+  return amazon.get<AmazonListingsSearchResponse>(
+    accountId,
+    `/listings/2021-08-01/items/${encodeURIComponent(sellerId)}?${params}`,
+  );
+}
+
+export async function getListingsItem(
+  accountId: string,
+  sellerId: string,
+  sku: string,
+  marketplaceId: string,
+): Promise<AmazonListingsItem> {
+  return amazon.get<AmazonListingsItem>(
+    accountId,
+    listingsItemPath(sellerId, sku, marketplaceId, [
+      "summaries",
+      "attributes",
+      "offers",
+      "fulfillmentAvailability",
+    ]),
+  );
+}
+
+export function extractListingQuantity(item: AmazonListingsItem): number {
+  const qty = item.fulfillmentAvailability?.find(
+    (f) => f.fulfillmentChannelCode === "DEFAULT" || f.quantity != null,
+  )?.quantity;
+  return typeof qty === "number" ? qty : 0;
+}
+
+export function extractListingPrice(item: AmazonListingsItem): number | null {
+  const amount = item.offers?.[0]?.price?.amount;
+  if (amount == null) return null;
+  const n = typeof amount === "number" ? amount : Number(amount);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function extractListingSummary(item: AmazonListingsItem): AmazonListingsItemSummary | undefined {
+  return item.summaries?.[0];
+}

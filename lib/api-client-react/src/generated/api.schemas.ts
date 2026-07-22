@@ -46,12 +46,28 @@ export interface UserProfile {
   createdAt: string;
 }
 
+/**
+ * mercadolivre | amazon
+ */
+export type AccountPlatform =
+  (typeof AccountPlatform)[keyof typeof AccountPlatform];
+
+export const AccountPlatform = {
+  mercadolivre: "mercadolivre",
+  amazon: "amazon",
+} as const;
+
 export interface Account {
   id: string;
   userId: string;
+  /** mercadolivre | amazon */
+  platform: AccountPlatform;
   mlUserId?: string | null;
   mlNickname?: string | null;
   mlEmail?: string | null;
+  amazonSellerId?: string | null;
+  amazonMarketplaceId?: string | null;
+  amazonStoreName?: string | null;
   isActive: boolean;
   lastSyncAt?: string | null;
   /** Indica se a conta tem credenciais MP configuradas (client_id + access_token) */
@@ -81,14 +97,20 @@ export interface MpCredentialsStatus {
 
 export interface AccountSummary {
   id: string;
+  platform?: string | null;
   mlNickname?: string | null;
   mlUserId?: string | null;
+  amazonStoreName?: string | null;
+  amazonSellerId?: string | null;
 }
 
 export interface Product {
   id: string;
   accountId: string;
-  mlItemId: string;
+  mlItemId?: string | null;
+  amazonSku?: string | null;
+  amazonAsin?: string | null;
+  amazonProductType?: string | null;
   title?: string | null;
   sku?: string | null;
   price?: number | null;
@@ -252,6 +274,14 @@ export interface CreateProductRequest {
    */
   familyName?: string;
   categoryId: string;
+  /** SKU do vendedor (obrigatório para Amazon) */
+  sellerSku?: string;
+  /** Product type Amazon SP-API (ex. SHOES) */
+  productType?: string;
+  brand?: string | null;
+  externalProductId?: string | null;
+  externalProductIdType?: string | null;
+  imageUrls?: string[] | null;
   price?: number;
   availableQuantity: number;
   condition: CreateProductRequestCondition;
@@ -1122,6 +1152,11 @@ export type GetConnectUrl200 = {
   state: string;
 };
 
+export type ConnectAmazonAccountBody = {
+  /** Optional override for AMAZON_SELLER_ID */
+  sellerId?: string;
+};
+
 export type HandleConnectCallbackParams = {
   code: string;
   state: string;
@@ -1294,8 +1329,9 @@ export type ListCriticalAdsParams = {
 export type ListListingTemplatesParams = {
   account_id?: string;
   /**
-   * Busca por título ou MLB
-   */
+ * Busca por MLB (ID do anúncio), SKU, título ou texto em atributos/variações. Várias palavras: todas devem aparecer (ordem irrelevante).
+
+ */
   search?: string;
   page?: number;
   limit?: number;
