@@ -8,9 +8,19 @@ import {
   getAmazonPrice,
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
+  suggestAmazonProductType,
   updateAmazonDraftBasics,
   type N8nAmazonListingDraft,
 } from "./n8n-listing-types";
+
+const COMMON_PRODUCT_TYPES = [
+  { id: "COSMETIC_CASE", label: "Necessaire / maquiagem" },
+  { id: "BAG", label: "Bolsa" },
+  { id: "LUGGAGE", label: "Mala / viagem" },
+  { id: "BACKPACK", label: "Mochila" },
+  { id: "SHOES", label: "Calçados" },
+  { id: "SHIRT", label: "Camiseta / roupa" },
+] as const;
 
 type AmazonListingReviewFormProps = {
   draft: N8nAmazonListingDraft;
@@ -30,6 +40,7 @@ export function AmazonListingReviewForm({
   const description = draft._description || getAmazonAttrText(draft, "product_description");
   const price = getAmazonPrice(draft);
   const quantity = getAmazonQuantity(draft);
+  const suggestedType = suggestAmazonProductType(title);
 
   const patch = (partial: Parameters<typeof updateAmazonDraftBasics>[1]) => {
     onDraftChange(updateAmazonDraftBasics(draft, partial));
@@ -106,10 +117,42 @@ export function AmazonListingReviewForm({
           <Input
             value={draft.payload.productType}
             onChange={(e) => patch({ productType: e.target.value.trim().toUpperCase() })}
-            placeholder="SHOES, SHIRT…"
+            placeholder="COSMETIC_CASE, BAG, SHOES…"
             className="h-9"
           />
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {COMMON_PRODUCT_TYPES.map((opt) => {
+              const selected = draft.payload.productType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => patch({ productType: opt.id })}
+                  className={`text-[11px] rounded-md border px-2 py-1 transition-colors ${
+                    selected
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
           <p className="text-[11px] text-muted-foreground">
+            {suggestedType && draft.payload.productType === "PRODUCT" ? (
+              <>
+                Sugestão para este título:{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => patch({ productType: suggestedType })}
+                >
+                  {suggestedType}
+                </button>
+                .{" "}
+              </>
+            ) : null}
             Deve existir no catálogo Amazon BR. Evite o genérico PRODUCT.
           </p>
         </div>

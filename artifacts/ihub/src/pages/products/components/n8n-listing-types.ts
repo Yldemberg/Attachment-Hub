@@ -201,11 +201,34 @@ export function updateAmazonDraftBasics(
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
+/** Heurística local para sugerir product type a partir do título. */
+export function suggestAmazonProductType(title: string): string | null {
+  const titleL = title.toLowerCase();
+  if (/t[eê]nis|sapato|bota|chinelo|sand[aá]lia|sneaker|shoe/.test(titleL)) return "SHOES";
+  if (/camis|camiseta|cal[cç]a|vestido|jaqueta|roupa|shorts|bermuda/.test(titleL)) return "SHIRT";
+  if (
+    /necessaire|cosmetic|maquiagem|toiletry|makeup|estojo|organizador de bolsa|organizador interno/.test(
+      titleL,
+    )
+  ) {
+    return "COSMETIC_CASE";
+  }
+  if (/mochila|backpack/.test(titleL)) return "BACKPACK";
+  if (/\bmala\b|luggage|suitcase|bagagem/.test(titleL)) return "LUGGAGE";
+  if (/bolsa|bag|carteira|wallet|pochete|shoulder bag/.test(titleL)) return "BAG";
+  return null;
+}
+
 export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): string[] {
   const reasons: string[] = [];
   if (!draft.payload.sellerSku?.trim()) reasons.push("Informe o Seller SKU.");
   if (!draft.payload.productType?.trim() || draft.payload.productType === "PRODUCT") {
-    reasons.push("Confirme o product type Amazon (ex.: SHOES, SHIRT).");
+    const suggested = suggestAmazonProductType(getAmazonAttrText(draft, "item_name"));
+    reasons.push(
+      suggested
+        ? `Confirme o product type Amazon (sugestão: ${suggested}).`
+        : "Confirme o product type Amazon (ex.: COSMETIC_CASE, BAG, SHOES).",
+    );
   }
   if (!getAmazonAttrText(draft, "item_name").trim()) {
     reasons.push("Informe o título do produto.");
