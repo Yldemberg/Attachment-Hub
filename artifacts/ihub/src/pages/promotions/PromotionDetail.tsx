@@ -119,6 +119,12 @@ function ItemCard({
           {item.availableQuantity != null && (
             <span className="text-muted-foreground">Estoque: {item.availableQuantity}</span>
           )}
+          {(item.stockMin != null || item.stockMax != null) && (
+            <span className="text-muted-foreground">
+              Permitido: {item.stockMin ?? 1}
+              {item.stockMax != null ? `–${item.stockMax}` : ""} un.
+            </span>
+          )}
         </div>
       </div>
 

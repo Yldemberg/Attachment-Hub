@@ -87,6 +87,42 @@ export type N8nListingDraft = {
   _ihub_ui?: IhubUiMeta;
 };
 
+/** Draft for Amazon SP-API Listings Items (when targetPlatform=amazon). */
+export type N8nAmazonListingDraft = {
+  platform: "amazon";
+  payload: {
+    sellerSku: string;
+    productType: string;
+    requirements?: string;
+    attributes: Record<string, unknown>;
+  };
+  _marketplace_id?: string;
+  _asin?: string | null;
+  _description?: string;
+  _pronto_para_publicar?: boolean;
+  _product_type_sugerido?: string;
+  _bloqueios?: unknown[];
+  _ihub_ui?: IhubUiMeta;
+  [key: string]: unknown;
+};
+
+export type ListingTargetPlatform = "mercadolivre" | "amazon";
+
+export function isAmazonListingDraft(draft: unknown): draft is N8nAmazonListingDraft {
+  if (!draft || typeof draft !== "object") return false;
+  const d = draft as Record<string, unknown>;
+  if (d.platform === "amazon") return true;
+  const payload = d.payload as Record<string, unknown> | undefined;
+  return !!(
+    payload &&
+    typeof payload.sellerSku === "string" &&
+    typeof payload.productType === "string" &&
+    payload.attributes &&
+    typeof payload.attributes === "object" &&
+    !Array.isArray(payload.attributes)
+  );
+}
+
 export class N8nListingError extends Error {
   constructor(
     message: string,
@@ -97,7 +133,17 @@ export class N8nListingError extends Error {
   }
 }
 
-function getPrepareWebhookUrl(): string {
+function getPrepareWebhookUrl(targetPlatform: ListingTargetPlatform = "mercadolivre"): string {
+  if (targetPlatform === "amazon") {
+    const amazonUrl = process.env.N8N_AMAZON_PREPARE_WEBHOOK_URL?.trim();
+    if (!amazonUrl) {
+      throw new N8nListingError(
+        "N8N_AMAZON_PREPARE_WEBHOOK_URL não configurada (workflow Amazon separado: /webhook/criar_anuncio_amazon)",
+        500,
+      );
+    }
+    return amazonUrl;
+  }
   const url = process.env.N8N_PREPARE_WEBHOOK_URL?.trim();
   if (!url) {
     throw new N8nListingError("N8N_PREPARE_WEBHOOK_URL não configurada", 500);
@@ -127,12 +173,18 @@ export function parseN8nDraftResponse(body: unknown): N8nListingDraft {
     }
     const first = body[0];
     if (first && typeof first === "object" && "payload" in first) {
+      if (isAmazonListingDraft(first)) {
+        throw new N8nListingError("Draft Amazon recebido onde se esperava Mercado Livre");
+      }
       return first as N8nListingDraft;
     }
     throw new N8nListingError("N8N retornou um formato de rascunho inválido");
   }
 
   if (body && typeof body === "object" && "payload" in body) {
+    if (isAmazonListingDraft(body)) {
+      throw new N8nListingError("Draft Amazon recebido onde se esperava Mercado Livre");
+    }
     return body as N8nListingDraft;
   }
 
@@ -145,6 +197,39 @@ export function parseN8nDraftResponse(body: unknown): N8nListingDraft {
   }
 
   throw new N8nListingError("N8N retornou um formato de resposta inválido");
+}
+
+/** Accept ML or Amazon draft from webhook / job storage. */
+export function parseListingPrepareDraft(
+  body: unknown,
+): N8nListingDraft | N8nAmazonListingDraft {
+  const unwrap = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      if (value.length === 0) throw new N8nListingError("N8N retornou uma resposta vazia");
+      return value[0];
+    }
+    if (value && typeof value === "object" && "draft" in value) {
+      return (value as { draft?: unknown }).draft;
+    }
+    if (value && typeof value === "object" && "data" in value && !("payload" in value)) {
+      return (value as { data?: unknown }).data;
+    }
+    return value;
+  };
+
+  const draft = unwrap(body);
+  if (isAmazonListingDraft(draft)) {
+    const p = draft.payload;
+    if (!p.sellerSku?.trim() || !p.productType?.trim()) {
+      throw new N8nListingError("Draft Amazon sem sellerSku ou productType");
+    }
+    if (!p.attributes || typeof p.attributes !== "object") {
+      throw new N8nListingError("Draft Amazon sem attributes SP-API");
+    }
+    return draft;
+  }
+
+  return parseN8nDraftResponse(draft);
 }
 
 export function verifyN8nWebhookSecret(
@@ -166,12 +251,13 @@ export async function dispatchPrepareToN8n(input: {
   accountId: string;
   userId: string;
   callbackUrl: string;
+  targetPlatform: ListingTargetPlatform;
 }): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), N8N_DISPATCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(getPrepareWebhookUrl(), {
+    const res = await fetch(getPrepareWebhookUrl(input.targetPlatform), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -180,6 +266,7 @@ export async function dispatchPrepareToN8n(input: {
         accountId: input.accountId,
         userId: input.userId,
         callbackUrl: input.callbackUrl,
+        targetPlatform: input.targetPlatform,
       }),
       signal: controller.signal,
     });

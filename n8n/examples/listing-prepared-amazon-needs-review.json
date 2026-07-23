@@ -1,0 +1,101 @@
+{
+  "jobId": "11111111-1111-4111-8111-111111111111",
+  "status": "needs_review",
+  "targetPlatform": "amazon",
+  "draft": {
+    "platform": "amazon",
+    "payload": {
+      "sellerSku": "SKU-AMZ-B0EXAMPLE01",
+      "productType": "SHOES",
+      "requirements": "LISTING",
+      "attributes": {
+        "item_name": [
+          {
+            "value": "Tênis Esportivo Unissex Runner X",
+            "marketplace_id": "A2Q3Y263D00KWC"
+          }
+        ],
+        "condition_type": [
+          {
+            "value": "new_new",
+            "marketplace_id": "A2Q3Y263D00KWC"
+          }
+        ],
+        "brand": [
+          {
+            "value": "Marca Exemplo",
+            "marketplace_id": "A2Q3Y263D00KWC"
+          }
+        ],
+        "product_description": [
+          {
+            "value": "Tênis esportivo unissex. Ideal para caminhada e corrida leve.",
+            "marketplace_id": "A2Q3Y263D00KWC"
+          }
+        ],
+        "fulfillment_availability": [
+          {
+            "fulfillment_channel_code": "DEFAULT",
+            "quantity": 5
+          }
+        ],
+        "purchasable_offer": [
+          {
+            "marketplace_id": "A2Q3Y263D00KWC",
+            "currency": "BRL",
+            "our_price": [
+              {
+                "schedule": [
+                  {
+                    "value_with_tax": 199.9
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "main_product_image_locator": [
+          {
+            "media_location": "https://m.media-amazon.com/images/I/example1.jpg",
+            "marketplace_id": "A2Q3Y263D00KWC"
+          }
+        ]
+      }
+    },
+    "_marketplace_id": "A2Q3Y263D00KWC",
+    "_asin": "B0EXAMPLE01",
+    "_pronto_para_publicar": false,
+    "_product_type_sugerido": "SHOES",
+    "_bloqueios": [],
+    "_ihub_ui": {
+      "secoes": [
+        {
+          "id": "amazon_basico",
+          "titulo": "Amazon — dados do anúncio",
+          "status": "pendente",
+          "campos": [
+            {
+              "id": "productType",
+              "label": "Product type Amazon",
+              "obrigatorio": true,
+              "destino_payload": "attributes",
+              "tipo": "string",
+              "valor": "SHOES",
+              "hint": "Confirme o product type aceito no catálogo BR (ex. SHOES)"
+            },
+            {
+              "id": "sellerSku",
+              "label": "Seller SKU",
+              "obrigatorio": true,
+              "destino_payload": "attributes",
+              "tipo": "string",
+              "valor": "SKU-AMZ-B0EXAMPLE01"
+            }
+          ]
+        }
+      ],
+      "campos_editaveis": []
+    }
+  },
+  "error": null
+}

@@ -101,6 +101,13 @@ function promotionItemToInboxEntry(
     accountNickname: campaign.accountNickname,
     originalPrice: item.originalPrice,
     suggestedDiscountedPrice: item.suggestedDiscountedPrice,
+    minDiscountedPrice: item.minDiscountedPrice,
+    maxDiscountedPrice: item.maxDiscountedPrice,
+    maxOriginalPrice: item.maxOriginalPrice,
+    stockMin: item.stockMin,
+    stockMax: item.stockMax,
+    startDate: item.startDate,
+    endDate: item.endDate,
     title: item.title,
     sku: item.sku,
     thumbnail: item.thumbnail,
@@ -195,6 +202,12 @@ function CandidateCard({
           )}
           {entry.discountPercent != null && (
             <span className="text-red-600 font-medium">-{entry.discountPercent}%</span>
+          )}
+          {(entry.stockMin != null || entry.stockMax != null) && (
+            <span className="text-muted-foreground">
+              Estoque permitido: {entry.stockMin ?? 1}
+              {entry.stockMax != null ? `–${entry.stockMax}` : ""} un.
+            </span>
           )}
           {entry.accountNickname && (
             <span className="text-muted-foreground ml-auto truncate">{entry.accountNickname}</span>

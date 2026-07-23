@@ -1,6 +1,10 @@
 import { eq, and } from "drizzle-orm";
 import { getDb } from "./db";
-import { listingPrepareJobsTable, type ListingPrepareJob } from "@workspace/db/schema";
+import {
+  listingPrepareJobsTable,
+  accountsTable,
+  type ListingPrepareJob,
+} from "@workspace/db/schema";
 import {
   createMlItem,
   upsertProductFromMlItem,
@@ -9,17 +13,23 @@ import {
 import {
   dispatchPrepareToN8n,
   isSupportedProductUrl,
+  isAmazonListingDraft,
   N8nListingError,
   parseN8nDraftResponse,
+  parseListingPrepareDraft,
+  type ListingTargetPlatform,
   type N8nListingDraft,
+  type N8nAmazonListingDraft,
 } from "./n8n-listings";
+import { createAmazonListing } from "./amazon-listings";
 
 export type ListingPrepareJobStatus = ListingPrepareJob["status"];
 
 export type ListingPrepareJobView = {
   jobId: string;
   status: ListingPrepareJobStatus;
-  data?: N8nListingDraft;
+  data?: N8nListingDraft | N8nAmazonListingDraft;
+  targetPlatform?: ListingTargetPlatform;
   errorMessage?: string | null;
 };
 
@@ -68,7 +78,9 @@ function toJobView(row: ListingPrepareJob): ListingPrepareJobView {
     errorMessage: row.errorMessage,
   };
   if ((row.status === "completed" || row.status === "needs_review") && row.draftJson) {
-    view.data = row.draftJson as N8nListingDraft;
+    const draft = row.draftJson as N8nListingDraft | N8nAmazonListingDraft;
+    view.data = draft;
+    view.targetPlatform = isAmazonListingDraft(draft) ? "amazon" : "mercadolivre";
   }
   return view;
 }
@@ -129,6 +141,18 @@ export async function startListingPrepareJob(input: {
   }
 
   const db = getDb();
+  const [account] = await db
+    .select({ platform: accountsTable.platform })
+    .from(accountsTable)
+    .where(and(eq(accountsTable.id, input.accountId), eq(accountsTable.userId, input.userId)));
+
+  if (!account) {
+    throw new N8nListingError("Conta inválida", 400);
+  }
+
+  const targetPlatform: ListingTargetPlatform =
+    account.platform === "amazon" ? "amazon" : "mercadolivre";
+
   const [job] = await db
     .insert(listingPrepareJobsTable)
     .values({
@@ -146,6 +170,7 @@ export async function startListingPrepareJob(input: {
       accountId: input.accountId,
       userId: input.userId,
       callbackUrl: input.callbackUrl,
+      targetPlatform,
     });
     await db
       .update(listingPrepareJobsTable)
@@ -223,9 +248,9 @@ export async function completeListingPrepareJobFromWebhook(input: {
     return;
   }
 
-  let draft: N8nListingDraft;
+  let draft: N8nListingDraft | N8nAmazonListingDraft;
   try {
-    draft = parseN8nDraftResponse(input.draft ?? input);
+    draft = parseListingPrepareDraft(input.draft ?? input);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "N8N retornou um formato de rascunho inválido";
@@ -463,9 +488,82 @@ export async function publishDraftOnMercadoLivre(
   if (!draft?.payload) {
     throw new N8nListingError("Rascunho inválido", 400);
   }
+  if (isAmazonListingDraft(draft)) {
+    throw new N8nListingError("Rascunho Amazon não pode ser publicado no Mercado Livre", 400);
+  }
   assertDraftReadyToPublish(draft);
   const input = n8nDraftToCreateInput(draft);
   const created = await createMlItem(accountId, input);
   const productId = await upsertProductFromMlItem(accountId, created);
   return { productId, mlItemId: created.id };
+}
+
+export async function publishDraftOnAmazon(
+  accountId: string,
+  draft: N8nAmazonListingDraft,
+): Promise<{ productId: string; sku: string }> {
+  if (!isAmazonListingDraft(draft)) {
+    throw new N8nListingError("Rascunho inválido para Amazon", 400);
+  }
+  const p = draft.payload;
+  if (!p.sellerSku?.trim()) {
+    throw new N8nListingError("Informe o sellerSku antes de publicar na Amazon.", 400);
+  }
+  if (!p.productType?.trim()) {
+    throw new N8nListingError("Informe o productType Amazon antes de publicar.", 400);
+  }
+
+  const attrs = p.attributes || {};
+  const itemName = Array.isArray(attrs.item_name)
+    ? String((attrs.item_name as Array<{ value?: string }>)[0]?.value || "")
+    : "";
+  const brand = Array.isArray(attrs.brand)
+    ? String((attrs.brand as Array<{ value?: string }>)[0]?.value || "")
+    : undefined;
+  const description = Array.isArray(attrs.product_description)
+    ? String((attrs.product_description as Array<{ value?: string }>)[0]?.value || "")
+    : draft._description;
+  const qty =
+    Array.isArray(attrs.fulfillment_availability) &&
+    typeof (attrs.fulfillment_availability as Array<{ quantity?: number }>)[0]?.quantity === "number"
+      ? (attrs.fulfillment_availability as Array<{ quantity: number }>)[0].quantity
+      : 1;
+  let price = 0;
+  const offer = Array.isArray(attrs.purchasable_offer)
+    ? (attrs.purchasable_offer as Array<{
+        our_price?: Array<{ schedule?: Array<{ value_with_tax?: number }> }>;
+      }>)[0]
+    : undefined;
+  const scheduled = offer?.our_price?.[0]?.schedule?.[0]?.value_with_tax;
+  if (typeof scheduled === "number") price = scheduled;
+
+  const imageUrls: string[] = [];
+  const main = attrs.main_product_image_locator as Array<{ media_location?: string }> | undefined;
+  if (Array.isArray(main) && main[0]?.media_location) imageUrls.push(main[0].media_location);
+
+  const { productId, sku } = await createAmazonListing(accountId, {
+    sellerSku: p.sellerSku,
+    productType: p.productType,
+    title: itemName || p.sellerSku,
+    price: price > 0 ? price : 1,
+    availableQuantity: qty,
+    brand,
+    description: typeof description === "string" ? description : undefined,
+    imageUrls,
+    attributes: attrs,
+  });
+  return { productId, sku };
+}
+
+/** Publish prepare draft to the destination platform of the account. */
+export async function publishListingPrepareDraft(
+  accountId: string,
+  draft: N8nListingDraft | N8nAmazonListingDraft,
+): Promise<{ productId: string }> {
+  if (isAmazonListingDraft(draft)) {
+    const r = await publishDraftOnAmazon(accountId, draft);
+    return { productId: r.productId };
+  }
+  const r = await publishDraftOnMercadoLivre(accountId, draft);
+  return { productId: r.productId };
 }

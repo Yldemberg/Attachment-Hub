@@ -53,39 +53,143 @@ type BulkItemSource = {
   offerId?: string | null;
 };
 
-export function buildBulkActivatePayloadItems(entries: BulkItemSource[], promotionType: string) {
+export type BulkActivatePreparedItem = {
+  itemId: string;
+  dealPrice?: number;
+  stock?: number;
+  offerId?: string;
+  /** Falha local — não chamar o ML */
+  validationError?: string;
+};
+
+function stockRangeLabel(stockMin: number | null | undefined, stockMax: number | null | undefined): string {
+  const min = stockMin ?? 1;
+  if (stockMax != null) return `entre ${min} e ${stockMax}`;
+  return `no mínimo ${min}`;
+}
+
+function validateBulkStock(
+  entry: BulkItemSource,
+  stock: number,
+  needsStock: boolean,
+): string | undefined {
+  if (!needsStock) return undefined;
+
+  const { stockMin, stockMax, availableQuantity } = entry;
+  const total = availableQuantity ?? 0;
+
+  if (stockMin != null && total < stockMin) {
+    return `Estoque insuficiente: a promoção exige ${stockRangeLabel(stockMin, stockMax)} unidades (disponível: ${total}).`;
+  }
+
+  if (stockMin != null && stock < stockMin) {
+    return `Estoque reservado inválido: mínimo de ${stockMin} unidade(s) para esta promoção.`;
+  }
+
+  if (stockMax != null && stock > stockMax) {
+    return `Estoque reservado inválido: máximo de ${stockMax} unidade(s) para esta promoção.`;
+  }
+
+  if (total > 0 && stock > total) {
+    return `Estoque insuficiente: disponível ${total}, necessário ${stock}.`;
+  }
+
+  if (stock < 1) {
+    return "Informe a quantidade de estoque a reservar (mínimo 1).";
+  }
+
+  return undefined;
+}
+
+/** Traduz mensagens conhecidas do ML (estoque, offer_id, etc.). */
+export function translateMlPromotionMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return trimmed;
+
+  if (trimmed.includes("Offer id is required") || trimmed === "OFFER_ID_REQUIRED") {
+    return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+  }
+
+  const stockGreaterLess = trimmed.match(
+    /Stock must be greater than (\d+) and less than (\d+)/i,
+  );
+  if (stockGreaterLess) {
+    const greater = stockGreaterLess[1];
+    const less = stockGreaterLess[2];
+    return `O estoque reservado deve ser maior que ${greater} e menor que ${less}.`;
+  }
+
+  const stockBetween = trimmed.match(/Stock must be between (\d+) and (\d+)/i);
+  if (stockBetween) {
+    return `O estoque reservado deve estar entre ${stockBetween[1]} e ${stockBetween[2]}.`;
+  }
+
+  const stockMinOnly = trimmed.match(/Stock must be greater than (\d+)/i);
+  if (stockMinOnly) {
+    return `O estoque reservado deve ser maior que ${stockMinOnly[1]}.`;
+  }
+
+  const stockMaxOnly = trimmed.match(/Stock must be less than (\d+)/i);
+  if (stockMaxOnly) {
+    return `O estoque reservado deve ser menor que ${stockMaxOnly[1]}.`;
+  }
+
+  return trimmed;
+}
+
+export function buildBulkActivatePayloadItems(
+  entries: BulkItemSource[],
+  promotionType: string,
+): BulkActivatePreparedItem[] {
   const config = getPromotionActivationConfig(promotionType);
 
   return entries.map((entry) => {
-    const stockStr =
-      config.needsStock || config.stockOptional
-        ? defaultStockValue(
-            {
-              availableQuantity: entry.availableQuantity,
-              stockMin: entry.stockMin,
-              stockMax: entry.stockMax,
-              originalPrice: null,
-              maxOriginalPrice: null,
-              minDiscountedPrice: null,
-              maxDiscountedPrice: null,
-              suggestedDiscountedPrice: entry.suggestedDiscountedPrice,
-              price: null,
-              discountPercentage: null,
-              status: "candidate",
-              netProceeds: null,
-              startDate: null,
-              endDate: null,
-            },
-            config,
-          )
-        : null;
-
-    return {
+    const base: BulkActivatePreparedItem = {
       itemId: entry.itemId,
       dealPrice: entry.suggestedDiscountedPrice ?? undefined,
-      stock: stockStr != null ? parseInt(stockStr, 10) : undefined,
       offerId: entry.offerId ?? undefined,
     };
+
+    if (!(config.needsStock || config.stockOptional)) {
+      return base;
+    }
+
+    const stockStr = defaultStockValue(
+      {
+        availableQuantity: entry.availableQuantity,
+        stockMin: entry.stockMin,
+        stockMax: entry.stockMax,
+        originalPrice: null,
+        maxOriginalPrice: null,
+        minDiscountedPrice: null,
+        maxDiscountedPrice: null,
+        suggestedDiscountedPrice: entry.suggestedDiscountedPrice,
+        price: null,
+        discountPercentage: null,
+        status: "candidate",
+        netProceeds: null,
+        startDate: null,
+        endDate: null,
+      },
+      config,
+    );
+    const stock = parseInt(stockStr, 10);
+
+    if (Number.isNaN(stock)) {
+      return {
+        ...base,
+        validationError: config.needsStock
+          ? "Não foi possível definir o estoque reservado para esta promoção."
+          : undefined,
+      };
+    }
+
+    const validationError = validateBulkStock(entry, stock, config.needsStock);
+    if (validationError) {
+      return { ...base, stock, validationError };
+    }
+
+    return { ...base, stock };
   });
 }
 
@@ -96,16 +200,10 @@ export function bulkActivateErrorMessage(err: unknown): string {
     if (data && typeof data === "object" && data !== null) {
       const record = data as Record<string, unknown>;
       if (typeof record.error === "string" && record.error.trim()) {
-        if (record.error.includes("Offer id is required") || record.error === "OFFER_ID_REQUIRED") {
-          return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
-        }
-        return record.error;
+        return translateMlPromotionMessage(record.error);
       }
       if (typeof record.message === "string" && record.message.trim()) {
-        if (record.message === "Offer id is required") {
-          return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
-        }
-        return record.message;
+        return translateMlPromotionMessage(record.message);
       }
     }
     const raw = apiErr.message ?? "";
@@ -114,19 +212,15 @@ export function bulkActivateErrorMessage(err: unknown): string {
       try {
         const parsed = JSON.parse(raw.slice(jsonStart)) as { message?: string };
         if (typeof parsed.message === "string" && parsed.message.trim()) {
-          if (parsed.message === "Offer id is required") {
-            return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
-          }
-          return parsed.message;
+          return translateMlPromotionMessage(parsed.message);
         }
       } catch {
         // ignore
       }
     }
-    if (raw.includes("Offer id is required")) {
-      return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+    if (raw.trim()) {
+      return translateMlPromotionMessage(raw.replace(/^HTTP \d+ [^:]+:\s*/, ""));
     }
-    if (raw.trim()) return raw.replace(/^HTTP \d+ [^:]+:\s*/, "");
   }
   return "Não foi possível comunicar com o servidor. Tente novamente.";
 }
@@ -136,7 +230,7 @@ export async function activatePromotionItemsSequentially(params: {
   promotionId: string;
   accountId: string;
   promotionType: string;
-  items: Array<{ itemId: string; dealPrice?: number; stock?: number; offerId?: string }>;
+  items: BulkActivatePreparedItem[];
   onProgress?: (done: number, total: number) => void;
 }): Promise<BulkActivatePromotionItemResult[]> {
   const { promotionId, accountId, promotionType, items, onProgress } = params;
@@ -144,6 +238,17 @@ export async function activatePromotionItemsSequentially(params: {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!;
+
+    if (item.validationError) {
+      results.push({
+        itemId: item.itemId,
+        ok: false,
+        error: item.validationError,
+      });
+      onProgress?.(i + 1, items.length);
+      continue;
+    }
+
     try {
       await activatePromotionItem(promotionId, item.itemId, {
         accountId,

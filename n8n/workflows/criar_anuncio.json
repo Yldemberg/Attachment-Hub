@@ -1,0 +1,648 @@
+{
+  "name": "Anúncio Automático ML - Multi Plataforma v2.6",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "criar_anuncio",
+        "options": {}
+      },
+      "id": "31418cd7-49cd-4655-80d1-84c7f984ac22",
+      "name": "Webhook - Recebe Link1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        1136
+      ],
+      "webhookId": "anuncio-ml-webhook",
+      "notes": "Recebe POST do iHub/Postman: jobId, productUrl, accountId, userId. Opcional: origem, markupPct, defaultQty."
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst link = body.productUrl || body.link;\nconst origemManual = (body.origem || '').toLowerCase();\nlet origem = origemManual;\n\nif (!link) {\n  throw new Error('Nenhuma URL de produto foi informada (campo productUrl ausente).');\n}\n\nif (!origem) {\n  if (link.includes('mercadolivre') || link.includes('mercadolibre')) origem = 'mercadolivre';\n  else if (link.includes('amazon')) origem = 'amazon';\n  else if (link.includes('shopee')) origem = 'shopee';\n  else throw new Error('Origem não reconhecida. Informe origem: mercadolivre, amazon ou shopee');\n}\n\nconst atores = {\n  mercadolivre: 'leadercorp~mercadolivre-scraper-br-pro',\n  amazon: 'junglee~amazon-crawler',\n  shopee: 'gio21~shopee-scraper'\n};\n\nconst ator = atores[origem];\nif (!ator) throw new Error('Plataforma não suportada: ' + origem);\n\nreturn [{\n  json: {\n    link,\n    origem,\n    ator,\n    accountId: body.accountId,\n    userId: body.userId,\n    markupPct: body.markupPct,\n    defaultQty: body.defaultQty\n  }\n}];"
+      },
+      "id": "93bfb20c-c3c9-4804-aea4-a7abe0ba3fb1",
+      "name": "Code - Detecta Plataforma1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        1136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const link = $('Code - Detecta Plataforma1').item.json.link;\nconst origem = $('Code - Detecta Plataforma1').item.json.origem;\n\nlet body = {};\n\nif (origem === 'mercadolivre') {\n  body = {\n    startUrls: [{ url: link }],\n    proxyConfiguration: {\n      useApifyProxy: true,\n      apifyProxyGroups: ['RESIDENTIAL'],\n      apifyProxyCountry: 'BR'\n    }\n  };\n} else if (origem === 'amazon') {\n  body = {\n    categoryOrProductUrls: [{ url: link }],\n    maxItems: 1,\n    proxyConfiguration: {\n      useApifyProxy: true,\n      apifyProxyGroups: ['RESIDENTIAL'],\n      apifyProxyCountry: 'BR'\n    }\n  };\n} else if (origem === 'shopee') {\n  const match = link.match(/i\\.(\\d+)\\.(\\d+)/);\n  if (!match) throw new Error('Link Shopee inválido — formato esperado: ...i.SHOPID.ITEMID');\n  body = {\n    shopId: parseInt(match[1], 10),\n    itemId: parseInt(match[2], 10),\n    country: 'BR'\n  };\n}\n\nreturn [{\n  json: {\n    body,\n    ator: $('Code - Detecta Plataforma1').item.json.ator,\n    link,\n    origem\n  }\n}];"
+      },
+      "id": "bf966556-007e-4b72-abfb-0cc6229a6c53",
+      "name": "Prepara o Link e identifica a Plataforma1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        1136
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{ $json.ator }}/run-sync-get-dataset-items?token=apify_api_T2VFiX1hT6gyTGsc1UtT5uRhVFFsV53NOY67",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": "=300000"
+        }
+      },
+      "id": "b279d94e-342e-45ce-986c-3ee0e2f3b580",
+      "name": "Apify - Scraping da Plataforma1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2096,
+        1136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst detect = $('Code - Detecta Plataforma1').item.json;\n\nconst MARKUP_PCT = Number(detect.markupPct) > 0 ? Number(detect.markupPct) : 40;\nconst DEFAULT_QTY = Number(detect.defaultQty) > 0 ? Number(detect.defaultQty) : 5;\nconst MAX_PICTURES = 10;\nconst TITLE_MAX_LEN = 60;\n\nfunction sanitizarTexto(texto) {\n  if (!texto) return '';\n  let t = String(texto);\n  t = t.replace(/<[^>]+>/g, ' ');\n  t = t.replace(/\\bhttps?:\\/\\/\\S+/gi, ' ');\n  t = t.replace(/\\bwww\\.\\S+/gi, ' ');\n  t = t.replace(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/gi, ' ');\n  t = t.replace(/\\(?\\d{2}\\)?[\\s.-]?9?\\d{4}[\\s.-]?\\d{4}\\b/g, ' ');\n  t = t.replace(/\\b(whatsapp|instagram|facebook|telegram|tiktok)\\b/gi, ' ');\n  t = t.replace(/\\bamazon\\b/gi, ' ');\n  t = t.replace(/[™®©]/g, '');\n  return t.replace(/[ \\t]+/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim();\n}\n\nfunction truncarTitulo(titulo, max) {\n  if (titulo.length <= max) return titulo;\n  let cortado = titulo.slice(0, max);\n  const lastSpace = cortado.lastIndexOf(' ');\n  if (lastSpace > 0) cortado = cortado.slice(0, lastSpace);\n  return cortado.trim();\n}\n\nfunction gerarDescricaoFallback(a, titleFull, brand) {\n  const attrs = a.attributes || [];\n  const linhas = [titleFull];\n  if (brand) linhas.push(`Marca: ${brand}`);\n  const ignorar = /ranking|asin|avalia|ref\\.?\\s*id/i;\n  const atributosUteis = attrs.filter(at => at.key && at.value && !ignorar.test(at.key));\n  if (atributosUteis.length) {\n    linhas.push('', 'Características:');\n    for (const at of atributosUteis) linhas.push(`- ${at.key}: ${at.value}`);\n  }\n  return linhas.join('\\n').trim();\n}\n\nreturn items.map(item => {\n  const a = item.json;\n  const avisos = [];\n  const titleFull = sanitizarTexto((a.title || '').trim());\n  const title = truncarTitulo(titleFull, TITLE_MAX_LEN);\n  const precoBase = a.price?.value ?? 0;\n  const precoFinal = Math.round(precoBase * (1 + MARKUP_PCT / 100) * 100) / 100;\n  if (!precoFinal || precoFinal <= 0) avisos.push('Preço da origem não encontrado ou zerado.');\n\n  let brand = sanitizarTexto((a.brand || '').replace(/^Marca:\\s*/i, '').trim());\n  let description = a.description || '';\n  if (!description && a.aPlusContent?.rawText) description = a.aPlusContent.rawText.replace(/^Descrição do produto\\s*/, '').trim();\n  if (!description && Array.isArray(a.features) && a.features.length) description = a.features.join('\\n');\n  if (!description) description = gerarDescricaoFallback(a, titleFull, brand);\n  description = sanitizarTexto(description);\n\n  const estoqueReal = Number(a.availability?.quantity ?? a.stock ?? a.quantity ?? a.available_quantity);\n  const available_quantity = Number.isFinite(estoqueReal) && estoqueReal > 0 ? estoqueReal : DEFAULT_QTY;\n\n  const imagensBrutas = a.highResolutionImages || a.galleryThumbnails || [];\n  const pictures = [...new Set(imagensBrutas.filter(Boolean))].slice(0, MAX_PICTURES).map(url => ({ source: url }));\n  if (!pictures.length) avisos.push('Nenhuma imagem encontrada — o ML exige ao menos 1 foto.');\n\n  return {\n    json: {\n      title,\n      title_full: titleFull,\n      price: precoFinal,\n      brand,\n      description,\n      pictures,\n      asin: a.asin || null,\n      available_quantity,\n      _amazon_raw_attributes: a.attributes || [],\n      _avisos: avisos,\n      _origem: detect.origem\n    }\n  };\n});"
+      },
+      "id": "79d8030a-cf67-484a-83a7-6d59a7c96e01",
+      "name": "Mapear Produto para ML1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        1136
+      ],
+      "notes": "Normaliza dados do scraping (qualquer plataforma) para o formato ML."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/sites/MLB/domain_discovery/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.title_full }}"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "291bd5ab-e7ac-4f06-830a-dffa63e9108e",
+      "name": "Prever Categoria ML1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2544,
+        1136
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst cat = Array.isArray(raw) ? raw[0] : raw;\nif (!cat?.category_id) throw new Error('Prever Categoria ML1 não retornou category_id.');\nreturn [{ json: { category_id: cat.category_id, category_name: cat.category_name || '' } }];"
+      },
+      "id": "0cad6289-a054-4d2f-ad19-f8ace09d3a25",
+      "name": "Normalizar Categoria ML1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2768,
+        1136
+      ],
+      "notes": "Garante category_id único antes de buscar atributos da categoria."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/categories/{{ $json.category_id }}/attributes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "a1618e08-d2d0-4c6f-baae-4a017f039c04",
+      "name": "Buscar atributos obrigatórios da categoria1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2992,
+        1136
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const RELEVANCE_THRESHOLD = 2;\nconst INCLUIR_ATRIBUTOS_EXTRAS = false;\nconst PERMITIR_INFERENCIA_POR_TEXTO = true;\nconst ASSUMIR_PRODUTO_NOVO = true;\n\nconst NUNCA_INVENTAR = new Set([\n  'PRODUCT_CHEMICAL_FEATURES', 'FOODS_AND_DRINKS', 'MEDICINES', 'BATTERIES_FEATURES',\n  'ADDITIONAL_INFO_REQUIRED', 'EXCLUDED_PLATFORMS', 'HAZMAT_TRANSPORTABILITY',\n  'PRODUCT_FEATURES', 'SHIPMENT_PACKING', 'DESCRIPTIVE_TAGS', 'VERTICAL_TAGS',\n  'LIMITED_MARKETPLACE_VISIBILITY_REASONS', 'SEARCH_ENHANCEMENT_FIELDS', 'CATALOG_TITLE',\n  'PRODUCT_DATA_SOURCE', 'PACKAGE_DATA_SOURCE', 'SELLER_PACKAGE_DATA_SOURCE', 'AGID',\n  'VALUE_ADDED_TAX', 'IMPORT_DUTY', 'SYI_PYMES_ID', 'IS_FLAMMABLE', 'IS_NEW_OFFER',\n  'HAS_COMPATIBILITIES', 'IS_SUITABLE_FOR_SHIPMENT', 'WITH_POSITIVE_IMPACT',\n  'WITH_EXPIRATION_DATE'\n]);\n\nconst SINONIMOS = {\n  BRAND: ['marca', 'brand', 'fabricante'],\n  MODEL: ['modelo', 'model', 'numero de modelo', 'número de modelo', 'referencia do fabricante', 'referência do fabricante'],\n  MPN: ['mpn', 'referencia do fabricante', 'referência do fabricante', 'numero do fabricante', 'número do fabricante', 'part number'],\n  SELLER_SKU: ['referencia do fabricante', 'referência do fabricante', 'sku', 'codigo do produto', 'código do produto'],\n  GTIN: ['gtin', 'ean', 'upc', 'codigo de barras', 'código de barras'],\n  FRAGRANCE: ['fragrancia', 'fragrância', 'aroma', 'perfume', 'cheiro'],\n  MAIN_AROMA: ['aroma', 'fragrancia', 'fragrância'],\n  LINE: ['linha', 'colecao', 'coleção', 'line'],\n  PACKAGING_TYPE: ['tipo de embalagem', 'embalagem', 'packaging'],\n  DETERGENT_FORMAT: ['formato', 'tipo', 'forma'],\n  NET_WEIGHT: ['peso liquido', 'peso líquido', 'peso do item', 'peso', 'net weight'],\n  NET_VOLUME: ['volume', 'volume liquido', 'volume líquido', 'capacidade', 'litros', 'litro'],\n  COLOR: ['cor', 'color', 'colour'],\n  MAIN_COLOR: ['cor', 'color', 'colour'],\n  MATERIAL: ['material', 'composicao', 'composição'],\n  SELLER_PACKAGE_WEIGHT: ['peso', 'weight', 'dimensoes do produto', 'dimensões do produto'],\n  SELLER_PACKAGE_LENGTH: ['comprimento', 'length', 'dimensoes do produto', 'dimensões do produto'],\n  SELLER_PACKAGE_WIDTH: ['largura', 'width', 'dimensoes do produto', 'dimensões do produto'],\n  SELLER_PACKAGE_HEIGHT: ['altura', 'height', 'dimensoes do produto', 'dimensões do produto'],\n  PACKAGE_WEIGHT: ['peso', 'dimensoes do produto', 'dimensões do produto'],\n  PACKAGE_LENGTH: ['comprimento', 'dimensoes do produto', 'dimensões do produto'],\n  PACKAGE_WIDTH: ['largura', 'dimensoes do produto', 'dimensões do produto'],\n  PACKAGE_HEIGHT: ['altura', 'dimensoes do produto', 'dimensões do produto'],\n  MANUAL_TITLE: ['titulo', 'título', 'nome do produto'],\n  SALE_FORMAT: ['formato de venda', 'unidade de venda']\n};\n\nconst UNIDADE_ALIAS = { kg: 'kg', g: 'g', l: 'l', litro: 'l', litros: 'l', ml: 'ml', m: 'm', cm: 'cm', mm: 'mm' };\n\nfunction normalizar(str) {\n  return String(str || '').toLowerCase().normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nfunction getNodeJson(nodeName) {\n  try { return $(nodeName).first().json; }\n  catch (e) { throw new Error('Node \"' + nodeName + '\" não foi executado nesta run.'); }\n}\n\nfunction isModificavel(attr) {\n  if (!attr) return false;\n  if (attr.tags?.read_only && !attr.id.startsWith('PACKAGE_') && !attr.id.startsWith('SELLER_PACKAGE_')) return false;\n  if (NUNCA_INVENTAR.has(attr.id)) return false;\n  return true;\n}\n\nfunction montarNumberUnitPayload(id, parsed) {\n  return { id, value_name: parsed.number + ' ' + parsed.unit, value_struct: parsed };\n}\n\nfunction parsePeso(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*(quilogramas?|kg|gramas?|g)\\b/i);\n  if (!m) return null;\n  let n = parseFloat(m[1].replace(',', '.'));\n  if (/quilo|kg/i.test(m[2])) n = Math.round(n * 1000);\n  return { number: n, unit: 'g' };\n}\n\nfunction parseVolume(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*(litros?|l|ml|mililitros?)\\b/i);\n  if (!m) return null;\n  const n = parseFloat(m[1].replace(',', '.'));\n  if (/ml|mililitro/i.test(m[2])) return { number: n, unit: 'ml' };\n  return { number: n, unit: 'L' };\n}\n\nfunction parseDimensoesCm(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*x\\s*(\\d+[.,]?\\d*)\\s*x\\s*(\\d+[.,]?\\d*)\\s*cm/i);\n  if (!m) return null;\n  const nums = [m[1], m[2], m[3]].map(v => parseFloat(v.replace(',', '.')));\n  nums.sort((a, b) => b - a);\n  return { length: nums[0], width: nums[1], height: nums[2], unit: 'cm' };\n}\n\nfunction extrairNumberUnitDeTexto(attr, valorTexto) {\n  if (!valorTexto) return null;\n  const id = attr.id;\n  const dims = parseDimensoesCm(valorTexto);\n  const peso = parsePeso(valorTexto);\n  const volume = parseVolume(valorTexto);\n\n  if (dims && /length|comprimento/i.test(id)) return montarNumberUnitPayload(id, { number: dims.length, unit: 'cm' });\n  if (dims && /width|largura/i.test(id)) return montarNumberUnitPayload(id, { number: dims.width, unit: 'cm' });\n  if (dims && /height|altura/i.test(id)) return montarNumberUnitPayload(id, { number: dims.height, unit: 'cm' });\n  if (peso && /weight|peso/i.test(id)) return montarNumberUnitPayload(id, peso);\n  if (volume && /volume/i.test(id)) return montarNumberUnitPayload(id, volume);\n\n  const m = String(valorTexto).trim().match(/^(-?\\d+(?:[.,]\\d+)?)\\s*([a-zA-Zçãáéíóúâêô°]+)?$/);\n  if (!m) return null;\n  const number = parseFloat(m[1].replace(',', '.'));\n  if (Number.isNaN(number)) return null;\n  const unidadeCodigo = m[2] ? (UNIDADE_ALIAS[normalizar(m[2])] || normalizar(m[2])) : null;\n  const allowed = attr.allowed_units || attr.unit_values || [];\n  if (allowed.length) {\n    let match = null;\n    if (unidadeCodigo) match = allowed.find(u => normalizar(u.id) === unidadeCodigo || normalizar(u.name) === unidadeCodigo);\n    if (!match && !unidadeCodigo && allowed.length === 1) match = allowed[0];\n    if (match) return montarNumberUnitPayload(id, { number, unit: match.id });\n    return null;\n  }\n  if (unidadeCodigo) return montarNumberUnitPayload(id, { number, unit: unidadeCodigo });\n  return null;\n}\n\nconst categoria = getNodeJson('Normalizar Categoria ML1');\nconst categoryId = categoria.category_id;\nconst categoryName = categoria.category_name;\nconst todosAtributos = $input.all().map(i => i.json).filter(isModificavel);\nconst dadosProduto = getNodeJson('Mapear Produto para ML1');\nconst amazonAttrs = (dadosProduto._amazon_raw_attributes || [])\n  .filter(a => a?.key)\n  .map(a => ({ ...a, value: String(a.value || '').trim(), _keyNorm: normalizar(a.key) }));\n\nconst textoScraping = amazonAttrs.map(a => a.key + ' ' + a.value).join(' ');\nconst textoProdutoNorm = normalizar([\n  dadosProduto.title, dadosProduto.title_full, dadosProduto.description, categoryName, textoScraping\n].filter(Boolean).join(' '));\n\nconst obrigatorios = todosAtributos.filter(a => a.tags?.required || a.tags?.conditional_required || a.tags?.new_required);\n\nfunction inferirDeTexto(attr) {\n  if (!PERMITIR_INFERENCIA_POR_TEXTO || !attr.values?.length) return null;\n  for (const v of attr.values) {\n    const nomeNorm = normalizar(v.name);\n    if (!nomeNorm || nomeNorm.length < 3) continue;\n    if (textoProdutoNorm.includes(nomeNorm)) return v;\n  }\n  return null;\n}\n\nconst principaisRecomendados = todosAtributos.filter(attr =>\n  !obrigatorios.includes(attr) && (attr.tags?.catalog_required || (typeof attr.relevance === 'number' && attr.relevance <= RELEVANCE_THRESHOLD))\n);\nconst outrosUteis = INCLUIR_ATRIBUTOS_EXTRAS\n  ? todosAtributos.filter(attr => !obrigatorios.includes(attr) && !principaisRecomendados.includes(attr) && typeof attr.relevance === 'number')\n  : [];\n\nfunction chaveCombina(attrKeyNorm, sin) {\n  const s = normalizar(sin);\n  return attrKeyNorm === s || attrKeyNorm.includes(s) || s.includes(attrKeyNorm);\n}\n\nfunction buscarAtributoOrigem(attr) {\n  const sinonimos = SINONIMOS[attr.id] || [];\n  const nomeNorm = normalizar(attr.name);\n  for (const sin of sinonimos) {\n    const achou = amazonAttrs.find(a => chaveCombina(a._keyNorm, sin));\n    if (achou) return achou;\n  }\n  return amazonAttrs.find(a => a._keyNorm && nomeNorm && (a._keyNorm.includes(nomeNorm) || nomeNorm.includes(a._keyNorm))) || null;\n}\n\nfunction casarComValorFixo(attr, valorTexto) {\n  if (!attr.values?.length || !valorTexto) return null;\n  const valorNorm = normalizar(valorTexto);\n  let match = attr.values.find(v => normalizar(v.name) === valorNorm);\n  if (!match) match = attr.values.find(v => normalizar(v.name).includes(valorNorm) || valorNorm.includes(normalizar(v.name)));\n  return match || null;\n}\n\nfunction processarLista(lista, attributesPayload, pendentes, inferidos) {\n  for (const attr of lista) {\n    if (!isModificavel(attr)) continue;\n    let valorEncontrado = attr.id === 'BRAND' ? dadosProduto.brand : (buscarAtributoOrigem(attr)?.value || null);\n    let payloadItem = null;\n\n    if (valorEncontrado) {\n      if (attr.value_type === 'number_unit') {\n        payloadItem = extrairNumberUnitDeTexto(attr, valorEncontrado);\n        if (!payloadItem) {\n          pendentes.push({ id: attr.id, name: attr.name, value_type: attr.value_type, allowed_units: attr.allowed_units || null, relevance: attr.relevance ?? null });\n        }\n      } else if (attr.value_type === 'list' || attr.value_type === 'boolean') {\n        const valorFixo = casarComValorFixo(attr, valorEncontrado);\n        if (valorFixo) payloadItem = { id: attr.id, value_id: valorFixo.id, value_name: valorFixo.name };\n        else if (attr.tags?.allow_variations) payloadItem = { id: attr.id, value_name: String(valorEncontrado) };\n        else pendentes.push({ id: attr.id, name: attr.name, value_type: attr.value_type, values: attr.values || null, relevance: attr.relevance ?? null });\n      } else {\n        payloadItem = { id: attr.id, value_name: String(valorEncontrado).slice(0, 255) };\n      }\n      if (payloadItem) attributesPayload.push(payloadItem);\n      continue;\n    }\n\n    const inferidoTexto = inferirDeTexto(attr);\n    if (inferidoTexto) {\n      attributesPayload.push({ id: attr.id, value_id: inferidoTexto.id, value_name: inferidoTexto.name });\n      inferidos.push({ id: attr.id, name: attr.name, value_name: inferidoTexto.name, confidence: 'media', fonte: 'texto_produto' });\n      continue;\n    }\n\n    if (attr.id === 'ITEM_CONDITION' && ASSUMIR_PRODUTO_NOVO && attr.values?.length) {\n      const novo = attr.values.find(v => /^(novo|new)$/i.test(normalizar(v.name)));\n      if (novo) {\n        attributesPayload.push({ id: attr.id, value_id: novo.id, value_name: novo.name });\n        continue;\n      }\n    }\n\n    if (attr.id === 'PACKAGING_TYPE') {\n      const garrafa = (attr.values || []).find(v => /garrafa/i.test(v.name));\n      if (garrafa && /garrafa|5\\s*l|5l|5 litros/i.test(textoProdutoNorm)) {\n        attributesPayload.push({ id: attr.id, value_id: garrafa.id, value_name: garrafa.name });\n        continue;\n      }\n    }\n\n    if (attr.id === 'DETERGENT_FORMAT') {\n      const liquido = (attr.values || []).find(v => /liquido|líquido/i.test(v.name));\n      if (liquido && /liquido|líquido|formula liquida/i.test(textoProdutoNorm)) {\n        attributesPayload.push({ id: attr.id, value_id: liquido.id, value_name: liquido.name });\n        continue;\n      }\n    }\n\n    if (attr.value_type === 'number_unit') {\n      const dimAttr = amazonAttrs.find(a => /dimens/i.test(a._keyNorm));\n      if (dimAttr) {\n        payloadItem = extrairNumberUnitDeTexto(attr, dimAttr.value);\n        if (payloadItem) {\n          attributesPayload.push(payloadItem);\n          inferidos.push({ id: attr.id, name: attr.name, value_name: payloadItem.value_name, confidence: 'alta', fonte: 'dimensoes_scraping' });\n          continue;\n        }\n      }\n      const vol = parseVolume(dadosProduto.title_full + ' ' + dadosProduto.description);\n      if (vol && attr.id === 'NET_VOLUME') {\n        attributesPayload.push(montarNumberUnitPayload(attr.id, vol));\n        inferidos.push({ id: attr.id, name: attr.name, value_name: vol.number + ' ' + vol.unit, confidence: 'media', fonte: 'titulo_volume' });\n        continue;\n      }\n    }\n\n    pendentes.push({ id: attr.id, name: attr.name, value_type: attr.value_type, allowed_units: attr.allowed_units || null, values: attr.values || null, relevance: attr.relevance ?? null });\n  }\n}\n\nconst attributesPayload = [];\nconst pendentes = [];\nconst principaisPendentes = [];\nconst outrosPendentes = [];\nconst inferidos = [];\n\nprocessarLista(obrigatorios, attributesPayload, pendentes, inferidos);\nprocessarLista(principaisRecomendados, attributesPayload, principaisPendentes, inferidos);\nprocessarLista(outrosUteis, attributesPayload, outrosPendentes, inferidos);\n\npendentes.sort((a, b) => (a.relevance ?? 99) - (b.relevance ?? 99));\nprincipaisPendentes.sort((a, b) => (a.relevance ?? 99) - (b.relevance ?? 99));\n\nreturn [{\n  json: {\n    category_id: categoryId,\n    category_name: categoryName,\n    attributes: attributesPayload,\n    attributes_pendentes: pendentes,\n    attributes_principais_pendentes: principaisPendentes,\n    attributes_extras_pendentes: outrosPendentes,\n    attributes_inferidos: inferidos,\n    _definicoes_atributos: todosAtributos,\n    _scraping_indexado: amazonAttrs.map(a => ({ key: a.key, value: a.value })),\n    completude: {\n      obrigatorios_total: obrigatorios.length,\n      obrigatorios_preenchidos: obrigatorios.length - pendentes.length,\n      percentual_obrigatorios: obrigatorios.length ? Math.round(((obrigatorios.length - pendentes.length) / obrigatorios.length) * 100) : 100\n    }\n  }\n}];\n"
+      },
+      "id": "9cd4c0d5-9464-42c9-83bd-2e44a4569ea3",
+      "name": "Mapear Atributos Obrigatórios2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3216,
+        1136
+      ],
+      "notes": "v2.4: sinônimos Amazon PT, parse dimensões compostas."
+    },
+    {
+      "parameters": {
+        "url": "https://api.mercadolibre.com/users/me",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "76b164a7-6e1e-46a5-a9e0-0b0eb30c838f",
+      "name": "Verificar Conta ML1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3440,
+        1136
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const user = $input.first().json;\nconst tags = user.tags || [];\nreturn [{ json: { is_user_product_model: tags.includes('user_product_seller'), seller_id: user.id } }];"
+      },
+      "id": "ba1f047e-771b-4ec4-b6ad-3b5233271ec9",
+      "name": "Checar Modelo Publicação1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3664,
+        1136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function gerarEAN13() {\n  let base = '7';\n  for (let i = 1; i < 12; i++) base += Math.floor(Math.random() * 10);\n  let soma = 0;\n  for (let i = 0; i < 12; i++) {\n    const num = parseInt(base[i], 10);\n    soma += (i % 2 === 0) ? num : num * 3;\n  }\n  const digito = (10 - (soma % 10)) % 10;\n  return base + digito;\n}\n\nreturn [{ json: { ean: gerarEAN13(), _gtin_gerado: true } }];"
+      },
+      "id": "2f7ef584-2bd0-4851-bad9-79ad58bcaf59",
+      "name": "Cria EAN Válidos1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3888,
+        1216
+      ],
+      "notes": "Gera EAN-13 válido (checksum) quando o produto não tem GTIN real."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "id": "23542ff9-b1c1-4f61-ad31-09ce9654ef8e",
+      "name": "Merge1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4112,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function getNodeJson(nodeName) {\n  try { return $(nodeName).first().json; }\n  catch (e) { throw new Error('Node \"' + nodeName + '\" não foi executado nesta run.'); }\n}\n\n// --- Helpers de scraping (inline para n8n) ---\nfunction normalizar(str) {\n  return String(str || '').toLowerCase().normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nconst CHAVE_SCRAPING_PARA_ML = {\n  aroma: ['FRAGRANCE', 'MAIN_AROMA'],\n  'referencia do fabricante': ['MPN', 'MODEL', 'SELLER_SKU'],\n  modelo: ['MODEL'],\n  marca: ['BRAND'],\n  fabricante: ['BRAND'],\n  'dimensoes do produto': ['PACKAGE_LENGTH', 'PACKAGE_WIDTH', 'PACKAGE_HEIGHT', 'SELLER_PACKAGE_LENGTH', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_HEIGHT', 'PACKAGE_WEIGHT', 'SELLER_PACKAGE_WEIGHT', 'NET_WEIGHT'],\n  'peso do item': ['NET_WEIGHT', 'PACKAGE_WEIGHT', 'SELLER_PACKAGE_WEIGHT'],\n  peso: ['NET_WEIGHT', 'PACKAGE_WEIGHT', 'SELLER_PACKAGE_WEIGHT'],\n  volume: ['NET_VOLUME'],\n  capacidade: ['NET_VOLUME'],\n  'usos especificos do produto': ['PRODUCT_USE', 'SPECIFIC_USES', 'IDEAL_USE'],\n  'beneficios do produto': ['PRODUCT_BENEFITS', 'BENEFITS'],\n  'tipo de embalagem': ['PACKAGING_TYPE'],\n  formato: ['DETERGENT_FORMAT', 'SALE_FORMAT'],\n  cor: ['COLOR', 'MAIN_COLOR'],\n  material: ['MATERIAL', 'MAIN_MATERIAL'],\n  linha: ['LINE'],\n  ean: ['GTIN'],\n  'codigo de barras': ['GTIN'],\n  'numero de modelo': ['MODEL', 'MPN'],\n  tamanho: ['SIZE', 'NET_VOLUME']\n};\n\nfunction indexarAtributosScraping(rawAttrs) {\n  const porChave = new Map();\n  const todos = [];\n  for (const a of (rawAttrs || [])) {\n    if (!a?.key) continue;\n    const entry = { key: a.key, value: String(a.value || '').trim(), keyNorm: normalizar(a.key) };\n    todos.push(entry);\n    porChave.set(entry.keyNorm, entry);\n    for (const [chave, ids] of Object.entries(CHAVE_SCRAPING_PARA_ML).sort((a, b) => b[0].length - a[0].length)) {\n      if (entry.keyNorm.includes(chave)) {\n        for (const id of ids) {\n          if (!porChave.has('__ml__' + id)) porChave.set('__ml__' + id, entry);\n        }\n      }\n    }\n  }\n  return { porChave, todos };\n}\n\nfunction parsePeso(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*(quilogramas?|kg|gramas?|g)\\b/i);\n  if (!m) return null;\n  let n = parseFloat(m[1].replace(',', '.'));\n  if (/quilo|kg/i.test(m[2])) n = Math.round(n * 1000);\n  return { number: n, unit: 'g' };\n}\n\nfunction parseVolume(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*(litros?|l|ml|mililitros?)\\b/i);\n  if (!m) return null;\n  const n = parseFloat(m[1].replace(',', '.'));\n  if (/ml|mililitro/i.test(m[2])) return { number: n, unit: 'ml' };\n  return { number: n, unit: 'L' };\n}\n\nfunction parseDimensoesCm(texto) {\n  const m = String(texto).match(/(\\d+[.,]?\\d*)\\s*x\\s*(\\d+[.,]?\\d*)\\s*x\\s*(\\d+[.,]?\\d*)\\s*cm/i);\n  if (!m) return null;\n  const nums = [m[1], m[2], m[3]].map(v => parseFloat(v.replace(',', '.')));\n  nums.sort((a, b) => b - a);\n  return { length: nums[0], width: nums[1], height: nums[2], unit: 'cm' };\n}\n\nfunction extrairDimensoesScraping(dadosProduto, scraping) {\n  const textos = [];\n  for (const a of scraping.todos) {\n    if (/dimens|peso|embalagem|tamanho/i.test(a.key)) textos.push(a.value);\n  }\n  textos.push(dadosProduto.title_full, dadosProduto.description);\n  let dims = null, peso = null, volume = null;\n  for (const t of textos.filter(Boolean)) {\n    if (!dims) dims = parseDimensoesCm(t);\n    if (!peso) peso = parsePeso(t);\n    if (!volume) volume = parseVolume(t);\n  }\n  if (!volume) volume = parseVolume((dadosProduto.title_full || '') + ' ' + (dadosProduto.description || ''));\n  return { dims, peso, volume };\n}\n\nfunction buscarValorPorChaveScraping(mlId, scraping) {\n  const direto = scraping.porChave.get('__ml__' + mlId);\n  if (direto) return direto.value;\n  for (const [chave, ids] of Object.entries(CHAVE_SCRAPING_PARA_ML)) {\n    if (!ids.includes(mlId)) continue;\n    const achou = scraping.porChave.get(chave) || scraping.todos.find(a => a.keyNorm.includes(chave));\n    if (achou) return achou.value;\n  }\n  return null;\n}\n\nfunction casarValorLista(valorTexto, attr) {\n  if (!attr?.values?.length || !valorTexto) return null;\n  const vn = normalizar(valorTexto);\n  let m = attr.values.find(v => normalizar(v.name) === vn);\n  if (!m) m = attr.values.find(v => vn.includes(normalizar(v.name)) || normalizar(v.name).includes(vn));\n  return m ? { value_id: m.id, value_name: m.name } : null;\n}\n\nfunction montarNumberUnit(id, number, unit, allowedUnits) {\n  let u = unit;\n  if (allowedUnits?.length) {\n    const match = allowedUnits.find(x => normalizar(x.id) === normalizar(unit) || normalizar(x.name) === normalizar(unit));\n    u = match ? match.id : allowedUnits[0].id;\n  }\n  const n = Number(number);\n  return { id, value_name: n + ' ' + u, value_struct: { number: n, unit: u } };\n}\n\n// --- Tendências ML (SEO por categoria) ---\nconst RUIDO_TRENDS = /^(acessar minha conta|minha conta|login|entrar)$/i;\nconst MARCAS_GENERICAS_TRENDS = /^(nike|adidas|apple|samsung|iphone|xiaomi|lacoste|hering|oakley|revlon|lancome)$/i;\n\nfunction extrairMsgErro(e) {\n  if (!e) return 'Tendências não disponíveis nesta run';\n  if (typeof e === 'string') return e;\n  try { return String(e.message || e); } catch (_) { return 'Tendências não disponíveis nesta run'; }\n}\n\nfunction normalizarListaTrends(raw) {\n  if (!raw) return [];\n  if (Array.isArray(raw)) return raw;\n  if (Array.isArray(raw.trends)) return raw.trends;\n  if (raw.keyword) return [raw];\n  return [];\n}\n\nfunction lerTrendsDisponiveis() {\n  // 1) Merge → Montar Payload ($input traz trends do Agregar Tendências ML1)\n  for (const item of $input.all()) {\n    const lista = normalizarListaTrends(item.json);\n    if (lista.length) return { lista, origem: 'merge_input' };\n  }\n\n  // 2) Node agregador (mesma execução, após HTTP)\n  try {\n    const agg = $('Agregar Tendências ML1').first().json;\n    const lista = normalizarListaTrends(agg);\n    if (lista.length) return { lista, origem: 'agregar_node' };\n  } catch (_) {}\n\n  // 3) HTTP direto (50 itens separados)\n  try {\n    const items = $('Buscar Tendências ML1').all();\n    if (items?.length) {\n      if (items.length === 1 && Array.isArray(items[0].json)) {\n        return { lista: items[0].json, origem: 'http_array' };\n      }\n      if (items.every(i => i.json?.keyword)) {\n        return { lista: items.map(i => i.json), origem: 'http_items' };\n      }\n      const lista = items.map(i => i.json).filter(j => j?.keyword);\n      if (lista.length) return { lista, origem: 'http_items' };\n    }\n  } catch (_) {}\n\n  return { lista: [], origem: 'nenhuma' };\n}\n\nfunction parseTrendsResponse(raw) {\n  let arr = [];\n  if (Array.isArray(raw)) arr = raw;\n  else if (Array.isArray(raw?.trends)) arr = raw.trends;\n  else if (raw?.keyword) arr = [raw];\n  return arr.map((item, idx) => ({\n    keyword: String(item?.keyword || item || '').trim(),\n    url: item?.url || null,\n    tier: idx < 10 ? 'crescimento' : idx < 30 ? 'desejadas' : 'populares',\n    rank: idx + 1\n  })).filter(t => t.keyword.length >= 3 && !RUIDO_TRENDS.test(t.keyword));\n}\n\nfunction tokenizarTrends(texto) {\n  return normalizar(texto).split(' ').filter(w => w.length > 2);\n}\n\nfunction textoContemKeyword(textoNorm, keyword) {\n  const k = normalizar(keyword);\n  if (!k) return false;\n  if (textoNorm.includes(k)) return true;\n  const partes = k.split(' ').filter(p => p.length > 3);\n  return partes.length > 0 && partes.every(p => textoNorm.includes(p));\n}\n\nfunction scoreKeywordTrend(trend, ctx) {\n  const kw = trend.keyword;\n  const kwNorm = normalizar(kw);\n  let score = 0;\n  const kwTokens = tokenizarTrends(kw);\n  score += kwTokens.filter(t => ctx.tokens.has(t)).length * 4;\n  if (ctx.categoryNorm && (kwNorm.includes(ctx.categoryNorm) || ctx.categoryNorm.includes(kwNorm))) score += 3;\n  if (trend.tier === 'crescimento') score += 3;\n  else if (trend.tier === 'desejadas') score += 2;\n  else score += 1;\n  if (kwTokens.length >= 2) score += 2;\n  if (MARCAS_GENERICAS_TRENDS.test(kw)) score -= 5;\n  if (kwTokens.filter(t => ctx.tokens.has(t)).length === 0 &&\n      !ctx.categoryNorm.split(' ').some(c => c.length > 3 && kwNorm.includes(c))) score -= 2;\n  return score;\n}\n\nfunction selecionarKeywordsTrends(trends, produto, categoria, max) {\n  max = max || 8;\n  const textoBase = [produto.title_full, produto.title, produto.description, produto.brand, categoria?.category_name].filter(Boolean).join(' ');\n  const ctx = { tokens: new Set(tokenizarTrends(textoBase)), categoryNorm: normalizar(categoria?.category_name || '') };\n  const vistos = new Set();\n  return trends.map(t => ({ ...t, score: scoreKeywordTrend(t, ctx) }))\n    .filter(t => t.score >= 2)\n    .sort((a, b) => b.score - a.score || a.rank - b.rank)\n    .filter(t => { const k = normalizar(t.keyword); if (vistos.has(k)) return false; vistos.add(k); return true; })\n    .slice(0, max);\n}\n\nfunction truncarTituloSeo(titulo, max) {\n  const t = String(titulo || '').trim();\n  if (t.length <= max) return t;\n  let cortado = t.slice(0, max);\n  const lastSpace = cortado.lastIndexOf(' ');\n  if (lastSpace > max * 0.5) cortado = cortado.slice(0, lastSpace);\n  return cortado.trim();\n}\n\nfunction otimizarTituloComTrends(tituloBase, keywords, maxLen) {\n  let titulo = String(tituloBase || '').trim();\n  if (!keywords.length) return truncarTituloSeo(titulo, maxLen);\n  let tituloNorm = normalizar(titulo);\n  for (const { keyword } of keywords.slice(0, 5)) {\n    if (titulo.length >= maxLen) break;\n    if (textoContemKeyword(tituloNorm, keyword)) continue;\n    const candidato = titulo + ' ' + keyword;\n    if (candidato.length <= maxLen) {\n      titulo = candidato;\n      tituloNorm = normalizar(titulo);\n    }\n  }\n  return truncarTituloSeo(titulo, maxLen);\n}\n\nfunction otimizarModeloComTrends(valorAtual, keywords, maxLen) {\n  maxLen = maxLen || 255;\n  const base = String(valorAtual || '').trim();\n  const baseNorm = normalizar(base);\n  const extras = [];\n  for (const { keyword } of keywords) {\n    if (extras.length >= 5) break;\n    if (!textoContemKeyword(baseNorm, keyword) && !extras.some(e => normalizar(e) === normalizar(keyword))) {\n      extras.push(keyword);\n    }\n  }\n  if (!extras.length) return base.slice(0, maxLen);\n  if (!base || /^padrao$/i.test(baseNorm)) return extras.join(' | ').slice(0, maxLen).trim();\n  return (base + ' | ' + extras.join(' | ')).slice(0, maxLen).trim();\n}\n\nfunction otimizarDescricaoComTrends(descricao, keywords, categoriaNome) {\n  const texto = String(descricao || '').trim();\n  if (!texto || !keywords.length) return texto;\n  const textoNorm = normalizar(texto);\n  const novas = keywords.filter(k => !textoContemKeyword(textoNorm, k.keyword)).slice(0, 5);\n  if (!novas.length) return texto;\n  const termos = novas.map(k => k.keyword);\n  const sentencas = texto.split(/(?<=[.!?])\\s+/).filter(Boolean);\n  if (sentencas.length >= 2 && termos[0]) {\n    const alvo = Math.min(1, sentencas.length - 1);\n    if (!textoContemKeyword(normalizar(sentencas[alvo]), termos[0])) {\n      sentencas[alvo] = sentencas[alvo].replace(/[.!?]\\s*$/, '') + ', uma excelente opção para quem pesquisa por ' + termos[0] + '.';\n    }\n  }\n  if (termos.length > 1) {\n    const fechamento = 'Produto alinhado às tendências de busca em ' + (categoriaNome || 'esta categoria') +\n      ', incluindo termos como ' + termos.slice(0, 3).join(', ') + '.';\n    if (!textoContemKeyword(normalizar(sentencas.join(' ')), termos.slice(0, 3).join(', '))) {\n      sentencas.push(fechamento);\n    }\n  }\n  return sentencas.join(' ').trim().slice(0, 5000);\n}\n\nfunction isModificavelSaleTerm(id) {\n  const def = saleTermsPorId.get(id);\n  if (!def) return false;\n  if (def.tags?.read_only) return false;\n  return true;\n}\n\nfunction campoUiFromDef(def, grupo) {\n  if (!def) return null;\n  return {\n    id: def.id,\n    nome: def.name,\n    grupo,\n    value_type: def.value_type,\n    obrigatorio: !!(def.tags?.required || def.tags?.conditional_required || def.tags?.new_required || def.relevance === 1),\n    values: def.values || null,\n    allowed_units: def.allowed_units || null,\n    preenchido: false,\n    valor_atual: null,\n    destino_payload: grupo === 'garantia' || grupo === 'limite_unidades' ? 'sale_terms' : 'attributes'\n  };\n}\n\nfunction campoUiComValor(def, grupo) {\n  const campo = campoUiFromDef(def, grupo);\n  if (!campo) return null;\n  const atual = attributesMap.get(def.id);\n  campo.preenchido = !!atual;\n  campo.valor_atual = atual || null;\n  if (atual?.value_name) campo.sugestao = atual.value_name;\n  return campo;\n}\n\n// --- Montagem do payload ---\nlet dadosProduto = getNodeJson('Mapear Produto para ML1');\nconst atributosInfo = getNodeJson('Mapear Atributos Obrigatórios2');\nconst contaInfo = getNodeJson('Checar Modelo Publicação1');\nconst eanInfo = getNodeJson('Cria EAN Válidos1');\nconst categoria = getNodeJson('Normalizar Categoria ML1');\nconst eanGerado = eanInfo.ean;\n\nlet trendsKeywords = [];\nlet trendsMeta = { total: 0, aplicadas: 0, fonte: 'nenhuma' };\ntry {\n  const { lista: trendsRaw, origem: trendsOrigem } = lerTrendsDisponiveis();\n  const trendsParsed = parseTrendsResponse(trendsRaw);\n  trendsKeywords = selecionarKeywordsTrends(trendsParsed, dadosProduto, categoria);\n  trendsMeta = {\n    total: trendsParsed.length,\n    aplicadas: trendsKeywords.length,\n    fonte: categoria?.category_id ? 'MLB/' + categoria.category_id : 'MLB',\n    origem_leitura: trendsOrigem\n  };\n  if (trendsKeywords.length) {\n    const tituloOtimizado = otimizarTituloComTrends(\n      dadosProduto.title || dadosProduto.title_full || dadosProduto.family_name,\n      trendsKeywords,\n      60\n    );\n    dadosProduto = {\n      ...dadosProduto,\n      title: tituloOtimizado,\n      family_name: tituloOtimizado,\n      description: otimizarDescricaoComTrends(dadosProduto.description, trendsKeywords, categoria?.category_name)\n    };\n  } else if (!trendsParsed.length) {\n    trendsMeta.erro = 'Nenhuma keyword de tendências encontrada no fluxo (verifique Agregar Tendências ML1 → Merge1)';\n  }\n} catch (e) {\n  trendsMeta.erro = extrairMsgErro(e);\n}\n\nconst isUserProduct = contaInfo.is_user_product_model;\n\nconst saleTermsRaw = getNodeJson('Buscar sale_terms da categoria1');\nconst saleTermsDefs = Array.isArray(saleTermsRaw) ? saleTermsRaw : [];\n\nconst NUNCA_INVENTAR = new Set([\n  'EXCLUDED_PLATFORMS', 'HAZMAT_TRANSPORTABILITY', 'IS_FLAMMABLE', 'IS_NEW_OFFER',\n  'HAS_COMPATIBILITIES', 'IS_SUITABLE_FOR_SHIPMENT', 'WITH_POSITIVE_IMPACT',\n  'WITH_EXPIRATION_DATE', 'PRODUCT_CHEMICAL_FEATURES', 'FOODS_AND_DRINKS', 'MEDICINES',\n  'BATTERIES_FEATURES', 'ADDITIONAL_INFO_REQUIRED', 'PRODUCT_FEATURES', 'SHIPMENT_PACKING'\n]);\n\nconst REGULATORIOS = new Set([\n  'RNPUD_PRODUCT_INSCRIPTION_NUMBER', 'ANVISA_PRIOR_NOTIFICATION_COMMUNICATION_DOCUMENT_NUMBER',\n  'ANVISA_PRODUCT_REGISTRATION_NUMBER', 'AFE_CERTIFICATION_NUMBER', 'CONAMA_LICENSE_NUMBER',\n  'RNE_ESTABLISHMENT_NATIONAL_REGISTRATION_NUMBER', 'MS_PRODUCT_REGISTRATION_NUMBER',\n  'DIGEMID_SANITARY_AUTHORIZATION_NUMBER', 'NSO_PRODUCT_REGISTRY_NUMBER',\n  'RS_NSO_PRODUCT_NUMBER', 'ISP_PRODUCT_INSCRIPTION_NUMBER', 'OPERATION_NOTICE_NUMBER',\n  'PRODUCT_REGISTRY', 'ESTABLISHMENT_REGISTRY'\n]);\n\nconst PACKAGE_DEFAULTS = {\n  PACKAGE_HEIGHT: { number: 25, unit: 'cm' },\n  PACKAGE_WIDTH: { number: 20, unit: 'cm' },\n  PACKAGE_LENGTH: { number: 15, unit: 'cm' },\n  PACKAGE_WEIGHT: { number: 500, unit: 'g' },\n  SELLER_PACKAGE_HEIGHT: { number: 25, unit: 'cm' },\n  SELLER_PACKAGE_WIDTH: { number: 20, unit: 'cm' },\n  SELLER_PACKAGE_LENGTH: { number: 15, unit: 'cm' },\n  SELLER_PACKAGE_WEIGHT: { number: 500, unit: 'g' }\n};\n\nconst defsPorId = new Map((atributosInfo._definicoes_atributos || []).map(a => [a.id, a]));\nconst saleTermsPorId = new Map(saleTermsDefs.map(t => [t.id, t]));\nconst scraping = indexarAtributosScraping(dadosProduto._amazon_raw_attributes);\nconst medidas = extrairDimensoesScraping(dadosProduto, scraping);\n\nconst textoRico = [\n  dadosProduto.title_full, dadosProduto.title, dadosProduto.description, dadosProduto.brand,\n  ...scraping.todos.map(a => a.key + ' ' + a.value)\n].filter(Boolean).join(' ').toLowerCase();\n\nfunction isModificavelAttr(id) {\n  if (NUNCA_INVENTAR.has(id)) return false;\n  const def = defsPorId.get(id);\n  if (def?.tags?.read_only && !id.startsWith('PACKAGE_') && !id.startsWith('SELLER_PACKAGE_')) return false;\n  return true;\n}\n\nfunction attrValido(attr) {\n  if (!attr?.id) return false;\n  if (attr.value_struct?.number != null && attr.value_struct?.unit) return true;\n  if (attr.value_id != null) return true;\n  const vn = String(attr.value_name || '').trim();\n  return vn.length > 0 && vn.toLowerCase() !== 'não especificado' && vn !== '0 h';\n}\n\nconst attributesMap = new Map();\nconst preenchidosScraping = [];\nconst preenchidosInteligente = [];\nconst preenchidosComFicticio = [];\nconst preenchidosTrends = [];\nconst aindaPendentes = [];\n\nfunction setAttribute(attr, forcar, fonte) {\n  if (!attr?.id) return;\n  if (!(forcar || isModificavelAttr(attr.id))) return;\n  if (!attrValido(attr)) return;\n  if (attributesMap.has(attr.id) && fonte !== 'scraping' && fonte !== 'trends') return;\n  attributesMap.set(attr.id, attr);\n  if (fonte === 'scraping') preenchidosScraping.push({ id: attr.id, valor: attr.value_name || attr.value_struct });\n  if (fonte === 'trends') preenchidosTrends.push({ id: attr.id, valor: attr.value_name });\n}\n\nfor (const attr of (atributosInfo.attributes || [])) setAttribute(attr, false, 'mapeamento');\n\n// 1) Dimensões e peso extraídos do scraping\nif (medidas.dims) {\n  const mapaDim = {\n    PACKAGE_LENGTH: medidas.dims.length, SELLER_PACKAGE_LENGTH: medidas.dims.length,\n    PACKAGE_WIDTH: medidas.dims.width, SELLER_PACKAGE_WIDTH: medidas.dims.width,\n    PACKAGE_HEIGHT: medidas.dims.height, SELLER_PACKAGE_HEIGHT: medidas.dims.height\n  };\n  for (const [id, num] of Object.entries(mapaDim)) {\n    if (defsPorId.has(id)) setAttribute(montarNumberUnit(id, num, medidas.dims.unit, defsPorId.get(id).allowed_units), true, 'scraping');\n  }\n}\nif (medidas.peso) {\n  for (const id of ['PACKAGE_WEIGHT', 'SELLER_PACKAGE_WEIGHT', 'NET_WEIGHT']) {\n    if (defsPorId.has(id)) setAttribute(montarNumberUnit(id, medidas.peso.number, medidas.peso.unit, defsPorId.get(id).allowed_units), true, 'scraping');\n  }\n}\nif (medidas.volume && defsPorId.has('NET_VOLUME')) {\n  setAttribute(montarNumberUnit('NET_VOLUME', medidas.volume.number, medidas.volume.unit, defsPorId.get('NET_VOLUME').allowed_units), true, 'scraping');\n}\n\n// 2) Resolver atributos da categoria a partir do scraping\nfunction resolverDeScraping(def) {\n  if (!def?.id || !isModificavelAttr(def.id)) return null;\n  const id = def.id;\n  let valorTexto = buscarValorPorChaveScraping(id, scraping);\n\n  if (!valorTexto && id === 'BRAND') valorTexto = dadosProduto.brand;\n  if (!valorTexto && id === 'MANUAL_TITLE') valorTexto = dadosProduto.title_full || dadosProduto.title;\n  if (!valorTexto && id === 'SELLER_SKU') valorTexto = buscarValorPorChaveScraping('MPN', scraping) || dadosProduto.asin;\n  if (!valorTexto && (id === 'MPN' || id === 'MODEL')) valorTexto = buscarValorPorChaveScraping(id, scraping);\n\n  if (!valorTexto && id === 'DETERGENT_FORMAT' && /liquido|líquido/i.test(textoRico)) valorTexto = 'Líquido';\n  if (!valorTexto && id === 'PACKAGING_TYPE' && /garrafa|5\\s*l|5l|5 litros/i.test(textoRico)) valorTexto = 'Garrafa';\n  if (!valorTexto && id === 'LINE' && dadosProduto.brand) valorTexto = dadosProduto.brand;\n\n  if (!valorTexto) return null;\n\n  if (def.value_type === 'number_unit') {\n    if (/length|comprimento/i.test(id) && medidas.dims) return montarNumberUnit(id, medidas.dims.length, 'cm', def.allowed_units);\n    if (/width|largura/i.test(id) && medidas.dims) return montarNumberUnit(id, medidas.dims.width, 'cm', def.allowed_units);\n    if (/height|altura/i.test(id) && medidas.dims) return montarNumberUnit(id, medidas.dims.height, 'cm', def.allowed_units);\n    if (/weight|peso/i.test(id) && medidas.peso) return montarNumberUnit(id, medidas.peso.number, medidas.peso.unit, def.allowed_units);\n    if (/volume/i.test(id) && medidas.volume) return montarNumberUnit(id, medidas.volume.number, medidas.volume.unit, def.allowed_units);\n    const m = String(valorTexto).match(/(\\d+[.,]?\\d*)\\s*([a-zA-Z]+)/);\n    if (m) return montarNumberUnit(id, parseFloat(m[1].replace(',', '.')), m[2], def.allowed_units);\n    return null;\n  }\n\n  if (def.value_type === 'list' || def.value_type === 'boolean') {\n    const casado = casarValorLista(valorTexto, def);\n    if (casado) return { id, ...casado };\n    if (def.tags?.allow_variations) return { id, value_name: valorTexto };\n    for (const v of (def.values || [])) {\n      if (v.name && textoRico.includes(normalizar(v.name))) return { id, value_id: v.id, value_name: v.name };\n    }\n    return null;\n  }\n\n  if (def.value_type === 'number') {\n    if (['UNITS_PER_PACK', 'UNITS_PER_PACKAGE'].includes(id)) return { id, value_name: '1' };\n    const m = String(valorTexto).match(/\\d+[.,]?\\d*/);\n    return m ? { id, value_name: m[0].replace(',', '.') } : null;\n  }\n\n  return { id, value_name: String(valorTexto).slice(0, 255) };\n}\n\nfor (const def of (atributosInfo._definicoes_atributos || [])) {\n  if (attributesMap.has(def.id)) continue;\n  const resolvido = resolverDeScraping(def);\n  if (resolvido) setAttribute(resolvido, def.id.startsWith('PACKAGE_'), 'scraping');\n}\n\n// 3) Booleanos inferidos do texto (benefícios, usos)\nconst booleanInferencias = [\n  { id: 'IS_STAIN_REMOVER', patterns: [/remove manchas|removedor|stain/i] },\n  { id: 'IS_SUITABLE_FOR_HAND_WASHING', patterns: [/lavagem manual|mao|mão/i] },\n  { id: 'IS_ANTIBACTERIAL', patterns: [/antibacter/i] }\n];\nfor (const { id, patterns } of booleanInferencias) {\n  if (attributesMap.has(id) || !defsPorId.has(id)) continue;\n  if (!patterns.some(p => p.test(textoRico))) continue;\n  const def = defsPorId.get(id);\n  const sim = (def.values || []).find(v => /^sim$/i.test(v.name));\n  if (sim) setAttribute({ id, value_id: sim.id, value_name: sim.name }, false, 'scraping');\n}\n\n// 4) Preencher pendentes (inteligente + fallback v2.3)\nfunction buscarValorInteligente(pendente) {\n  const doScraping = resolverDeScraping(pendente);\n  if (doScraping) return doScraping;\n  if (pendente.value_type === 'list' || pendente.value_type === 'boolean') {\n    const opcao = (pendente.values || []).find(v => v.name && textoRico.includes(v.name.toLowerCase()));\n    return opcao ? { value_id: opcao.id, value_name: opcao.name } : null;\n  }\n  if (pendente.value_type === 'number_unit' && PACKAGE_DEFAULTS[pendente.id]) {\n    return montarNumberUnit(pendente.id, PACKAGE_DEFAULTS[pendente.id].number, PACKAGE_DEFAULTS[pendente.id].unit, pendente.allowed_units);\n  }\n  if (pendente.value_type === 'number' && ['UNITS_PER_PACK', 'UNITS_PER_PACKAGE'].includes(pendente.id)) {\n    return { value_name: '1' };\n  }\n  if (pendente.value_type === 'string') {\n    if (pendente.id === 'SELLER_SKU') return { value_name: buscarValorPorChaveScraping('MPN', scraping) || dadosProduto.asin || ('SKU-' + (dadosProduto._origem || 'ml').toUpperCase()) };\n    if (pendente.id === 'LINE' && dadosProduto.brand) return { value_name: dadosProduto.brand };\n    if (pendente.id === 'MODEL' || pendente.id === 'MPN') {\n      const ref = buscarValorPorChaveScraping(pendente.id, scraping);\n      if (ref) return { value_name: ref };\n    }\n    if (pendente.id === 'MANUAL_TITLE') return { value_name: dadosProduto.title_full || dadosProduto.title };\n  }\n  return null;\n}\n\nfunction gerarValorFicticio(pendente) {\n  if (NUNCA_INVENTAR.has(pendente.id) || REGULATORIOS.has(pendente.id)) return null;\n  if (pendente.value_type === 'number_unit' && PACKAGE_DEFAULTS[pendente.id]) {\n    return montarNumberUnit(pendente.id, PACKAGE_DEFAULTS[pendente.id].number, PACKAGE_DEFAULTS[pendente.id].unit, pendente.allowed_units);\n  }\n  if (pendente.value_type === 'number' && ['UNITS_PER_PACK', 'UNITS_PER_PACKAGE'].includes(pendente.id)) return { value_name: '1' };\n  if (pendente.value_type === 'string' && pendente.id === 'SELLER_SKU') {\n    return { value_name: buscarValorPorChaveScraping('MPN', scraping) || dadosProduto.asin || ('SKU-' + (dadosProduto._origem || 'ML').toUpperCase()) };\n  }\n  if (pendente.value_type === 'list' && pendente.id === 'PACKAGING_TYPE') {\n    const garrafa = (pendente.values || []).find(v => /garrafa/i.test(v.name));\n    if (garrafa) return { value_id: garrafa.id, value_name: garrafa.name };\n  }\n  if (pendente.value_type === 'string') {\n    if (pendente.id === 'LINE' && dadosProduto.brand) return { value_name: dadosProduto.brand };\n    if (pendente.id === 'MODEL') {\n      const ref = buscarValorPorChaveScraping('MPN', scraping);\n      if (ref) return { value_name: ref };\n    }\n    if (pendente.id === 'MANUAL_TITLE') return { value_name: dadosProduto.title_full || dadosProduto.title };\n  }\n  return null;\n}\n\nfunction resolverPendentes(lista) {\n  for (const pendente of lista) {\n    if (pendente.id === 'GTIN') {\n      setAttribute({ id: 'GTIN', value_name: eanGerado }, false, 'ean');\n      preenchidosComFicticio.push({ id: 'GTIN', fonte: 'ean_gerado' });\n      continue;\n    }\n    if (pendente.id === 'EMPTY_GTIN_REASON') continue;\n    if (REGULATORIOS.has(pendente.id)) continue;\n\n    const inteligente = buscarValorInteligente(pendente);\n    if (inteligente) {\n      setAttribute({ id: pendente.id, ...inteligente }, false, 'inteligente');\n      preenchidosInteligente.push({ id: pendente.id, valor: inteligente });\n      continue;\n    }\n    const ficticio = gerarValorFicticio(pendente);\n    if (ficticio) {\n      setAttribute({ id: pendente.id, ...ficticio }, false, 'fallback');\n      preenchidosComFicticio.push({ id: pendente.id, valor: ficticio });\n    } else if (pendente.relevance === 1) {\n      aindaPendentes.push(pendente);\n    }\n  }\n}\n\nresolverPendentes(atributosInfo.attributes_pendentes || []);\nresolverPendentes(atributosInfo.attributes_principais_pendentes || []);\n\n// Embalagens fallback só se scraping não trouxe\nfor (const [id, struct] of Object.entries(PACKAGE_DEFAULTS)) {\n  if (!attributesMap.has(id) && defsPorId.has(id)) {\n    setAttribute(montarNumberUnit(id, struct.number, struct.unit, defsPorId.get(id)?.allowed_units), id.startsWith('PACKAGE_'), 'fallback');\n    preenchidosComFicticio.push({ id, fonte: 'fallback_embalagem' });\n  }\n}\n\nif (!attributesMap.has('SELLER_SKU') && defsPorId.has('SELLER_SKU')) {\n  setAttribute({ id: 'SELLER_SKU', value_name: buscarValorPorChaveScraping('MPN', scraping) || dadosProduto.asin || ('SKU-' + (dadosProduto._origem || 'ML').toUpperCase()) }, false, 'fallback');\n}\n\nconst saleFormat = attributesMap.get('SALE_FORMAT');\nif (saleFormat && /unidade/i.test(saleFormat.value_name || '')) {\n  if (!attributesMap.has('UNITS_PER_PACK')) setAttribute({ id: 'UNITS_PER_PACK', value_name: '1' }, false, 'regra_ml');\n  if (!attributesMap.has('UNITS_PER_PACKAGE')) setAttribute({ id: 'UNITS_PER_PACKAGE', value_name: '1' }, false, 'regra_ml');\n}\n\nif (attributesMap.has('GTIN')) attributesMap.delete('EMPTY_GTIN_REASON');\n\n// Trends somente em: título (payload), descrição e MODEL\nif (trendsKeywords.length && defsPorId.has('MODEL')) {\n  const atualModel = attributesMap.get('MODEL');\n  const baseModel = atualModel?.value_name\n    || buscarValorPorChaveScraping('MODEL', scraping)\n    || buscarValorPorChaveScraping('MPN', scraping)\n    || '';\n  const modeloOtimizado = otimizarModeloComTrends(baseModel, trendsKeywords, 255);\n  if (modeloOtimizado) setAttribute({ id: 'MODEL', value_name: modeloOtimizado }, true, 'trends');\n}\n\nconst sale_terms = [];\nconst saleTermsPendentes = [];\nconst warrantyTypeDef = saleTermsPorId.get('WARRANTY_TYPE');\nconst warrantyTimeDef = saleTermsPorId.get('WARRANTY_TIME');\n\nfor (const def of saleTermsDefs) {\n  if (!isModificavelSaleTerm(def.id)) continue;\n  if (def.id === 'WARRANTY_TYPE') {\n    const sem = (def.values || []).find(v => /sem garantia|sin garantía/i.test(v.name));\n    if (sem) sale_terms.push({ id: def.id, value_id: sem.id, value_name: sem.name });\n    else saleTermsPendentes.push(campoUiFromDef(def, 'garantia'));\n    continue;\n  }\n  if (def.id === 'WARRANTY_TIME') {\n    const wt = sale_terms.find(t => t.id === 'WARRANTY_TYPE');\n    if (wt && !/sem garantia|sin garantía/i.test(wt.value_name || '')) {\n      const unidade = def.allowed_units?.[0]?.id || 'dias';\n      sale_terms.push({ id: def.id, value_name: '90 ' + unidade, value_struct: { number: 90, unit: unidade } });\n    } else if (!wt) saleTermsPendentes.push(campoUiFromDef(def, 'garantia'));\n    continue;\n  }\n  if (def.id === 'PURCHASE_MAX_QUANTITY') {\n    saleTermsPendentes.push({ ...campoUiFromDef(def, 'limite_unidades'), sugestao: '10' });\n  }\n}\n\nconst PACKAGE_IDS = ['PACKAGE_HEIGHT', 'PACKAGE_WIDTH', 'PACKAGE_LENGTH', 'PACKAGE_WEIGHT'];\nconst SELLER_PACKAGE_IDS = ['SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_LENGTH', 'SELLER_PACKAGE_WEIGHT'];\nconst FORMATO_VENDA_IDS = ['SALE_FORMAT', 'UNITS_PER_PACK', 'UNITS_PER_PACKAGE', 'NET_VOLUME', 'NET_WEIGHT'];\nconst CARACTERISTICAS_IDS = ['SELLER_SKU', 'GTIN', 'MPN', 'BRAND', 'LINE', 'MODEL', 'FRAGRANCE', 'MAIN_AROMA', 'DETERGENT_FORMAT', 'PACKAGING_TYPE', 'IS_STAIN_REMOVER', 'IS_SUITABLE_FOR_HAND_WASHING', 'IS_ANTIBACTERIAL', 'MANUAL_TITLE'];\n\nconst embalagemFabrica = PACKAGE_IDS.map(id => {\n  const def = defsPorId.get(id);\n  const campo = campoUiComValor(def, 'embalagem_envio');\n  if (campo) campo.destino_payload = 'attributes';\n  return campo;\n}).filter(Boolean);\n\nconst embalagemEnvio = SELLER_PACKAGE_IDS.map(id => campoUiComValor(defsPorId.get(id), 'embalagem_envio')).filter(Boolean);\n\nconst formatoVendaCampos = FORMATO_VENDA_IDS.map(id => campoUiComValor(defsPorId.get(id), 'formato_venda')).filter(Boolean);\n\nconst secundariasDefs = (atributosInfo._definicoes_atributos || []).filter(d => {\n  if (!isModificavelAttr(d.id) || REGULATORIOS.has(d.id)) return false;\n  if (PACKAGE_IDS.includes(d.id) || SELLER_PACKAGE_IDS.includes(d.id) || FORMATO_VENDA_IDS.includes(d.id)) return false;\n  if (CARACTERISTICAS_IDS.includes(d.id)) return true;\n  return typeof d.relevance === 'number' && d.relevance >= 2 && d.relevance <= 4;\n});\n\nconst caracteristicasCampos = secundariasDefs.map(d => campoUiComValor(d, 'caracteristicas_secundarias')).filter(Boolean);\nconst secundariasPreenchidas = caracteristicasCampos.filter(c => c.preenchido).length;\n\nconst regulatoriosPendentes = [...aindaPendentes, ...(atributosInfo.attributes_pendentes || [])]\n  .filter(p => REGULATORIOS.has(p.id))\n  .map(p => campoUiComValor(defsPorId.get(p.id) || p, 'info_regulatoria'))\n  .filter(Boolean);\n\nconst _ihub_ui = {\n  versao: '1.0',\n  category_id: categoria.category_id || atributosInfo.category_id,\n  category_name: categoria.category_name || atributosInfo.category_name,\n  secoes: [\n    {\n      id: 'embalagem_fabrica',\n      titulo: 'Embalagem de fábrica',\n      status: embalagemFabrica.every(c => c.preenchido) ? 'ok' : 'somente_leitura',\n      mensagem: 'Medidas extraídas do scraping (PACKAGE_*). O ML pode ajustar no catálogo.',\n      campos: embalagemFabrica\n    },\n    {\n      id: 'embalagem_envio',\n      titulo: 'Embalagem de envio',\n      status: embalagemEnvio.every(c => c.preenchido) ? 'ok' : 'pendente',\n      mensagem: 'Dimensões do pacote que você envia (SELLER_PACKAGE_*).',\n      campos: embalagemEnvio\n    },\n    {\n      id: 'formato_venda',\n      titulo: 'Formato de venda',\n      status: formatoVendaCampos.filter(c => c.obrigatorio && !c.preenchido).length === 0 ? 'ok' : 'pendente',\n      campos: formatoVendaCampos\n    },\n    {\n      id: 'caracteristicas_secundarias',\n      titulo: 'Características do produto',\n      status: caracteristicasCampos.filter(c => c.obrigatorio && !c.preenchido).length === 0 ? 'ok' : 'pendente',\n      completas: secundariasPreenchidas,\n      total: caracteristicasCampos.length,\n      mensagem: 'SKU, aroma, marca, tipo de embalagem e demais atributos do ML.',\n      campos: caracteristicasCampos\n    },\n    {\n      id: 'info_regulatoria',\n      titulo: 'Informação regulatória',\n      status: regulatoriosPendentes.filter(c => c.obrigatorio && !c.preenchido).length === 0 ? 'ok' : 'pendente',\n      mensagem: 'Dados exigidos por normas (Anvisa, etc.).',\n      campos: regulatoriosPendentes\n    },\n    {\n      id: 'retirada_pessoal',\n      titulo: 'Retirar pessoalmente',\n      status: 'ok',\n      valor_atual: false,\n      editavel: true,\n      campo: { id: 'shipping.local_pick_up', nome: 'Oferece retirada pessoal', grupo: 'condicoes_venda', value_type: 'boolean', preenchido: true, valor_atual: false, destino_payload: 'shipping' }\n    },\n    {\n      id: 'descricao',\n      titulo: 'Descrição',\n      status: dadosProduto.description ? 'ok' : 'pendente',\n      valor_preview: (dadosProduto.description || '').slice(0, 300)\n    },\n    {\n      id: 'limite_unidades',\n      titulo: 'Limite de unidades por venda',\n      status: sale_terms.find(t => t.id === 'PURCHASE_MAX_QUANTITY') ? 'ok' : 'pendente',\n      campos: saleTermsPendentes.filter(c => c.grupo === 'limite_unidades')\n    },\n    {\n      id: 'condicao',\n      titulo: 'Condição',\n      status: 'ok',\n      valor_atual: 'Novo'\n    },\n    {\n      id: 'garantia',\n      titulo: 'Garantia',\n      status: sale_terms.find(t => t.id === 'WARRANTY_TYPE') ? 'ok' : 'pendente',\n      campos: saleTermsPendentes.filter(c => c.grupo === 'garantia'),\n      opcoes_tipicas: ['Garantia do vendedor', 'Garantia de fábrica', 'Sem garantia']\n    }\n  ],\n  campos_editaveis: [\n    ...embalagemEnvio,\n    ...formatoVendaCampos,\n    ...caracteristicasCampos,\n    ...regulatoriosPendentes.filter(c => !c.preenchido),\n    ...saleTermsPendentes\n  ].filter(Boolean)\n};\n\nconst shipping = { mode: 'me2', local_pick_up: false, free_shipping: false };\nconst bloqueios = [...(dadosProduto._avisos || [])];\nconst secoesPendentes = _ihub_ui.secoes.filter(s => s.status === 'pendente').map(s => s.id);\nif (secoesPendentes.length) bloqueios.push('Seções para revisar no iHub: ' + secoesPendentes.join(', '));\nregulatoriosPendentes.filter(c => c.obrigatorio && !c.preenchido).forEach(c => {\n  bloqueios.push('Informação regulatória pendente: ' + c.id + ' (' + c.nome + ')');\n});\nconst attributes = Array.from(attributesMap.values());\n\nconst payload = {\n  category_id: atributosInfo.category_id,\n  price: dadosProduto.price,\n  currency_id: 'BRL',\n  available_quantity: dadosProduto.available_quantity,\n  buying_mode: 'buy_it_now',\n  listing_type_id: 'gold_special',\n  condition: 'new',\n  pictures: dadosProduto.pictures,\n  attributes,\n  sale_terms,\n  shipping\n};\n\nconst nomeProduto = dadosProduto.title || dadosProduto.family_name || dadosProduto.title_full;\nif (isUserProduct) payload.family_name = nomeProduto;\nelse payload.title = nomeProduto;\n\nreturn [{\n  json: {\n    payload,\n    _description: dadosProduto.description,\n    _attributes_ainda_pendentes: aindaPendentes,\n    _attributes_preenchidos_scraping: preenchidosScraping,\n    _attributes_preenchidos_inteligente: preenchidosInteligente,\n    _attributes_ficticios: preenchidosComFicticio,\n    _medidas_extraidas: medidas,\n    _scraping_utilizado: scraping.todos.map(a => ({ key: a.key, value: a.value })),\n    _trends_keywords: trendsKeywords.map(k => ({ keyword: k.keyword, tier: k.tier, score: k.score })),\n    _trends_meta: trendsMeta,\n    _attributes_preenchidos_trends: preenchidosTrends,\n    _ihub_ui,\n    _sale_terms_pendentes: saleTermsPendentes,\n    _revisao_sugerida: aindaPendentes.map(p => p.id + ' (' + p.name + ')'),\n    _asin: dadosProduto.asin,\n    _gtin: eanGerado,\n    _gtin_gerado: eanInfo._gtin_gerado === true,\n    _origem: dadosProduto._origem,\n    _pronto_para_publicar: bloqueios.length === 0 && aindaPendentes.filter(p => !REGULATORIOS.has(p.id)).length === 0,\n    _bloqueios: bloqueios\n  }\n}];\n"
+      },
+      "id": "49337e1f-25a6-4293-a9f7-1b45c968436d",
+      "name": "Montar Payload ML1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4336,
+        1216
+      ],
+      "notes": "v2.6: tendências ML SEO em título/descrição/MODEL + scraping + _ihub_ui."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mercadolibre.com/items/validate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "9543d1d9-7192-4879-9487-eaff433282af",
+      "name": "Validar Payload ML1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4560,
+        1216
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      },
+      "notes": "Valida o payload na API do ML antes de enviar ao iHub. neverError=true para capturar erros 400."
+    },
+    {
+      "parameters": {
+        "jsCode": "const draft = $('Montar Payload ML1').first().json;\nconst validacao = $input.first().json;\nconst jobId = $('Webhook - Recebe Link1').first().json.body.jobId;\n\nfunction normalizarCausaML(c) {\n  if (!c || typeof c !== 'object') {\n    return { type: 'error', code: 'unknown', message: String(c || 'Erro desconhecido') };\n  }\n  return {\n    type: c.type || 'error',\n    code: c.code || '',\n    message: c.message || '',\n    department: c.department || null,\n    cause_id: c.cause_id || null,\n    references: c.references || null\n  };\n}\n\nconst errosValidacao = [];\nconst avisosValidacao = [];\n\nif (Array.isArray(validacao?.cause)) {\n  for (const c of validacao.cause) {\n    const item = normalizarCausaML(c);\n    if (item.type === 'error') errosValidacao.push(item);\n    else avisosValidacao.push(item);\n  }\n} else if (validacao?.error || validacao?.message) {\n  errosValidacao.push({\n    type: 'error',\n    code: validacao.error || 'validation_error',\n    message: validacao.message || validacao.error,\n    department: null,\n    cause_id: null\n  });\n}\n\nconst secoesPendentes = (draft._ihub_ui?.secoes || []).filter(s => s.status === 'pendente').map(s => s.id);\nconst pronto = (draft._bloqueios || []).length === 0\n  && errosValidacao.length === 0\n  && secoesPendentes.filter(id => id === 'info_regulatoria').length === 0;\nconst status = pronto ? 'completed' : 'needs_review';\n\nreturn [{\n  json: {\n    jobId,\n    status,\n    draft: {\n      payload: draft.payload,\n      _description: draft._description,\n      _pronto_para_publicar: pronto,\n      _bloqueios: draft._bloqueios || [],\n      _revisao_sugerida: draft._revisao_sugerida || [],\n      _erros_validacao_ml: errosValidacao,\n      _avisos_validacao_ml: avisosValidacao,\n      _ihub_ui: draft._ihub_ui,\n      _attributes_ainda_pendentes: draft._attributes_ainda_pendentes || [],\n      _attributes_preenchidos_scraping: draft._attributes_preenchidos_scraping || [],\n      _attributes_preenchidos_inteligente: draft._attributes_preenchidos_inteligente || [],\n      _attributes_ficticios: draft._attributes_ficticios || [],\n      _medidas_extraidas: draft._medidas_extraidas || null,\n      _scraping_utilizado: draft._scraping_utilizado || [],\n      _trends_keywords: draft._trends_keywords || [],\n      _trends_meta: draft._trends_meta || null,\n      _attributes_preenchidos_trends: draft._attributes_preenchidos_trends || [],\n      _sale_terms_pendentes: draft._sale_terms_pendentes || [],\n      _secoes_pendentes_ihub: secoesPendentes,\n      _gtin: draft._gtin,\n      _gtin_gerado: draft._gtin_gerado,\n      _asin: draft._asin,\n      _origem: draft._origem\n    }\n  }\n}];\n"
+      },
+      "id": "29b947fc-0e07-4676-a42c-cf8ac7872a50",
+      "name": "Preparar Envio iHub1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4784,
+        1216
+      ],
+      "notes": "v2.6: inclui _trends_keywords no draft para o iHub."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://attachment-hub-yldemberg.replit.app/api/webhooks/n8n/listing-prepared",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer 0b7a834c269836d93851c045b60a1f0d4c00476c2e8b20414f9f452ba5cfbf4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "a2ca766c-1c3a-4bdd-907e-59c62395a7d3",
+      "name": "Enviar ao iHub1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5008,
+        1216
+      ],
+      "notes": "Envia { jobId, status, draft } conforme contrato iHub."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/categories/{{ $(\"Normalizar Categoria ML1\").item.json.category_id }}/sale_terms",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "8f4b7327-7855-459a-889f-cd339078feb6",
+      "name": "Buscar sale_terms da categoria1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2992,
+        944
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      },
+      "notes": "Busca condições de venda da categoria: garantia, limite de unidades, etc. (hierarchy SALE_TERMS)."
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/trends/MLB/{{ $(\"Normalizar Categoria ML1\").item.json.category_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "f3b4480b-fd6e-4718-bf0d-d46232fc5a0a",
+      "name": "Buscar Tendências ML1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3664,
+        1408
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "rkyYvNZy2XThlhzZ",
+          "name": "Credecial ML"
+        }
+      },
+      "notes": "GET /trends/MLB/{category_id} — 50 keywords da categoria (crescimento + desejadas + populares)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst trends = items.map(i => i.json).filter(j => j && j.keyword);\nreturn [{ json: { trends, count: trends.length } }];"
+      },
+      "id": "601c4564-0339-4bfb-8d10-9263a5149380",
+      "name": "Agregar Tendências ML1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3888,
+        1408
+      ],
+      "notes": "Consolida 50 itens do HTTP em 1 item para o Merge."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Recebe Link1": {
+      "main": [
+        [
+          {
+            "node": "Code - Detecta Plataforma1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Detecta Plataforma1": {
+      "main": [
+        [
+          {
+            "node": "Prepara o Link e identifica a Plataforma1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara o Link e identifica a Plataforma1": {
+      "main": [
+        [
+          {
+            "node": "Apify - Scraping da Plataforma1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify - Scraping da Plataforma1": {
+      "main": [
+        [
+          {
+            "node": "Mapear Produto para ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mapear Produto para ML1": {
+      "main": [
+        [
+          {
+            "node": "Prever Categoria ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prever Categoria ML1": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Categoria ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Categoria ML1": {
+      "main": [
+        [
+          {
+            "node": "Buscar sale_terms da categoria1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar atributos obrigatórios da categoria1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar Tendências ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar atributos obrigatórios da categoria1": {
+      "main": [
+        [
+          {
+            "node": "Mapear Atributos Obrigatórios2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mapear Atributos Obrigatórios2": {
+      "main": [
+        [
+          {
+            "node": "Verificar Conta ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Conta ML1": {
+      "main": [
+        [
+          {
+            "node": "Checar Modelo Publicação1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checar Modelo Publicação1": {
+      "main": [
+        [
+          {
+            "node": "Cria EAN Válidos1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cria EAN Válidos1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Montar Payload ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Payload ML1": {
+      "main": [
+        [
+          {
+            "node": "Validar Payload ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Payload ML1": {
+      "main": [
+        [
+          {
+            "node": "Preparar Envio iHub1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Envio iHub1": {
+      "main": [
+        [
+          {
+            "node": "Enviar ao iHub1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Tendências ML1": {
+      "main": [
+        [
+          {
+            "node": "Agregar Tendências ML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar Tendências ML1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fcf39b35-dab9-47ac-8eef-3f1407417547",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4046d377885d90d7ca7d5d789e8cbd3047f4a7de52986af13532a44bfde155d3"
+  },
+  "id": "CEPVkNgYzbpfdmAA",
+  "tags": [
+    {
+      "updatedAt": "2026-05-19T22:56:30.739Z",
+      "createdAt": "2026-05-19T22:56:30.739Z",
+      "id": "PofmI1qhuZTiFS0j",
+      "name": "multi-plataforma"
+    },
+    {
+      "updatedAt": "2026-05-19T22:56:30.521Z",
+      "createdAt": "2026-05-19T22:56:30.521Z",
+      "id": "ta2cSWdcY1TOfH69",
+      "name": "apify"
+    },
+    {
+      "updatedAt": "2026-05-19T18:48:12.673Z",
+      "createdAt": "2026-05-19T18:48:12.673Z",
+      "id": "CgYWm6cTkUct3c1R",
+      "name": "mercado-livre"
+    }
+  ]
+}

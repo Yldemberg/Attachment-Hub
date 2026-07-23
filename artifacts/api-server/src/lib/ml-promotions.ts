@@ -357,6 +357,28 @@ export function invalidatePromotionsCache(accountId?: string): void {
   }
 }
 
+function translateMlStockMessage(message: string): string | null {
+  const stockGreaterLess = message.match(
+    /Stock must be greater than (\d+) and less than (\d+)/i,
+  );
+  if (stockGreaterLess) {
+    return `O estoque reservado deve ser maior que ${stockGreaterLess[1]} e menor que ${stockGreaterLess[2]}.`;
+  }
+  const stockBetween = message.match(/Stock must be between (\d+) and (\d+)/i);
+  if (stockBetween) {
+    return `O estoque reservado deve estar entre ${stockBetween[1]} e ${stockBetween[2]}.`;
+  }
+  const stockMinOnly = message.match(/Stock must be greater than (\d+)/i);
+  if (stockMinOnly) {
+    return `O estoque reservado deve ser maior que ${stockMinOnly[1]}.`;
+  }
+  const stockMaxOnly = message.match(/Stock must be less than (\d+)/i);
+  if (stockMaxOnly) {
+    return `O estoque reservado deve ser menor que ${stockMaxOnly[1]}.`;
+  }
+  return null;
+}
+
 export function mapMlPromotionError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg === "OFFER_ID_REQUIRED" || msg.includes("Offer id is required")) {
@@ -369,11 +391,15 @@ export function mapMlPromotionError(err: unknown): string {
       if (parsed.message === "Offer id is required") {
         return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
       }
+      const stockPt = translateMlStockMessage(parsed.message);
+      if (stockPt) return stockPt;
       return parsed.message;
     }
   } catch {
     // not JSON
   }
+  const stockFromRaw = translateMlStockMessage(msg) ?? translateMlStockMessage(mlBody);
+  if (stockFromRaw) return stockFromRaw;
   if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE")) {
     return "O preço com desconto não é considerado credível pelo Mercado Livre.";
   }

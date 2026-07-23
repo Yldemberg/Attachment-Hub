@@ -42,6 +42,7 @@ import {
   startListingPrepareJob,
   getListingPrepareJobForUser,
   publishDraftOnMercadoLivre,
+  publishListingPrepareDraft,
   buildListingPreparedCallbackUrl,
 } from "../lib/listing-prepare-jobs";
 import { N8nListingError, type N8nListingDraft } from "../lib/n8n-listings";
@@ -508,7 +509,7 @@ router.post("/products/publish-draft", ...auth, async (req, res) => {
       return;
     }
 
-    const { productId } = await publishDraftOnMercadoLivre(accountId, draft as N8nListingDraft);
+    const { productId } = await publishListingPrepareDraft(accountId, draft as N8nListingDraft);
 
     const db = getDb();
     const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));

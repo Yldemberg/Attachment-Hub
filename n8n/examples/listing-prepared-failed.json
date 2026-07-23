@@ -1,0 +1,5 @@
+{
+  "jobId": "11111111-1111-4111-8111-111111111111",
+  "status": "failed",
+  "error": "Falha ao scrapear o produto: página bloqueada ou URL inválida (Amazon/Shopee)."
+}
