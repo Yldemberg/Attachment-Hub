@@ -318,6 +318,32 @@ export type AmazonListingsItem = {
   }>;
 };
 
+/** Resposta de putListingsItem / patchListingsItem (HTTP 200 mesmo com INVALID). */
+export type AmazonListingsIssue = {
+  code?: string;
+  message?: string;
+  severity?: "ERROR" | "WARNING" | "INFO" | string;
+  attributeNames?: string[];
+};
+
+export type AmazonListingsSubmissionResponse = {
+  sku?: string;
+  status?: "ACCEPTED" | "INVALID" | "VALID" | string;
+  submissionId?: string;
+  issues?: AmazonListingsIssue[];
+};
+
+export function formatAmazonListingsIssues(issues: AmazonListingsIssue[] | undefined): string {
+  if (!issues?.length) return "";
+  return issues
+    .map((issue) => {
+      const attrs = issue.attributeNames?.length ? ` [${issue.attributeNames.join(", ")}]` : "";
+      const sev = issue.severity ? `${issue.severity}: ` : "";
+      return `${sev}${issue.message || issue.code || "problema desconhecido"}${attrs}`;
+    })
+    .join("; ");
+}
+
 export type AmazonListingsSearchResponse = {
   numberOfResults?: number;
   pagination?: { nextToken?: string };
@@ -376,6 +402,37 @@ export async function getListingsItem(
       "fulfillmentAvailability",
     ]),
   );
+}
+
+/** Resolve o product type oficial do ASIN no catálogo (essencial para LISTING_OFFER_ONLY). */
+export async function getCatalogProductTypeForAsin(
+  accountId: string,
+  asin: string,
+  marketplaceId: string,
+): Promise<string | null> {
+  const params = new URLSearchParams({
+    marketplaceIds: marketplaceId,
+    includedData: "productTypes,summaries",
+  });
+  try {
+    const data = await amazon.get<{
+      productTypes?: Array<{ marketplaceId?: string; productType?: string }>;
+      summaries?: Array<{ productType?: string; marketplaceId?: string }>;
+    }>(
+      accountId,
+      `/catalog/2022-04-01/items/${encodeURIComponent(asin)}?${params}`,
+    );
+    const fromTypes = data.productTypes?.find((p) => p.productType)?.productType;
+    if (fromTypes) return fromTypes;
+    const fromSummary = data.summaries?.find((s) => s.productType)?.productType;
+    return fromSummary ?? null;
+  } catch (err) {
+    logger.warn(
+      { asin, err: err instanceof Error ? err.message : String(err) },
+      "Amazon catalog productType lookup failed",
+    );
+    return null;
+  }
 }
 
 export function extractListingQuantity(item: AmazonListingsItem): number {

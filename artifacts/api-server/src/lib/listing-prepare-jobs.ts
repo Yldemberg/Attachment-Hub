@@ -540,6 +540,22 @@ export async function publishDraftOnAmazon(
   const imageUrls: string[] = [];
   const main = attrs.main_product_image_locator as Array<{ media_location?: string }> | undefined;
   if (Array.isArray(main) && main[0]?.media_location) imageUrls.push(main[0].media_location);
+  for (let i = 1; i <= 8; i++) {
+    const other = attrs[`other_product_image_locator_${i}`] as
+      | Array<{ media_location?: string }>
+      | undefined;
+    if (Array.isArray(other) && other[0]?.media_location) {
+      imageUrls.push(other[0].media_location);
+    }
+  }
+
+  const asin =
+    typeof draft._asin === "string" && draft._asin.trim() ? draft._asin.trim() : null;
+
+  // Produto já existe no catálogo Amazon (ASIN do link) → criar oferta, não produto novo.
+  const requirements = asin
+    ? "LISTING_OFFER_ONLY"
+    : p.requirements?.trim() || "LISTING";
 
   const { productId, sku } = await createAmazonListing(accountId, {
     sellerSku: p.sellerSku,
@@ -550,7 +566,10 @@ export async function publishDraftOnAmazon(
     brand,
     description: typeof description === "string" ? description : undefined,
     imageUrls,
-    attributes: attrs,
+    asin,
+    requirements,
+    // Em oferta por ASIN, não reenviar atributos de produto incompletos do scrape.
+    attributes: requirements === "LISTING_OFFER_ONLY" ? undefined : attrs,
   });
   return { productId, sku };
 }

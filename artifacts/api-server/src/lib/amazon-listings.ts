@@ -6,10 +6,13 @@ import {
   extractListingPrice,
   extractListingQuantity,
   extractListingSummary,
+  formatAmazonListingsIssues,
+  getCatalogProductTypeForAsin,
   getListingsItem,
   listingsItemPath,
   resolveAmazonSellerId,
   type AmazonListingsItem,
+  type AmazonListingsSubmissionResponse,
 } from "./amazon";
 import { logger } from "./logger";
 
@@ -39,6 +42,10 @@ export type CreateAmazonListingInput = {
   imageUrls?: string[];
   brand?: string;
   description?: string;
+  /** ASIN do catálogo Amazon (quando o anúncio é oferta de produto existente). */
+  asin?: string | null;
+  /** LISTING | LISTING_OFFER_ONLY — se omitido, usa OFFER quando há ASIN. */
+  requirements?: string;
   /** Extra SP-API attributes merged into the payload */
   attributes?: Record<string, unknown>;
 };
@@ -47,13 +54,14 @@ function attrLocaleValue(value: string | number, marketplaceId: string) {
   return [{ value, marketplace_id: marketplaceId }];
 }
 
-function buildCreateAttributes(
+function buildOfferAttributes(
   input: CreateAmazonListingInput,
   marketplaceId: string,
+  asin: string,
 ): Record<string, unknown> {
   const condition = input.condition ?? "new_new";
   const attrs: Record<string, unknown> = {
-    item_name: attrLocaleValue(input.title, marketplaceId),
+    merchant_suggested_asin: [{ value: asin, marketplace_id: marketplaceId }],
     condition_type: attrLocaleValue(condition, marketplaceId),
     fulfillment_availability: [
       {
@@ -68,29 +76,69 @@ function buildCreateAttributes(
         our_price: [{ schedule: [{ value_with_tax: input.price }] }],
       },
     ],
-    ...(input.attributes ?? {}),
   };
 
-  if (input.brand) {
-    attrs.brand = attrLocaleValue(input.brand, marketplaceId);
-  }
-  if (input.description) {
-    attrs.product_description = attrLocaleValue(input.description, marketplaceId);
-  }
-  if (input.imageUrls?.length) {
+  if (input.imageUrls?.[0]) {
     attrs.main_product_image_locator = [
       { media_location: input.imageUrls[0], marketplace_id: marketplaceId },
     ];
-    if (input.imageUrls.length > 1) {
-      attrs.other_product_image_locator_1 = input.imageUrls
-        .slice(1, 9)
-        .map((url, i) => ({
-          media_location: url,
-          marketplace_id: marketplaceId,
-        }));
+  }
+
+  return attrs;
+}
+
+function buildCreateAttributes(
+  input: CreateAmazonListingInput,
+  marketplaceId: string,
+): Record<string, unknown> {
+  const condition = input.condition ?? "new_new";
+  const fromDraft = input.attributes ? { ...input.attributes } : {};
+
+  // Base offer/product facts — draft attrs can fill gaps, but we keep critical offer fields.
+  const attrs: Record<string, unknown> = {
+    ...fromDraft,
+    item_name: fromDraft.item_name ?? attrLocaleValue(input.title, marketplaceId),
+    condition_type:
+      fromDraft.condition_type ?? attrLocaleValue(condition, marketplaceId),
+    fulfillment_availability: fromDraft.fulfillment_availability ?? [
+      {
+        fulfillment_channel_code: "DEFAULT",
+        quantity: input.availableQuantity,
+      },
+    ],
+    purchasable_offer: fromDraft.purchasable_offer ?? [
+      {
+        marketplace_id: marketplaceId,
+        currency: "BRL",
+        our_price: [{ schedule: [{ value_with_tax: input.price }] }],
+      },
+    ],
+  };
+
+  if (input.brand && !attrs.brand) {
+    attrs.brand = attrLocaleValue(input.brand, marketplaceId);
+  }
+  if (input.description && !attrs.product_description) {
+    attrs.product_description = attrLocaleValue(input.description, marketplaceId);
+  }
+
+  if (input.imageUrls?.length) {
+    if (!attrs.main_product_image_locator) {
+      attrs.main_product_image_locator = [
+        { media_location: input.imageUrls[0], marketplace_id: marketplaceId },
+      ];
+    }
+    for (let i = 1; i < Math.min(input.imageUrls.length, 9); i++) {
+      const key = `other_product_image_locator_${i}`;
+      if (!attrs[key]) {
+        attrs[key] = [
+          { media_location: input.imageUrls[i], marketplace_id: marketplaceId },
+        ];
+      }
     }
   }
-  if (input.externalProductId) {
+
+  if (input.externalProductId && !attrs.externally_assigned_product_identifier) {
     attrs.externally_assigned_product_identifier = [
       {
         type: (input.externalProductIdType ?? "EAN").toLowerCase(),
@@ -100,7 +148,59 @@ function buildCreateAttributes(
     ];
   }
 
+  const asin = input.asin?.trim();
+  if (asin && !attrs.merchant_suggested_asin) {
+    attrs.merchant_suggested_asin = [{ value: asin, marketplace_id: marketplaceId }];
+  }
+
   return attrs;
+}
+
+function assertSubmissionAccepted(
+  response: AmazonListingsSubmissionResponse | undefined,
+  sellerSku: string,
+): void {
+  const status = response?.status?.toUpperCase();
+  const issues = response?.issues ?? [];
+  const errorIssues = issues.filter((i) => (i.severity || "").toUpperCase() === "ERROR");
+  const issuesText = formatAmazonListingsIssues(issues);
+
+  logger.info(
+    {
+      sellerSku,
+      status: response?.status,
+      submissionId: response?.submissionId,
+      issueCount: issues.length,
+      issues,
+    },
+    "Amazon putListingsItem response",
+  );
+
+  // HTTP 200 + INVALID = rejeitado (antes tratávamos como sucesso e só gravávamos no iHub).
+  if (status === "INVALID" || (!status && errorIssues.length > 0)) {
+    throw new AmazonListingError(
+      issuesText
+        ? `Amazon rejeitou o anúncio: ${issuesText}`
+        : "Amazon rejeitou o anúncio (status INVALID). Verifique product type e atributos obrigatórios.",
+      "AMAZON_API_ERROR",
+    );
+  }
+
+  if (status && status !== "ACCEPTED" && status !== "VALID") {
+    throw new AmazonListingError(
+      issuesText
+        ? `Amazon não aceitou o anúncio (${status}): ${issuesText}`
+        : `Amazon não aceitou o anúncio (status: ${status}).`,
+      "AMAZON_API_ERROR",
+    );
+  }
+
+  if (errorIssues.length > 0) {
+    logger.warn(
+      { sellerSku, errorIssues },
+      "Amazon putListingsItem ACCEPTED with ERROR issues — listing may stay incomplete",
+    );
+  }
 }
 
 async function loadAmazonAccount(accountId: string) {
@@ -184,13 +284,16 @@ export async function upsertProductFromAmazonListing(
 export async function createAmazonListing(
   accountId: string,
   input: CreateAmazonListingInput,
-): Promise<{ sku: string; productId: string }> {
+): Promise<{ sku: string; productId: string; submissionId?: string }> {
   const sellerSku = input.sellerSku?.trim();
   if (!sellerSku) {
     throw new AmazonListingError("Informe sellerSku", "VALIDATION_ERROR");
   }
-  if (!input.productType?.trim()) {
-    throw new AmazonListingError("Informe productType (ex.: SHOES)", "VALIDATION_ERROR");
+  if (!input.productType?.trim() || input.productType.trim().toUpperCase() === "PRODUCT") {
+    throw new AmazonListingError(
+      "Informe um productType válido do catálogo Amazon (não use PRODUCT).",
+      "VALIDATION_ERROR",
+    );
   }
   if (!input.title?.trim()) {
     throw new AmazonListingError("Informe o título", "VALIDATION_ERROR");
@@ -204,57 +307,92 @@ export async function createAmazonListing(
 
   const account = await loadAmazonAccount(accountId);
   const sellerId = resolveAmazonSellerId(account);
-  const marketplaceId = account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
+  const marketplaceId =
+    account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
+
+  const asin = input.asin?.trim() || null;
+  const requirements =
+    input.requirements?.trim() ||
+    (asin ? "LISTING_OFFER_ONLY" : "LISTING");
+
+  let productType = input.productType.trim();
+  if (asin && requirements === "LISTING_OFFER_ONLY") {
+    const catalogType = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
+    if (catalogType) {
+      if (catalogType !== productType) {
+        logger.info(
+          { asin, fromDraft: productType, catalogType },
+          "Using catalog productType for Amazon offer",
+        );
+      }
+      productType = catalogType;
+    }
+  }
+
+  const attributes =
+    requirements === "LISTING_OFFER_ONLY" && asin
+      ? buildOfferAttributes(input, marketplaceId, asin)
+      : buildCreateAttributes(input, marketplaceId);
 
   const body = {
-    productType: input.productType.trim(),
-    requirements: "LISTING",
-    attributes: buildCreateAttributes(input, marketplaceId),
+    productType,
+    requirements,
+    attributes,
   };
 
+  let submission: AmazonListingsSubmissionResponse | undefined;
   try {
-    await amazon.put(
+    submission = await amazon.put<AmazonListingsSubmissionResponse>(
       accountId,
       listingsItemPath(sellerId, sellerSku, marketplaceId),
       body,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn({ accountId, sellerSku, message }, "Amazon putListingsItem failed");
+    logger.warn({ accountId, sellerSku, message, requirements }, "Amazon putListingsItem failed");
     throw new AmazonListingError(message, "AMAZON_API_ERROR");
   }
 
-  // Re-fetch may lag; upsert from request + best-effort GET
-  let item: AmazonListingsItem = {
-    sku: sellerSku,
-    summaries: [
-      {
-        marketplaceId,
-        productType: input.productType.trim(),
-        itemName: input.title,
-        status: ["BUYABLE"],
-        mainImage: input.imageUrls?.[0] ? { link: input.imageUrls[0] } : undefined,
-      },
-    ],
-    offers: [
-      {
-        marketplaceId,
-        price: { currencyCode: "BRL", amount: input.price },
-      },
-    ],
-    fulfillmentAvailability: [
-      { fulfillmentChannelCode: "DEFAULT", quantity: input.availableQuantity },
-    ],
-  };
+  assertSubmissionAccepted(submission, sellerSku);
 
+  let item: AmazonListingsItem | null = null;
   try {
     item = await getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
-  } catch {
-    // keep local projection
+  } catch (err) {
+    logger.warn(
+      { accountId, sellerSku, err: err instanceof Error ? err.message : String(err) },
+      "Amazon getListingsItem after put failed; listing may still be processing",
+    );
+  }
+
+  if (!item) {
+    // Não inventar BUYABLE: grava como submetido para o vendedor ver no iHub com status realista.
+    item = {
+      sku: sellerSku,
+      summaries: [
+        {
+          marketplaceId,
+          asin: asin ?? undefined,
+          productType,
+          itemName: input.title,
+          status: ["SUBMITTED"],
+          mainImage: input.imageUrls?.[0] ? { link: input.imageUrls[0] } : undefined,
+        },
+      ],
+      offers: [
+        {
+          marketplaceId,
+          price: { currencyCode: "BRL", amount: input.price },
+        },
+      ],
+      fulfillmentAvailability: [
+        { fulfillmentChannelCode: "DEFAULT", quantity: input.availableQuantity },
+      ],
+    };
   }
 
   const productId = await upsertProductFromAmazonListing(accountId, item);
-  return { sku: sellerSku, productId };
+  return { sku: sellerSku, productId, submissionId: submission?.submissionId };
 }
 
 export async function patchAmazonListingQuantity(
@@ -269,7 +407,8 @@ export async function patchAmazonListingQuantity(
 
   const account = await loadAmazonAccount(accountId);
   const sellerId = resolveAmazonSellerId(account);
-  const marketplaceId = account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
+  const marketplaceId =
+    account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
 
   let resolvedType = productType?.trim() || "";
   if (!resolvedType) {
@@ -300,8 +439,14 @@ export async function patchAmazonListingQuantity(
   };
 
   try {
-    await amazon.patch(accountId, listingsItemPath(sellerId, sellerSku, marketplaceId), body);
+    const submission = await amazon.patch<AmazonListingsSubmissionResponse>(
+      accountId,
+      listingsItemPath(sellerId, sellerSku, marketplaceId),
+      body,
+    );
+    assertSubmissionAccepted(submission, sellerSku);
   } catch (err) {
+    if (err instanceof AmazonListingError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     throw new AmazonListingError(message, "AMAZON_API_ERROR");
   }
@@ -321,7 +466,8 @@ export async function patchAmazonListingPrice(
 
   const account = await loadAmazonAccount(accountId);
   const sellerId = resolveAmazonSellerId(account);
-  const marketplaceId = account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
+  const marketplaceId =
+    account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
 
   let resolvedType = productType?.trim() || "";
   if (!resolvedType) {
@@ -350,8 +496,14 @@ export async function patchAmazonListingPrice(
   };
 
   try {
-    await amazon.patch(accountId, listingsItemPath(sellerId, sellerSku, marketplaceId), body);
+    const submission = await amazon.patch<AmazonListingsSubmissionResponse>(
+      accountId,
+      listingsItemPath(sellerId, sellerSku, marketplaceId),
+      body,
+    );
+    assertSubmissionAccepted(submission, sellerSku);
   } catch (err) {
+    if (err instanceof AmazonListingError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     throw new AmazonListingError(message, "AMAZON_API_ERROR");
   }
@@ -379,7 +531,8 @@ export async function updateAmazonListing(
   if (!last) {
     const account = await loadAmazonAccount(accountId);
     const sellerId = resolveAmazonSellerId(account);
-    const marketplaceId = account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
+    const marketplaceId =
+      account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
     last = await getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
   }
   await upsertProductFromAmazonListing(accountId, last);
