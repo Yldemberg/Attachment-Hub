@@ -72,11 +72,34 @@ function validateBulkStock(
   entry: BulkItemSource,
   stock: number,
   needsStock: boolean,
+  promotionType: string,
 ): string | undefined {
   if (!needsStock) return undefined;
 
   const { stockMin, stockMax, availableQuantity } = entry;
   const total = availableQuantity ?? 0;
+  const hasAvailable = availableQuantity != null;
+
+  if (promotionType === "LIGHTNING") {
+    if (hasAvailable && total <= 5) {
+      return "É necessário ter mais de 5 unidades em estoque para ativar a Oferta relâmpago.";
+    }
+    const min = stockMin != null && stockMin >= 6 ? stockMin : 6;
+    const maxCap = stockMax != null ? stockMax : 10;
+    if (hasAvailable && total < min) {
+      return `Estoque insuficiente: a promoção exige ${stockRangeLabel(min, maxCap)} unidades (disponível: ${total}).`;
+    }
+    if (stock < min) {
+      return `Estoque reservado inválido: mínimo de ${min} unidade(s) para esta promoção.`;
+    }
+    if (stock > maxCap) {
+      return `Estoque reservado inválido: máximo de ${maxCap} unidade(s) para esta promoção.`;
+    }
+    if (hasAvailable && stock > total) {
+      return `Estoque insuficiente: disponível ${total}, necessário ${stock}.`;
+    }
+    return undefined;
+  }
 
   if (stockMin != null && total < stockMin) {
     return `Estoque insuficiente: a promoção exige ${stockRangeLabel(stockMin, stockMax)} unidades (disponível: ${total}).`;
@@ -172,6 +195,7 @@ export function buildBulkActivatePayloadItems(
         endDate: null,
       },
       config,
+      promotionType,
     );
     const stock = parseInt(stockStr, 10);
 
@@ -184,7 +208,7 @@ export function buildBulkActivatePayloadItems(
       };
     }
 
-    const validationError = validateBulkStock(entry, stock, config.needsStock);
+    const validationError = validateBulkStock(entry, stock, config.needsStock, promotionType);
     if (validationError) {
       return { ...base, stock, validationError };
     }

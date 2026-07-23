@@ -214,11 +214,135 @@ export function parsePromotionStockBounds(stock?: MlPromotionItemStock): {
   stockMax: number | null;
 } {
   if (stock == null) return { stockMin: null, stockMax: null };
-  if (typeof stock === "number") return { stockMin: 1, stockMax: stock };
+  // Número isolado = teto (não piso). Antes tratávamos como min=1 e o lote enviava stock:1.
+  if (typeof stock === "number") return { stockMin: null, stockMax: stock };
   return {
     stockMin: stock.min ?? null,
     stockMax: stock.max ?? null,
   };
+}
+
+/** Tipos que exigem estoque reservado na ativação. */
+export const PROMOTION_TYPES_REQUIRING_STOCK = new Set(["LIGHTNING", "UNHEALTHY_STOCK"]);
+
+/**
+ * Calcula o estoque a reservar na ativação.
+ * Oferta relâmpago (ML): em geral maior que 5 e menor que 11 → 6–10.
+ * Regra de negócio: com availableQuantity > 5, tenta ativar com valor válido na faixa.
+ */
+export function resolveActivationStock(params: {
+  promotionType: string;
+  availableQuantity?: number | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
+  requestedStock?: number | null;
+}): { stock: number } | { error: string } {
+  const { promotionType, availableQuantity, requestedStock } = params;
+  const hasAvailable = availableQuantity != null;
+  const available = availableQuantity ?? 0;
+
+  if (promotionType === "LIGHTNING") {
+    if (hasAvailable && available <= 5) {
+      return {
+        error:
+          "É necessário ter mais de 5 unidades em estoque para ativar a Oferta relâmpago.",
+      };
+    }
+
+    // Faixa ML típica (>5 e <11). Se a API mandar min≤5 (piso exclusivo/errado), sobe para 6.
+    let min = params.stockMin;
+    let max = params.stockMax;
+    if (min == null || min < 6) min = 6;
+    if (max == null || max < min) max = 10;
+    if (hasAvailable) max = Math.min(max, available);
+
+    if (hasAvailable && max < min) {
+      return {
+        error: `Estoque insuficiente: a Oferta relâmpago exige entre ${min} e ${params.stockMax ?? 10} unidades (disponível: ${available}).`,
+      };
+    }
+
+    let stock = requestedStock ?? min;
+    if (stock < min || stock > max) stock = min;
+    stock = Math.min(Math.max(stock, min), max);
+    return { stock };
+  }
+
+  if (!PROMOTION_TYPES_REQUIRING_STOCK.has(promotionType) && promotionType !== "DOD") {
+    if (requestedStock != null && requestedStock >= 1) return { stock: requestedStock };
+    return { error: "Quantidade de estoque não informada" };
+  }
+
+  const min = params.stockMin ?? 1;
+  let max = params.stockMax ?? (hasAvailable && available > 0 ? available : min);
+  if (hasAvailable && available > 0) max = Math.min(max, available);
+
+  if (hasAvailable && available > 0 && available < min) {
+    return {
+      error: `Estoque insuficiente: necessário no mínimo ${min} unidade(s) (disponível: ${available}).`,
+    };
+  }
+
+  let stock = requestedStock ?? min;
+  if (stock < min || stock > max) stock = min;
+  stock = Math.min(Math.max(stock, min), max);
+  if (stock < 1) return { error: "Quantidade de estoque não informada" };
+  return { stock };
+}
+
+async function loadItemStockContext(
+  accountId: string,
+  itemId: string,
+  promotionId: string,
+  promotionType: string,
+): Promise<{
+  stockMin: number | null;
+  stockMax: number | null;
+  availableQuantity: number | null;
+  suggestedPrice: number | null;
+  offerId?: string;
+}> {
+  let stockMin: number | null = null;
+  let stockMax: number | null = null;
+  let suggestedPrice: number | null = null;
+  let offerId: string | undefined;
+
+  try {
+    const [items, contexts] = await Promise.all([
+      listPromotionItems(accountId, promotionId, promotionType, {
+        itemId,
+        bypassCache: true,
+      }),
+      fetchMlItemPromotions(accountId, itemId),
+    ]);
+    const fromList = items.find((x) => x.id === itemId);
+    const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
+    const merged = fromList ? mergePromotionItemWithContext(fromList, ctx) : null;
+    if (merged) {
+      const bounds = parsePromotionStockBounds(merged.stock);
+      stockMin = bounds.stockMin;
+      stockMax = bounds.stockMax;
+      suggestedPrice = resolveMlSuggestedPrice(merged);
+      offerId = resolveOfferIdFromMlItem(merged);
+    } else if (ctx) {
+      const bounds = parsePromotionStockBounds(ctx.stock);
+      stockMin = bounds.stockMin;
+      stockMax = bounds.stockMax;
+      offerId = ctx.ref_id?.trim() || undefined;
+    }
+  } catch {
+    // enriquecimento opcional
+  }
+
+  let availableQuantity: number | null = null;
+  try {
+    const enriched = await enrichItemsWithProducts(accountId, [{ id: itemId, status: "candidate" }]);
+    availableQuantity = enriched[0]?.availableQuantity ?? null;
+  } catch {
+    // opcional
+  }
+
+  return { stockMin, stockMax, availableQuantity, suggestedPrice, offerId };
 }
 
 export type EnrichedPromotionItem = MlPromotionItem & {
@@ -670,9 +794,50 @@ export async function activatePromotionItem(
   itemId: string,
   body: ActivatePromotionItemBody,
 ): Promise<unknown> {
-  const offerId =
-    body.offerId ??
-    (await resolvePromotionOfferId(accountId, itemId, body.promotionId, body.promotionType));
+  const needsStockResolution =
+    PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType) || body.promotionType === "DOD";
+
+  let offerId = body.offerId;
+  let dealPrice = body.dealPrice;
+  let stock = body.stock;
+
+  if (needsStockResolution || !offerId) {
+    const ctx = await loadItemStockContext(
+      accountId,
+      itemId,
+      body.promotionId,
+      body.promotionType,
+    );
+    if (!offerId) offerId = ctx.offerId;
+    if (dealPrice == null && ctx.suggestedPrice != null) dealPrice = ctx.suggestedPrice;
+
+    if (PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType)) {
+      const resolved = resolveActivationStock({
+        promotionType: body.promotionType,
+        availableQuantity: ctx.availableQuantity,
+        stockMin: ctx.stockMin,
+        stockMax: ctx.stockMax,
+        requestedStock: stock,
+      });
+      if ("error" in resolved) {
+        throw new Error(resolved.error);
+      }
+      stock = resolved.stock;
+    } else if (body.promotionType === "DOD" && stock == null) {
+      const resolved = resolveActivationStock({
+        promotionType: body.promotionType,
+        availableQuantity: ctx.availableQuantity,
+        stockMin: ctx.stockMin,
+        stockMax: ctx.stockMax,
+        requestedStock: stock,
+      });
+      if ("stock" in resolved) stock = resolved.stock;
+    }
+  }
+
+  if (!offerId) {
+    offerId = await resolvePromotionOfferId(accountId, itemId, body.promotionId, body.promotionType);
+  }
 
   if (PROMOTION_TYPES_REQUIRING_OFFER_ID.has(body.promotionType) && !offerId) {
     throw new Error("OFFER_ID_REQUIRED");
@@ -683,9 +848,9 @@ export async function activatePromotionItem(
     promotion_type: body.promotionType,
   };
   if (offerId) payload.offer_id = offerId;
-  if (body.dealPrice != null) payload.deal_price = body.dealPrice;
+  if (dealPrice != null) payload.deal_price = dealPrice;
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
-  if (body.stock != null) payload.stock = body.stock;
+  if (stock != null) payload.stock = stock;
 
   const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;
   const result = await ml.post(accountId, path, payload);
@@ -778,7 +943,20 @@ export async function bulkActivatePromotionItems(
               }
               if (needsStock) {
                 const bounds = parsePromotionStockBounds(pi.stock);
-                stock = bounds.stockMin ?? 1;
+                const enriched = await enrichItemsWithProducts(accountId, [pi]);
+                const availableQuantity = enriched[0]?.availableQuantity ?? null;
+                const resolved = resolveActivationStock({
+                  promotionType,
+                  availableQuantity,
+                  stockMin: bounds.stockMin,
+                  stockMax: bounds.stockMax,
+                  requestedStock: stock,
+                });
+                if ("error" in resolved) {
+                  results.push({ itemId: item.itemId, ok: false, error: resolved.error });
+                  return;
+                }
+                stock = resolved.stock;
               }
             }
           }

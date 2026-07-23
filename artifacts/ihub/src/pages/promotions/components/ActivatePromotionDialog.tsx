@@ -137,7 +137,7 @@ export function ActivatePromotionDialog({
     const suggestedPrice = resolveSuggestedDealPrice(merged);
     const orig = merged.originalPrice;
 
-    setQuantity(defaultStockValue(merged, config));
+    setQuantity(defaultStockValue(merged, config, promotionType));
 
     if (orig != null && suggestedPrice != null) {
       const pct = resolveSuggestedDiscountPercent(merged, suggestedPrice);
@@ -154,7 +154,7 @@ export function ActivatePromotionDialog({
       setLastEdited(null);
     }
     setTopDealPrice("");
-  }, [open, item, itemId, freshItem, itemLoading, merged, config]);
+  }, [open, item, itemId, freshItem, itemLoading, merged, config, promotionType]);
 
   const { mutate: activate, isPending } = useActivatePromotionItem({
     mutation: {

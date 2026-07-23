@@ -250,15 +250,28 @@ export function formatPromotionValidity(start?: string | null, end?: string | nu
   return `Até ${fmt(end!)}`;
 }
 
-export function defaultStockValue(item: PromotionItemFields, config: PromotionActivationConfig): string {
+export function defaultStockValue(
+  item: PromotionItemFields,
+  config: PromotionActivationConfig,
+  promotionType?: string,
+): string {
   const total = item.availableQuantity ?? 0;
-  const min = item.stockMin ?? 1;
-  const max = item.stockMax ?? total;
+  let min = item.stockMin ?? 1;
+  let max = item.stockMax ?? (total > 0 ? total : 1);
 
   if (config.needsStock || config.stockOptional) {
-    // ML pré-preenche com o mínimo da faixa (ex.: 5 de 5–16).
+    // Oferta relâmpago: ML exige >5 e <11 → reservar 6–10.
+    if (promotionType === "LIGHTNING") {
+      if (min < 6) min = 6;
+      if (item.stockMax == null) max = 10;
+      if (total > 0) max = Math.min(max, total);
+    } else if (total > 0) {
+      max = Math.min(max, total);
+    }
+
     const suggested = min > 0 ? min : 1;
-    const clamped = total > 0 ? Math.min(total, suggested) : suggested;
+    const upper = max >= min ? max : min;
+    const clamped = total > 0 ? Math.min(upper, suggested) : suggested;
     return String(Math.max(min, clamped));
   }
   return total > 0 ? String(total) : "1";
