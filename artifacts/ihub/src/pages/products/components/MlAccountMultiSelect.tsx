@@ -3,8 +3,11 @@ import { Label } from "@/components/ui/label";
 
 export type MlAccountOption = {
   id: string;
+  platform?: string | null;
   mlNickname?: string | null;
   mlUserId?: string | null;
+  amazonStoreName?: string | null;
+  amazonSellerId?: string | null;
 };
 
 type MlAccountMultiSelectProps = {
@@ -17,7 +20,12 @@ type MlAccountMultiSelectProps = {
 };
 
 function accountLabel(account: MlAccountOption): string {
-  return account.mlNickname ?? account.mlUserId ?? account.id;
+  if (account.platform === "amazon") {
+    const name = account.amazonStoreName ?? account.amazonSellerId ?? account.id;
+    return `Amazon · ${name}`;
+  }
+  const name = account.mlNickname ?? account.mlUserId ?? account.id;
+  return account.platform === "mercadolivre" ? `ML · ${name}` : name;
 }
 
 export function MlAccountMultiSelect({
@@ -48,7 +56,7 @@ export function MlAccountMultiSelect({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <Label>Contas Mercado Livre</Label>
+        <Label>Contas</Label>
         {accounts.length > 1 ? (
           <div className="flex items-center gap-2 text-[11px]">
             <button

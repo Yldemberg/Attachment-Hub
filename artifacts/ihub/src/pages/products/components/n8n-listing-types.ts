@@ -14,6 +14,215 @@ export const N8N_CREATE_STEPS = [
   { id: 2, label: "Revisão e publicação" },
 ] as const;
 
+/** Draft Amazon SP-API (quando a conta de destino é Amazon). */
+export type N8nAmazonListingDraft = {
+  platform: "amazon";
+  payload: {
+    sellerSku: string;
+    productType: string;
+    requirements?: string;
+    attributes: Record<string, unknown>;
+  };
+  _marketplace_id?: string;
+  _asin?: string | null;
+  _description?: string;
+  _pronto_para_publicar?: boolean;
+  _product_type_sugerido?: string;
+  _bloqueios?: unknown[];
+  _ihub_ui?: N8nListingDraft["_ihub_ui"];
+  [key: string]: unknown;
+};
+
+export type ListingPrepareDraft = N8nListingDraft | N8nAmazonListingDraft;
+
+export function isAmazonListingDraft(draft: unknown): draft is N8nAmazonListingDraft {
+  if (!draft || typeof draft !== "object") return false;
+  const d = draft as Record<string, unknown>;
+  if (d.platform === "amazon") return true;
+  const payload = d.payload as Record<string, unknown> | undefined;
+  return !!(
+    payload &&
+    typeof payload.sellerSku === "string" &&
+    typeof payload.productType === "string" &&
+    payload.attributes &&
+    typeof payload.attributes === "object" &&
+    !Array.isArray(payload.attributes)
+  );
+}
+
+type AmazonLocaleValue = { value?: string; marketplace_id?: string };
+
+function marketplaceIdOf(draft: N8nAmazonListingDraft): string {
+  return draft._marketplace_id || "A2Q3Y263D00KWC";
+}
+
+export function getAmazonAttrText(
+  draft: N8nAmazonListingDraft,
+  key: string,
+): string {
+  const raw = draft.payload.attributes?.[key];
+  if (!Array.isArray(raw) || raw.length === 0) return "";
+  const first = raw[0] as AmazonLocaleValue;
+  return typeof first?.value === "string" ? first.value : "";
+}
+
+export function getAmazonPrice(draft: N8nAmazonListingDraft): number {
+  const offer = draft.payload.attributes?.purchasable_offer;
+  if (!Array.isArray(offer) || !offer[0]) return 0;
+  const ourPrice = (offer[0] as { our_price?: Array<{ schedule?: Array<{ value_with_tax?: number }> }> })
+    .our_price;
+  const scheduled = ourPrice?.[0]?.schedule?.[0]?.value_with_tax;
+  return typeof scheduled === "number" ? scheduled : 0;
+}
+
+export function getAmazonQuantity(draft: N8nAmazonListingDraft): number {
+  const avail = draft.payload.attributes?.fulfillment_availability;
+  if (!Array.isArray(avail) || !avail[0]) return 0;
+  const qty = (avail[0] as { quantity?: number }).quantity;
+  return typeof qty === "number" ? qty : 0;
+}
+
+export function getAmazonImageUrls(draft: N8nAmazonListingDraft): string[] {
+  const urls: string[] = [];
+  const main = draft.payload.attributes?.main_product_image_locator;
+  if (Array.isArray(main) && (main[0] as { media_location?: string })?.media_location) {
+    urls.push(String((main[0] as { media_location: string }).media_location));
+  }
+  for (let i = 1; i <= 8; i++) {
+    const other = draft.payload.attributes?.[`other_product_image_locator_${i}`];
+    if (Array.isArray(other) && (other[0] as { media_location?: string })?.media_location) {
+      urls.push(String((other[0] as { media_location: string }).media_location));
+    }
+  }
+  return urls;
+}
+
+function withAmazonAttrText(
+  draft: N8nAmazonListingDraft,
+  key: string,
+  value: string,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  return {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: {
+        ...draft.payload.attributes,
+        [key]: [{ value, marketplace_id: marketplaceId }],
+      },
+    },
+  };
+}
+
+export function updateAmazonDraftBasics(
+  draft: N8nAmazonListingDraft,
+  patch: {
+    sellerSku?: string;
+    productType?: string;
+    title?: string;
+    brand?: string;
+    description?: string;
+    price?: number;
+    availableQuantity?: number;
+  },
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  let next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: { ...draft.payload, attributes: { ...draft.payload.attributes } },
+  };
+
+  if (patch.sellerSku !== undefined) {
+    next = {
+      ...next,
+      payload: { ...next.payload, sellerSku: patch.sellerSku },
+    };
+  }
+  if (patch.productType !== undefined) {
+    next = {
+      ...next,
+      payload: { ...next.payload, productType: patch.productType },
+      _bloqueios:
+        patch.productType.trim() && patch.productType !== "PRODUCT"
+          ? []
+          : next._bloqueios,
+    };
+  }
+  if (patch.title !== undefined) {
+    next = withAmazonAttrText(next, "item_name", patch.title);
+  }
+  if (patch.brand !== undefined) {
+    next = withAmazonAttrText(next, "brand", patch.brand);
+  }
+  if (patch.description !== undefined) {
+    next = {
+      ...withAmazonAttrText(next, "product_description", patch.description),
+      _description: patch.description,
+    };
+  }
+  if (patch.price !== undefined) {
+    next = {
+      ...next,
+      payload: {
+        ...next.payload,
+        attributes: {
+          ...next.payload.attributes,
+          purchasable_offer: [
+            {
+              marketplace_id: marketplaceId,
+              currency: "BRL",
+              our_price: [{ schedule: [{ value_with_tax: patch.price }] }],
+            },
+          ],
+        },
+      },
+    };
+  }
+  if (patch.availableQuantity !== undefined) {
+    next = {
+      ...next,
+      payload: {
+        ...next.payload,
+        attributes: {
+          ...next.payload.attributes,
+          fulfillment_availability: [
+            {
+              fulfillment_channel_code: "DEFAULT",
+              quantity: patch.availableQuantity,
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): string[] {
+  const reasons: string[] = [];
+  if (!draft.payload.sellerSku?.trim()) reasons.push("Informe o Seller SKU.");
+  if (!draft.payload.productType?.trim() || draft.payload.productType === "PRODUCT") {
+    reasons.push("Confirme o product type Amazon (ex.: SHOES, SHIRT).");
+  }
+  if (!getAmazonAttrText(draft, "item_name").trim()) {
+    reasons.push("Informe o título do produto.");
+  }
+  if (getAmazonPrice(draft) <= 0) reasons.push("Informe um preço válido.");
+  if (getAmazonQuantity(draft) < 0) reasons.push("Informe o estoque.");
+  if (getAmazonImageUrls(draft).length === 0) reasons.push("É necessário ao menos uma foto.");
+  if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
+    for (const b of draft._bloqueios) {
+      if (typeof b === "string" && b.trim() && !reasons.includes(b.trim())) {
+        reasons.push(b.trim());
+      }
+    }
+  }
+  return reasons;
+}
+
 export function isSupportedProductUrl(productUrl: string): boolean {
   try {
     const host = new URL(productUrl.trim()).hostname.toLowerCase();
@@ -527,7 +736,11 @@ export function hasBlockingPendingIhubUi(draft: N8nListingDraft): boolean {
 }
 
 /** Motivos que impedem publicar — usados no botão e no alerta. */
-export function getPublishBlockReasons(draft: N8nListingDraft): string[] {
+export function getPublishBlockReasons(draft: ListingPrepareDraft): string[] {
+  if (isAmazonListingDraft(draft)) {
+    return getAmazonPublishBlockReasons(draft);
+  }
+
   const reasons: string[] = [];
   const familyName = (draft.payload.family_name || (draft.payload as { title?: string }).title || "").trim();
   if (!familyName) reasons.push("Informe o nome da família / título do produto.");
@@ -572,7 +785,7 @@ export function getPublishBlockReasons(draft: N8nListingDraft): string[] {
   return reasons;
 }
 
-export function canPublishDraft(draft: N8nListingDraft): boolean {
+export function canPublishDraft(draft: ListingPrepareDraft): boolean {
   return getPublishBlockReasons(draft).length === 0;
 }
 

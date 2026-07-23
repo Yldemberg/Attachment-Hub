@@ -7,7 +7,6 @@ import {
   useGetListingPrepareJob,
   getListProductsQueryKey,
   getGetListingPrepareJobQueryKey,
-  type N8nListingDraft,
   type ListingPrepareJobResponse,
 } from "@workspace/api-client-react";
 import { useQueryClient, type Query } from "@tanstack/react-query";
@@ -20,10 +19,13 @@ import {
   PREPARE_JOB_TIMEOUT_MS,
   canPublishDraft,
   getPublishBlockReasons,
+  isAmazonListingDraft,
   revalidateDraftReadiness,
+  type ListingPrepareDraft,
 } from "./components/n8n-listing-types";
 import { ProductLinkPrepareForm } from "./components/ProductLinkPrepareForm";
 import { N8nListingReviewForm } from "./components/N8nListingReviewForm";
+import { AmazonListingReviewForm } from "./components/AmazonListingReviewForm";
 import { MlAccountMultiSelect } from "./components/MlAccountMultiSelect";
 
 function getErrorMessage(err: unknown): string {
@@ -35,11 +37,22 @@ function getErrorMessage(err: unknown): string {
 }
 
 function accountDisplayName(
-  accounts: Array<{ id: string; mlNickname?: string | null; mlUserId?: string | null }>,
+  accounts: Array<{
+    id: string;
+    platform?: string | null;
+    mlNickname?: string | null;
+    mlUserId?: string | null;
+    amazonStoreName?: string | null;
+    amazonSellerId?: string | null;
+  }>,
   accountId: string,
 ): string {
   const account = accounts.find((a) => a.id === accountId);
-  return account?.mlNickname ?? account?.mlUserId ?? accountId;
+  if (!account) return accountId;
+  if (account.platform === "amazon") {
+    return account.amazonStoreName ?? account.amazonSellerId ?? accountId;
+  }
+  return account.mlNickname ?? account.mlUserId ?? accountId;
 }
 
 export default function ProductCreate() {
@@ -52,7 +65,7 @@ export default function ProductCreate() {
   const [productUrl, setProductUrl] = useState("");
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
   const [prepareStartedAt, setPrepareStartedAt] = useState<number | null>(null);
-  const [draft, setDraft] = useState<N8nListingDraft | null>(null);
+  const [draft, setDraft] = useState<ListingPrepareDraft | null>(null);
   const [jobNeedsReview, setJobNeedsReview] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
@@ -88,6 +101,7 @@ export default function ProductCreate() {
     jobData?.status === "needs_review" ||
     jobData?.status === "failed";
   const isPreparing = startingPrepare || (!!prepareJobId && !jobFinished);
+  const isAmazonDraft = draft ? isAmazonListingDraft(draft) : false;
 
   useEffect(() => {
     if (!jobData || !prepareJobId) return;
@@ -96,7 +110,9 @@ export default function ProductCreate() {
       (jobData.status === "completed" || jobData.status === "needs_review") &&
       jobData.data
     ) {
-      setDraft(jobData.data);
+      const nextDraft = jobData.data as ListingPrepareDraft;
+      const amazon = isAmazonListingDraft(nextDraft);
+      setDraft(nextDraft);
       setJobNeedsReview(jobData.status === "needs_review");
       setStep(2);
       clearPrepareJob();
@@ -107,8 +123,12 @@ export default function ProductCreate() {
             : "Anúncio preparado",
         description:
           jobData.status === "needs_review"
-            ? "Complete os campos pendentes antes de publicar no Mercado Livre."
-            : "Revise os dados antes de publicar no Mercado Livre.",
+            ? amazon
+              ? "Complete os campos pendentes antes de publicar na Amazon."
+              : "Complete os campos pendentes antes de publicar no Mercado Livre."
+            : amazon
+              ? "Revise os dados antes de publicar na Amazon."
+              : "Revise os dados antes de publicar no Mercado Livre.",
       });
       return;
     }
@@ -168,7 +188,7 @@ export default function ProductCreate() {
       toast({
         variant: "destructive",
         title: "Selecione uma conta",
-        description: "Escolha ao menos uma conta Mercado Livre.",
+        description: "Escolha ao menos uma conta (Mercado Livre ou Amazon).",
       });
       return;
     }
@@ -211,22 +231,26 @@ export default function ProductCreate() {
       toast({
         variant: "destructive",
         title: "Selecione uma conta",
-        description: "Escolha ao menos uma conta Mercado Livre para publicar.",
+        description: isAmazonDraft
+          ? "Escolha ao menos uma conta Amazon para publicar."
+          : "Escolha ao menos uma conta Mercado Livre para publicar.",
       });
       return;
     }
 
-    const readyDraft = revalidateDraftReadiness({
-      ...draft,
-      payload: {
-        ...draft.payload,
-        family_name:
-          draft.payload.family_name?.trim() ||
-          (draft.payload as { title?: string }).title?.trim() ||
-          draft.payload.family_name,
-      },
-      _pronto_para_publicar: true,
-    });
+    const readyDraft: ListingPrepareDraft = isAmazonListingDraft(draft)
+      ? { ...draft, _pronto_para_publicar: true }
+      : revalidateDraftReadiness({
+          ...draft,
+          payload: {
+            ...draft.payload,
+            family_name:
+              draft.payload.family_name?.trim() ||
+              (draft.payload as { title?: string }).title?.trim() ||
+              draft.payload.family_name,
+          },
+          _pronto_para_publicar: true,
+        });
 
     setPublishing(true);
     const succeeded: string[] = [];
@@ -238,7 +262,8 @@ export default function ProductCreate() {
           await publishDraftAsync({
             data: {
               accountId,
-              draft: readyDraft,
+              // API aceita draft Amazon em runtime; schema Orval ainda tipa só ML.
+              draft: readyDraft as Parameters<typeof publishDraftAsync>[0]["data"]["draft"],
             },
           });
           succeeded.push(accountId);
@@ -255,7 +280,9 @@ export default function ProductCreate() {
           description:
             succeeded.length > 1
               ? `Criado com sucesso em ${succeeded.length} contas.`
-              : "O anúncio foi criado no Mercado Livre.",
+              : isAmazonDraft
+                ? "O anúncio foi criado na Amazon."
+                : "O anúncio foi criado no Mercado Livre.",
         });
         navigate(buildProductsListReturnPath());
         return;
@@ -311,7 +338,7 @@ export default function ProductCreate() {
         <div>
           <h1 className="text-lg font-bold text-foreground">Criar anúncio</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Importe um produto da Amazon ou Shopee e publique no Mercado Livre
+            Importe um produto da Amazon ou Shopee e publique no Mercado Livre ou na Amazon
           </p>
         </div>
 
@@ -353,13 +380,25 @@ export default function ProductCreate() {
                 selectedIds={accountIds}
                 onChange={setAccountIds}
                 disabled={publishing}
-                hint="Confirme em quais contas o anúncio será publicado."
+                hint={
+                  isAmazonDraft
+                    ? "Confirme em quais contas Amazon o anúncio será publicado."
+                    : "Confirme em quais contas o anúncio será publicado."
+                }
               />
-              <N8nListingReviewForm
-                draft={draft}
-                onDraftChange={setDraft}
-                jobNeedsReview={jobNeedsReview}
-              />
+              {isAmazonListingDraft(draft) ? (
+                <AmazonListingReviewForm
+                  draft={draft}
+                  onDraftChange={setDraft}
+                  jobNeedsReview={jobNeedsReview}
+                />
+              ) : (
+                <N8nListingReviewForm
+                  draft={draft}
+                  onDraftChange={setDraft}
+                  jobNeedsReview={jobNeedsReview}
+                />
+              )}
             </div>
           ) : null}
         </div>
