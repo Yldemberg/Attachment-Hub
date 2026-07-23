@@ -552,22 +552,36 @@ export async function publishDraftOnAmazon(
   const asin =
     typeof draft._asin === "string" && draft._asin.trim() ? draft._asin.trim() : null;
 
-  // Publica listing completo com todos os atributos revisados no iHub (scrape + edição).
-  // LISTING_OFFER_ONLY só se o draft pedir explicitamente.
-  const requirements = p.requirements?.trim() || "LISTING";
+  // Scrape de Amazon de terceiros → criar ASIN novo (não vincular ao ASIN fonte genérico/restrito).
+  const matchCatalogAsin = false;
+  const requirements = "LISTING";
+
+  // Remove vínculo acidental ao ASIN raspado e normaliza SKU.
+  const attrsClean = { ...attrs };
+  delete attrsClean.merchant_suggested_asin;
+
+  let sellerSku = p.sellerSku?.trim() || "";
+  if (
+    !sellerSku ||
+    /^B0[A-Z0-9]{8}$/i.test(sellerSku) ||
+    (asin && (sellerSku === asin || sellerSku === `SKU-AMZ-${asin}`))
+  ) {
+    sellerSku = `IHUB-${Date.now().toString(36).toUpperCase()}`;
+  }
 
   const { productId, sku } = await createAmazonListing(accountId, {
-    sellerSku: p.sellerSku,
+    sellerSku,
     productType: p.productType,
-    title: itemName || p.sellerSku,
+    title: itemName || sellerSku,
     price: price > 0 ? price : 1,
     availableQuantity: qty,
     brand,
     description: typeof description === "string" ? description : undefined,
     imageUrls,
     asin,
+    matchCatalogAsin,
     requirements,
-    attributes: attrs,
+    attributes: attrsClean,
   });
   return { productId, sku };
 }

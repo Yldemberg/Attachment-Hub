@@ -154,8 +154,12 @@ export function AmazonListingReviewForm({
 
       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
         {draft._asin ? (
-          <div>
-            <span className="font-medium text-foreground">ASIN:</span> {draft._asin}
+          <div className="col-span-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+            <span className="font-medium">ASIN fonte (referência):</span> {draft._asin}
+            <p className="mt-1 text-[11px] text-amber-800">
+              O iHub cria um <strong>ASIN novo</strong> com os dados raspados. Não vinculamos ao ASIN
+              de terceiros (Amazon bloqueia ASINs genéricos/restritos).
+            </p>
           </div>
         ) : null}
         <div>
@@ -163,8 +167,7 @@ export function AmazonListingReviewForm({
           {draft._marketplace_id || "A2Q3Y263D00KWC"}
         </div>
         <div>
-          <span className="font-medium text-foreground">Modo:</span>{" "}
-          {draft.payload.requirements || "LISTING"}
+          <span className="font-medium text-foreground">Modo:</span> LISTING (produto novo)
         </div>
         <div>
           <span className="font-medium text-foreground">Pronto para publicar:</span>{" "}

@@ -42,9 +42,14 @@ export type CreateAmazonListingInput = {
   imageUrls?: string[];
   brand?: string;
   description?: string;
-  /** ASIN do catálogo Amazon (quando o anúncio é oferta de produto existente). */
+  /** ASIN de referência (scrape). Só vincula ao catálogo se matchCatalogAsin=true. */
   asin?: string | null;
-  /** LISTING | LISTING_OFFER_ONLY — se omitido, usa OFFER quando há ASIN. */
+  /**
+   * Se true, tenta oferta no ASIN existente (LISTING_OFFER_ONLY / merchant_suggested_asin).
+   * Default false: cria produto/ASIN novo — necessário quando o ASIN fonte é genérico/restrito.
+   */
+  matchCatalogAsin?: boolean;
+  /** LISTING | LISTING_OFFER_ONLY — se omitido, usa OFFER só quando matchCatalogAsin+asin. */
   requirements?: string;
   /** Extra SP-API attributes merged into the payload */
   attributes?: Record<string, unknown>;
@@ -186,6 +191,35 @@ export function suggestAmazonDepartment(productType: string, title = ""): string
   return "unisex";
 }
 
+export function isGenericBrandName(brand: string): boolean {
+  return /^(gen[eé]rico|generic|sem\s*marca|unbranded|n\/?a|nao\s*informado|não\s*informado)$/i.test(
+    brand.trim(),
+  );
+}
+
+function looksLikeAsin(value: string): boolean {
+  return /^B0[A-Z0-9]{8}$/i.test(value.trim());
+}
+
+/** Evita usar o ASIN de terceiro como SKU (causa oferta bloqueada em ASIN genérico). */
+export function ensureSellerSkuNotSourceAsin(sellerSku: string, sourceAsin: string | null): string {
+  const sku = sellerSku.trim();
+  if (
+    !sku ||
+    looksLikeAsin(sku) ||
+    (sourceAsin && (sku === sourceAsin || sku === `SKU-AMZ-${sourceAsin}` || sku.endsWith(sourceAsin)))
+  ) {
+    return `IHUB-${Date.now().toString(36).toUpperCase()}`;
+  }
+  return sku;
+}
+
+function extractBrandFromAttrs(attrs: Record<string, unknown> | undefined): string | undefined {
+  if (!attrs?.brand || !Array.isArray(attrs.brand) || !attrs.brand[0]) return undefined;
+  const value = (attrs.brand[0] as { value?: string }).value;
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
 /** Parseia textos tipo "20C x 10L x 30A centímetros" ou "20 x 10 x 30 cm". */
 export function parseAmazonItemDimensions(text: string): {
   length: number;
@@ -257,10 +291,16 @@ export function ensureRequiredAmazonListingAttributes(
     title?: string;
     price: number;
     scrapedTexts?: string[];
+    /** Quando true, não vincula ASIN de terceiros e garante isenção GTIN se necessário. */
+    createNewCatalogProduct?: boolean;
   },
 ): Record<string, unknown> {
   const marketplaceId = opts.marketplaceId;
   const attrs: Record<string, unknown> = { ...attrsInput };
+
+  if (opts.createNewCatalogProduct) {
+    delete attrs.merchant_suggested_asin;
+  }
 
   // country_of_origin → código ISO
   const countryRaw = attrs.country_of_origin;
@@ -297,6 +337,22 @@ export function ensureRequiredAmazonListingAttributes(
 
   // Precificação SP-API (BR): our_price + list_price com value_with_tax
   normalizeAmazonPricingAttributes(attrs, marketplaceId, opts.price);
+
+  // Produto novo sem GTIN real → isenção de identificador (evita EAN inventado inválido)
+  if (opts.createNewCatalogProduct) {
+    const gtinRaw = attrs.externally_assigned_product_identifier;
+    const hasGtin =
+      Array.isArray(gtinRaw) &&
+      gtinRaw[0] &&
+      typeof (gtinRaw[0] as { value?: unknown }).value === "string" &&
+      String((gtinRaw[0] as { value: string }).value).trim().length >= 8;
+    if (!hasGtin) {
+      delete attrs.externally_assigned_product_identifier;
+      attrs.supplier_declared_has_product_identifier_exemption = [
+        { value: true, marketplace_id: marketplaceId },
+      ];
+    }
+  }
 
   // item_length_width_height estruturado
   if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {
@@ -416,10 +472,9 @@ function buildCreateAttributes(
     ];
   }
 
-  const asin = input.asin?.trim();
-  if (asin && !attrs.merchant_suggested_asin) {
-    attrs.merchant_suggested_asin = [{ value: asin, marketplace_id: marketplaceId }];
-  }
+  // NÃO vincular ao ASIN raspado: ASINs genéricos/de terceiros são restritos na Amazon BR.
+  // _asin no draft fica só como referência; listing cria ASIN novo.
+  delete attrs.merchant_suggested_asin;
 
   const titleFromAttr =
     Array.isArray(attrs.item_name) && attrs.item_name[0]
@@ -563,7 +618,7 @@ export async function createAmazonListing(
   accountId: string,
   input: CreateAmazonListingInput,
 ): Promise<{ sku: string; productId: string; submissionId?: string }> {
-  const sellerSku = input.sellerSku?.trim();
+  let sellerSku = input.sellerSku?.trim();
   if (!sellerSku) {
     throw new AmazonListingError("Informe sellerSku", "VALIDATION_ERROR");
   }
@@ -583,23 +638,38 @@ export async function createAmazonListing(
     throw new AmazonListingError("Quantidade inválida", "VALIDATION_ERROR");
   }
 
+  const brand = input.brand?.trim() || extractBrandFromAttrs(input.attributes);
+  if (brand && isGenericBrandName(brand)) {
+    throw new AmazonListingError(
+      `A marca "${brand}" é tratada como genérica pela Amazon e costuma ser bloqueada. Use a marca da sua loja (ex.: Original Tênis).`,
+      "VALIDATION_ERROR",
+    );
+  }
+
   const account = await loadAmazonAccount(accountId);
   const sellerId = resolveAmazonSellerId(account);
   const marketplaceId =
     account.amazonMarketplaceId || process.env.AMAZON_MARKETPLACE_ID || "A2Q3Y263D00KWC";
 
   const asin = input.asin?.trim() || null;
-  const requirements =
-    input.requirements?.trim() ||
-    (asin ? "LISTING_OFFER_ONLY" : "LISTING");
+  const matchCatalog = input.matchCatalogAsin === true && !!asin;
+
+  // SKU não pode ser o ASIN de terceiro (gera oferta bloqueada em ASIN genérico).
+  sellerSku = ensureSellerSkuNotSourceAsin(sellerSku, asin);
+
+  // Default: criar ASIN/produto novo. Só oferta no ASIN existente se matchCatalogAsin=true.
+  const requirements = matchCatalog
+    ? input.requirements?.trim() || "LISTING_OFFER_ONLY"
+    : input.requirements?.trim() || "LISTING";
 
   let productType = input.productType.trim();
+  // Mesmo sem vincular, o ASIN fonte ajuda a descobrir o product type correto.
   if (asin) {
     const catalogType = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
     if (catalogType) {
       if (catalogType !== productType) {
         logger.info(
-          { asin, fromDraft: productType, catalogType, requirements },
+          { asin, fromDraft: productType, catalogType, matchCatalog },
           "Using catalog productType for Amazon listing",
         );
       }
@@ -608,25 +678,43 @@ export async function createAmazonListing(
   }
 
   const attributesRaw =
-    requirements === "LISTING_OFFER_ONLY" && asin
+    matchCatalog && requirements === "LISTING_OFFER_ONLY" && asin
       ? buildOfferAttributes(input, marketplaceId, asin)
       : buildCreateAttributes(input, marketplaceId);
 
-  const attributes =
-    requirements === "LISTING_OFFER_ONLY"
+  let attributes =
+    matchCatalog && requirements === "LISTING_OFFER_ONLY"
       ? attributesRaw
       : ensureRequiredAmazonListingAttributes(attributesRaw, {
           marketplaceId,
           productType,
           title: input.title,
           price: input.price,
+          createNewCatalogProduct: !matchCatalog,
         });
+
+  if (!matchCatalog) {
+    delete attributes.merchant_suggested_asin;
+  }
 
   const body = {
     productType,
     requirements,
     attributes,
   };
+
+  logger.info(
+    {
+      accountId,
+      sellerSku,
+      productType,
+      requirements,
+      matchCatalog,
+      sourceAsin: asin,
+      hasMerchantSuggestedAsin: !!attributes.merchant_suggested_asin,
+    },
+    "Amazon putListingsItem request",
+  );
 
   let submission: AmazonListingsSubmissionResponse | undefined;
   try {

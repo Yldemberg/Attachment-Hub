@@ -622,6 +622,18 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   if (getAmazonListPrice(draft) <= 0) {
     reasons.push("Informe o list_price (preço sugerido com impostos).");
   }
+
+  const brand = getAmazonAttrText(draft, "brand").trim();
+  if (brand && /^(gen[eé]rico|generic|sem\s*marca|unbranded)$/i.test(brand)) {
+    reasons.push(
+      `Troque a marca "${brand}" pela marca da sua loja. A Amazon bloqueia marcas/ASINs genéricos.`,
+    );
+  }
+
+  const sku = draft.payload.sellerSku?.trim() || "";
+  if (/^B0[A-Z0-9]{8}$/i.test(sku)) {
+    reasons.push("Seller SKU não pode ser um ASIN. Use um SKU próprio (ex.: IHUB-…).");
+  }
   if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
     for (const b of draft._bloqueios) {
       if (typeof b === "string" && b.trim() && !reasons.includes(b.trim())) {
