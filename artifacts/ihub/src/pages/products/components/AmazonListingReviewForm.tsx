@@ -9,17 +9,22 @@ import {
   getAmazonCondition,
   getAmazonGtin,
   getAmazonImageUrls,
+  getAmazonItemDimensions,
+  getAmazonListPrice,
   getAmazonPrice,
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
   getAmazonScrapedAttributes,
   listAmazonExtraTextAttributes,
+  normalizeAmazonCountryCode,
   suggestAmazonProductType,
   updateAmazonBulletPoints,
   updateAmazonCondition,
   updateAmazonDraftBasics,
   updateAmazonExtraTextAttribute,
   updateAmazonGtin,
+  updateAmazonItemDimensions,
+  updateAmazonListPrice,
   updateAmazonScrapedAttribute,
   type N8nAmazonListingDraft,
 } from "./n8n-listing-types";
@@ -38,6 +43,33 @@ const CONDITION_OPTIONS = [
   { id: "used_like_new", label: "Usado — como novo" },
   { id: "used_very_good", label: "Usado — muito bom" },
   { id: "used_good", label: "Usado — bom" },
+] as const;
+
+const DEPARTMENT_OPTIONS = [
+  { id: "beauty", label: "beauty" },
+  { id: "handbags", label: "handbags" },
+  { id: "luggage", label: "luggage" },
+  { id: "shoes", label: "shoes" },
+  { id: "clothing", label: "clothing" },
+  { id: "unisex", label: "unisex" },
+] as const;
+
+const COUNTRY_OPTIONS = [
+  { id: "BR", label: "BR — Brasil" },
+  { id: "CN", label: "CN — China" },
+  { id: "US", label: "US — Estados Unidos" },
+  { id: "PY", label: "PY — Paraguai" },
+  { id: "IN", label: "IN — Índia" },
+  { id: "VN", label: "VN — Vietnã" },
+] as const;
+
+const DG_OPTIONS = [
+  { id: "not_applicable", label: "not_applicable (não se aplica)" },
+  { id: "unknown", label: "unknown" },
+  { id: "ghs", label: "ghs" },
+  { id: "storage", label: "storage" },
+  { id: "transportation", label: "transportation" },
+  { id: "waste", label: "waste" },
 ] as const;
 
 type AmazonListingReviewFormProps = {
@@ -72,12 +104,26 @@ export function AmazonListingReviewForm({
   const extraAttrs = listAmazonExtraTextAttributes(draft);
   const gtin = getAmazonGtin(draft);
   const condition = getAmazonCondition(draft);
+  const department = getAmazonAttrText(draft, "department");
+  const country = normalizeAmazonCountryCode(getAmazonAttrText(draft, "country_of_origin") || "BR");
+  const dg = getAmazonAttrText(draft, "supplier_declared_dg_hz_regulation") || "not_applicable";
+  const listPrice = getAmazonListPrice(draft) || price;
+  const dims = getAmazonItemDimensions(draft) || {
+    length: 0,
+    width: 0,
+    height: 0,
+    unit: "centimeters" as const,
+  };
 
   // Garante 5 slots de bullet para edição
   const bulletSlots = Array.from({ length: 5 }, (_, i) => bullets[i] ?? "");
 
   const patch = (partial: Parameters<typeof updateAmazonDraftBasics>[1]) => {
     onDraftChange(updateAmazonDraftBasics(draft, partial));
+  };
+
+  const setAttr = (key: string, value: string) => {
+    onDraftChange(updateAmazonExtraTextAttribute(draft, key, value));
   };
 
   return (
@@ -275,6 +321,163 @@ export function AmazonListingReviewForm({
             rows={5}
             className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[100px]"
           />
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <SectionTitle>Campos obrigatórios Amazon</SectionTitle>
+        <p className="text-[11px] text-muted-foreground">
+          Preenchidos automaticamente a partir do scrape quando possível. Ajuste se a Amazon rejeitar.
+        </p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>
+              Department <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={department}
+              onChange={(e) => setAttr("department", e.target.value.trim())}
+              list="amazon-department-options"
+              placeholder="beauty, handbags…"
+              className="h-9"
+            />
+            <datalist id="amazon-department-options">
+              {DEPARTMENT_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              País de origem <span className="text-destructive">*</span>
+            </Label>
+            <select
+              value={country}
+              onChange={(e) => setAttr("country_of_origin", e.target.value)}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {COUNTRY_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">Use código ISO (BR), não “Brasil”.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>
+              Produto perigoso (DG) <span className="text-destructive">*</span>
+            </Label>
+            <select
+              value={dg}
+              onChange={(e) => setAttr("supplier_declared_dg_hz_regulation", e.target.value)}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {DG_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              List price (R$) <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={listPrice || ""}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonListPrice(
+                    draft,
+                    e.target.value === "" ? 0 : Number(e.target.value),
+                  ),
+                )
+              }
+              className="h-9"
+            />
+            <p className="text-[11px] text-muted-foreground">Preço sugerido sem impostos.</p>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>
+            Dimensões do item (C × L × A) <span className="text-destructive">*</span>
+          </Label>
+          <div className="grid grid-cols-4 gap-2">
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              value={dims.length || ""}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonItemDimensions(draft, {
+                    ...dims,
+                    length: Number(e.target.value) || 0,
+                  }),
+                )
+              }
+              placeholder="Comp."
+              className="h-9"
+            />
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              value={dims.width || ""}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonItemDimensions(draft, {
+                    ...dims,
+                    width: Number(e.target.value) || 0,
+                  }),
+                )
+              }
+              placeholder="Larg."
+              className="h-9"
+            />
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              value={dims.height || ""}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonItemDimensions(draft, {
+                    ...dims,
+                    height: Number(e.target.value) || 0,
+                  }),
+                )
+              }
+              placeholder="Alt."
+              className="h-9"
+            />
+            <select
+              value={dims.unit}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonItemDimensions(draft, {
+                    ...dims,
+                    unit: e.target.value === "inches" ? "inches" : "centimeters",
+                  }),
+                )
+              }
+              className="w-full bg-input border border-border text-sm rounded-lg px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="centimeters">cm</option>
+              <option value="inches">in</option>
+            </select>
+          </div>
         </div>
       </section>
 

@@ -219,6 +219,11 @@ const AMAZON_SYSTEM_ATTR_KEYS = new Set([
   "merchant_suggested_asin",
   "externally_assigned_product_identifier",
   "bullet_point",
+  "list_price",
+  "item_length_width_height",
+  "department",
+  "country_of_origin",
+  "supplier_declared_dg_hz_regulation",
 ]);
 
 function isAmazonImageLocatorKey(key: string): boolean {
@@ -349,7 +354,9 @@ export function updateAmazonExtraTextAttribute(
   key: string,
   value: string,
 ): N8nAmazonListingDraft {
-  const next = withAmazonAttrText(draft, key, value);
+  const normalized =
+    key === "country_of_origin" ? normalizeAmazonCountryCode(value) : value;
+  const next = withAmazonAttrText(draft, key, normalized);
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
@@ -397,6 +404,116 @@ export function updateAmazonCondition(
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
+export type AmazonItemDimensions = {
+  length: number;
+  width: number;
+  height: number;
+  unit: "centimeters" | "inches";
+};
+
+export function getAmazonListPrice(draft: N8nAmazonListingDraft): number {
+  const raw = draft.payload.attributes?.list_price;
+  if (!Array.isArray(raw) || !raw[0]) return 0;
+  const value = (raw[0] as { value?: number }).value;
+  return typeof value === "number" ? value : 0;
+}
+
+export function updateAmazonListPrice(
+  draft: N8nAmazonListingDraft,
+  price: number,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: {
+        ...draft.payload.attributes,
+        list_price:
+          price > 0
+            ? [{ value: Number(price.toFixed(2)), currency: "BRL", marketplace_id: marketplaceId }]
+            : [],
+      },
+    },
+  };
+  if (!(price > 0)) {
+    delete next.payload.attributes.list_price;
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function getAmazonItemDimensions(draft: N8nAmazonListingDraft): AmazonItemDimensions | null {
+  const raw = draft.payload.attributes?.item_length_width_height;
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return null;
+  const first = raw[0] as {
+    length?: { value?: number; unit?: string };
+    width?: { value?: number; unit?: string };
+    height?: { value?: number; unit?: string };
+  };
+  if (
+    typeof first.length?.value !== "number" ||
+    typeof first.width?.value !== "number" ||
+    typeof first.height?.value !== "number"
+  ) {
+    return null;
+  }
+  return {
+    length: first.length.value,
+    width: first.width.value,
+    height: first.height.value,
+    unit: first.length.unit === "inches" ? "inches" : "centimeters",
+  };
+}
+
+export function updateAmazonItemDimensions(
+  draft: N8nAmazonListingDraft,
+  dims: AmazonItemDimensions,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: {
+        ...draft.payload.attributes,
+        item_length_width_height: [
+          {
+            length: { value: dims.length, unit: dims.unit },
+            width: { value: dims.width, unit: dims.unit },
+            height: { value: dims.height, unit: dims.unit },
+            marketplace_id: marketplaceId,
+          },
+        ],
+      },
+    },
+  };
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function normalizeAmazonCountryCode(raw: string): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "BR";
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  const key = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  const map: Record<string, string> = {
+    br: "BR",
+    brasil: "BR",
+    brazil: "BR",
+    cn: "CN",
+    china: "CN",
+    us: "US",
+    usa: "US",
+    eua: "US",
+  };
+  return map[key] || trimmed.toUpperCase().slice(0, 2);
+}
+
 /** Heurística local para sugerir product type a partir do título. */
 export function suggestAmazonProductType(title: string): string | null {
   const titleL = title.toLowerCase();
@@ -432,6 +549,26 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   if (getAmazonPrice(draft) <= 0) reasons.push("Informe um preço válido.");
   if (getAmazonQuantity(draft) < 0) reasons.push("Informe o estoque.");
   if (getAmazonImageUrls(draft).length === 0) reasons.push("É necessário ao menos uma foto.");
+
+  if (!getAmazonAttrText(draft, "department").trim()) {
+    reasons.push("Informe o department (ex.: beauty, handbags).");
+  }
+  const country = getAmazonAttrText(draft, "country_of_origin").trim();
+  if (!country) {
+    reasons.push("Informe o country_of_origin (código ISO, ex.: BR).");
+  } else if (country.length !== 2) {
+    reasons.push(`country_of_origin inválido ("${country}"). Use código ISO (ex.: BR, CN).`);
+  }
+  if (!getAmazonAttrText(draft, "supplier_declared_dg_hz_regulation").trim()) {
+    reasons.push("Informe a regulamentação de produto perigoso (ex.: not_applicable).");
+  }
+  const dims = getAmazonItemDimensions(draft);
+  if (!dims || dims.length <= 0 || dims.width <= 0 || dims.height <= 0) {
+    reasons.push("Informe as dimensões do item (C × L × A) com unidade.");
+  }
+  if (getAmazonListPrice(draft) <= 0) {
+    reasons.push("Informe o list_price (preço sugerido sem impostos).");
+  }
   if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
     for (const b of draft._bloqueios) {
       if (typeof b === "string" && b.trim() && !reasons.includes(b.trim())) {

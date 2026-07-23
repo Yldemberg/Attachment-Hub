@@ -54,6 +54,226 @@ function attrLocaleValue(value: string | number, marketplaceId: string) {
   return [{ value, marketplace_id: marketplaceId }];
 }
 
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  br: "BR",
+  brasil: "BR",
+  brazil: "BR",
+  cn: "CN",
+  china: "CN",
+  us: "US",
+  usa: "US",
+  eua: "US",
+  "estados unidos": "US",
+  "united states": "US",
+  py: "PY",
+  paraguay: "PY",
+  paraguai: "PY",
+  in: "IN",
+  india: "IN",
+  índia: "IN",
+  vn: "VN",
+  vietnam: "VN",
+  vietna: "VN",
+  id: "ID",
+  indonesia: "ID",
+  indonésia: "ID",
+  mx: "MX",
+  mexico: "MX",
+  méxico: "MX",
+};
+
+export function normalizeAmazonCountryOfOrigin(raw: string): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "BR";
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  const key = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  return COUNTRY_NAME_TO_CODE[key] || trimmed.toUpperCase().slice(0, 2);
+}
+
+export function suggestAmazonDepartment(productType: string, title = ""): string {
+  const type = (productType || "").toUpperCase();
+  const titleL = title.toLowerCase();
+  if (type.includes("SHOE") || /t[eê]nis|sapato|bota/.test(titleL)) return "shoes";
+  if (type.includes("SHIRT") || /camis|roupa|vestido/.test(titleL)) return "clothing";
+  if (type.includes("LUGGAGE") || type.includes("BACKPACK") || /mala|mochila/.test(titleL)) {
+    return "luggage";
+  }
+  if (
+    type.includes("COSMETIC") ||
+    type.includes("BEAUTY") ||
+    /necessaire|maquiagem|cosmetic|toiletry/.test(titleL)
+  ) {
+    return "beauty";
+  }
+  if (type.includes("BAG") || /bolsa|bag|carteira/.test(titleL)) return "handbags";
+  return "unisex";
+}
+
+/** Parseia textos tipo "20C x 10L x 30A centímetros" ou "20 x 10 x 30 cm". */
+export function parseAmazonItemDimensions(text: string): {
+  length: number;
+  width: number;
+  height: number;
+  unit: "centimeters" | "inches";
+} | null {
+  const raw = String(text || "");
+  if (!raw.trim()) return null;
+  const unit: "centimeters" | "inches" = /in(ch|ches)?\b|polegada/i.test(raw)
+    ? "inches"
+    : "centimeters";
+
+  const labeled = raw.match(
+    /(\d+[.,]?\d*)\s*[Cc]\s*[x×]\s*(\d+[.,]?\d*)\s*[Ll]\s*[x×]\s*(\d+[.,]?\d*)\s*[Aa]/i,
+  );
+  if (labeled) {
+    return {
+      length: Number(labeled[1].replace(",", ".")),
+      width: Number(labeled[2].replace(",", ".")),
+      height: Number(labeled[3].replace(",", ".")),
+      unit,
+    };
+  }
+
+  const plain = raw.match(
+    /(\d+[.,]?\d*)\s*(?:cm|cent[ií]metros?)?\s*[x×]\s*(\d+[.,]?\d*)\s*(?:cm|cent[ií]metros?)?\s*[x×]\s*(\d+[.,]?\d*)/i,
+  );
+  if (plain) {
+    return {
+      length: Number(plain[1].replace(",", ".")),
+      width: Number(plain[2].replace(",", ".")),
+      height: Number(plain[3].replace(",", ".")),
+      unit,
+    };
+  }
+  return null;
+}
+
+function isStructuredAmazonDimension(raw: unknown): boolean {
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return false;
+  const first = raw[0] as Record<string, unknown>;
+  const length = first.length as { value?: unknown; unit?: unknown } | undefined;
+  return typeof length?.value === "number" && typeof length?.unit === "string";
+}
+
+function collectDimensionSourceTexts(attrs: Record<string, unknown>): string[] {
+  const texts: string[] = [];
+  for (const [key, raw] of Object.entries(attrs)) {
+    if (!/dimens|length|width|height|medida|tamanho do produto/i.test(key)) continue;
+    if (Array.isArray(raw) && raw[0] && typeof (raw[0] as { value?: unknown }).value === "string") {
+      texts.push(String((raw[0] as { value: string }).value));
+    } else if (typeof raw === "string") {
+      texts.push(raw);
+    }
+  }
+  return texts;
+}
+
+/**
+ * Garante atributos que a Amazon costuma exigir em LISTING e corrige formatos inválidos
+ * (ex.: country_of_origin "Brasil", dimensões em texto livre).
+ */
+export function ensureRequiredAmazonListingAttributes(
+  attrsInput: Record<string, unknown>,
+  opts: {
+    marketplaceId: string;
+    productType: string;
+    title?: string;
+    price: number;
+    scrapedTexts?: string[];
+  },
+): Record<string, unknown> {
+  const marketplaceId = opts.marketplaceId;
+  const attrs: Record<string, unknown> = { ...attrsInput };
+
+  // country_of_origin → código ISO
+  const countryRaw = attrs.country_of_origin;
+  let countryValue = "BR";
+  if (Array.isArray(countryRaw) && countryRaw[0] && typeof (countryRaw[0] as { value?: unknown }).value === "string") {
+    countryValue = normalizeAmazonCountryOfOrigin(String((countryRaw[0] as { value: string }).value));
+  }
+  attrs.country_of_origin = attrLocaleValue(countryValue, marketplaceId);
+
+  // supplier_declared_dg_hz_regulation
+  const dgRaw = attrs.supplier_declared_dg_hz_regulation;
+  const hasDg =
+    Array.isArray(dgRaw) &&
+    dgRaw[0] &&
+    typeof (dgRaw[0] as { value?: unknown }).value === "string" &&
+    String((dgRaw[0] as { value: string }).value).trim();
+  if (!hasDg) {
+    attrs.supplier_declared_dg_hz_regulation = attrLocaleValue("not_applicable", marketplaceId);
+  }
+
+  // department
+  const deptRaw = attrs.department;
+  const hasDept =
+    Array.isArray(deptRaw) &&
+    deptRaw[0] &&
+    typeof (deptRaw[0] as { value?: unknown }).value === "string" &&
+    String((deptRaw[0] as { value: string }).value).trim();
+  if (!hasDept) {
+    attrs.department = attrLocaleValue(
+      suggestAmazonDepartment(opts.productType, opts.title || ""),
+      marketplaceId,
+    );
+  }
+
+  // list_price (preço sugerido sem impostos)
+  const listRaw = attrs.list_price;
+  const hasList =
+    Array.isArray(listRaw) &&
+    listRaw[0] &&
+    typeof (listRaw[0] as { value?: unknown }).value === "number";
+  if (!hasList && opts.price > 0) {
+    attrs.list_price = [
+      {
+        value: Number(opts.price.toFixed(2)),
+        currency: "BRL",
+        marketplace_id: marketplaceId,
+      },
+    ];
+  }
+
+  // item_length_width_height estruturado
+  if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {
+    const sources = [
+      ...collectDimensionSourceTexts(attrs),
+      ...(opts.scrapedTexts || []),
+    ];
+    let parsed: ReturnType<typeof parseAmazonItemDimensions> = null;
+    for (const text of sources) {
+      parsed = parseAmazonItemDimensions(text);
+      if (parsed) break;
+    }
+    if (parsed) {
+      attrs.item_length_width_height = [
+        {
+          length: { value: parsed.length, unit: parsed.unit },
+          width: { value: parsed.width, unit: parsed.unit },
+          height: { value: parsed.height, unit: parsed.unit },
+          marketplace_id: marketplaceId,
+        },
+      ];
+    }
+  }
+
+  // Remove atributos de dimensão em texto livre que confundem a SP-API
+  for (const key of Object.keys(attrs)) {
+    if (key === "item_length_width_height" || key === "item_package_dimensions") continue;
+    if (!/dimens|length_width|medida/i.test(key)) continue;
+    const raw = attrs[key];
+    if (Array.isArray(raw) && raw[0] && typeof (raw[0] as { value?: unknown }).value === "string") {
+      delete attrs[key];
+    }
+  }
+
+  return attrs;
+}
+
 function buildOfferAttributes(
   input: CreateAmazonListingInput,
   marketplaceId: string,
@@ -153,7 +373,17 @@ function buildCreateAttributes(
     attrs.merchant_suggested_asin = [{ value: asin, marketplace_id: marketplaceId }];
   }
 
-  return attrs;
+  const titleFromAttr =
+    Array.isArray(attrs.item_name) && attrs.item_name[0]
+      ? String((attrs.item_name[0] as { value?: string }).value || input.title)
+      : input.title;
+
+  return ensureRequiredAmazonListingAttributes(attrs, {
+    marketplaceId,
+    productType: input.productType,
+    title: titleFromAttr,
+    price: input.price,
+  });
 }
 
 function assertSubmissionAccepted(
@@ -329,10 +559,20 @@ export async function createAmazonListing(
     }
   }
 
-  const attributes =
+  const attributesRaw =
     requirements === "LISTING_OFFER_ONLY" && asin
       ? buildOfferAttributes(input, marketplaceId, asin)
       : buildCreateAttributes(input, marketplaceId);
+
+  const attributes =
+    requirements === "LISTING_OFFER_ONLY"
+      ? attributesRaw
+      : ensureRequiredAmazonListingAttributes(attributesRaw, {
+          marketplaceId,
+          productType,
+          title: input.title,
+          price: input.price,
+        });
 
   const body = {
     productType,
