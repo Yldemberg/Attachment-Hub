@@ -552,10 +552,9 @@ export async function publishDraftOnAmazon(
   const asin =
     typeof draft._asin === "string" && draft._asin.trim() ? draft._asin.trim() : null;
 
-  // Produto já existe no catálogo Amazon (ASIN do link) → criar oferta, não produto novo.
-  const requirements = asin
-    ? "LISTING_OFFER_ONLY"
-    : p.requirements?.trim() || "LISTING";
+  // Publica listing completo com todos os atributos revisados no iHub (scrape + edição).
+  // LISTING_OFFER_ONLY só se o draft pedir explicitamente.
+  const requirements = p.requirements?.trim() || "LISTING";
 
   const { productId, sku } = await createAmazonListing(accountId, {
     sellerSku: p.sellerSku,
@@ -568,8 +567,7 @@ export async function publishDraftOnAmazon(
     imageUrls,
     asin,
     requirements,
-    // Em oferta por ASIN, não reenviar atributos de produto incompletos do scrape.
-    attributes: requirements === "LISTING_OFFER_ONLY" ? undefined : attrs,
+    attributes: attrs,
   });
   return { productId, sku };
 }

@@ -64,6 +64,17 @@
     },
     "_marketplace_id": "A2Q3Y263D00KWC",
     "_asin": "B0EXAMPLE01",
+    "_description": "Tênis esportivo unissex. Ideal para caminhada e corrida leve.",
+    "_bullet_points": [
+      "Cabedal respirável",
+      "Solado antiderrapante",
+      "Palmilha confortável"
+    ],
+    "_scraped_attributes": [
+      { "key": "Cor", "value": "Preto" },
+      { "key": "Material", "value": "Tecido mesh" },
+      { "key": "Marca", "value": "Marca Exemplo" }
+    ],
     "_pronto_para_publicar": false,
     "_product_type_sugerido": "SHOES",
     "_bloqueios": [],

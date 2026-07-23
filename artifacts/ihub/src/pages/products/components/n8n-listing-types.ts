@@ -15,6 +15,11 @@ export const N8N_CREATE_STEPS = [
 ] as const;
 
 /** Draft Amazon SP-API (quando a conta de destino é Amazon). */
+export type N8nAmazonScrapedAttribute = {
+  key: string;
+  value: string;
+};
+
 export type N8nAmazonListingDraft = {
   platform: "amazon";
   payload: {
@@ -26,6 +31,8 @@ export type N8nAmazonListingDraft = {
   _marketplace_id?: string;
   _asin?: string | null;
   _description?: string;
+  _bullet_points?: string[];
+  _scraped_attributes?: N8nAmazonScrapedAttribute[];
   _pronto_para_publicar?: boolean;
   _product_type_sugerido?: string;
   _bloqueios?: unknown[];
@@ -197,6 +204,195 @@ export function updateAmazonDraftBasics(
     };
   }
 
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+const AMAZON_SYSTEM_ATTR_KEYS = new Set([
+  "item_name",
+  "condition_type",
+  "fulfillment_availability",
+  "purchasable_offer",
+  "brand",
+  "product_description",
+  "main_product_image_locator",
+  "merchant_suggested_asin",
+  "externally_assigned_product_identifier",
+  "bullet_point",
+]);
+
+function isAmazonImageLocatorKey(key: string): boolean {
+  return (
+    key === "main_product_image_locator" ||
+    /^other_product_image_locator_\d+$/.test(key)
+  );
+}
+
+/** Atributos SP-API de texto simples (locale) além dos campos básicos. */
+export function listAmazonExtraTextAttributes(
+  draft: N8nAmazonListingDraft,
+): Array<{ key: string; value: string }> {
+  const out: Array<{ key: string; value: string }> = [];
+  for (const [key, raw] of Object.entries(draft.payload.attributes || {})) {
+    if (AMAZON_SYSTEM_ATTR_KEYS.has(key) || isAmazonImageLocatorKey(key)) continue;
+    if (!Array.isArray(raw) || !raw[0] || typeof (raw[0] as { value?: unknown }).value !== "string") {
+      continue;
+    }
+    out.push({ key, value: String((raw[0] as { value: string }).value) });
+  }
+  return out.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function getAmazonBulletPoints(draft: N8nAmazonListingDraft): string[] {
+  if (Array.isArray(draft._bullet_points) && draft._bullet_points.length) {
+    return draft._bullet_points.map(String);
+  }
+  const raw = draft.payload.attributes?.bullet_point;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => String((item as { value?: string })?.value || "").trim())
+    .filter(Boolean);
+}
+
+export function getAmazonScrapedAttributes(
+  draft: N8nAmazonListingDraft,
+): N8nAmazonScrapedAttribute[] {
+  if (Array.isArray(draft._scraped_attributes)) {
+    return draft._scraped_attributes.map((a) => ({
+      key: String(a.key || ""),
+      value: String(a.value ?? ""),
+    }));
+  }
+  return [];
+}
+
+export function updateAmazonBulletPoints(
+  draft: N8nAmazonListingDraft,
+  bullets: string[],
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const cleaned = bullets.map((b) => b.trim()).filter(Boolean).slice(0, 10);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    _bullet_points: cleaned,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+  if (cleaned.length) {
+    next.payload.attributes.bullet_point = cleaned.slice(0, 5).map((value) => ({
+      value,
+      marketplace_id: marketplaceId,
+    }));
+  } else {
+    delete next.payload.attributes.bullet_point;
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function updateAmazonScrapedAttribute(
+  draft: N8nAmazonListingDraft,
+  index: number,
+  patch: { key?: string; value?: string },
+): N8nAmazonListingDraft {
+  const list = getAmazonScrapedAttributes(draft).map((item) => ({ ...item }));
+  if (!list[index]) return draft;
+  if (patch.key !== undefined) list[index].key = patch.key;
+  if (patch.value !== undefined) list[index].value = patch.value;
+
+  let next: N8nAmazonListingDraft = {
+    ...draft,
+    _scraped_attributes: list,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+
+  // Espelha chaves conhecidas no payload SP-API
+  const keyNorm = list[index].key
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const scrapeToSpApi: Record<string, string> = {
+    marca: "brand",
+    brand: "brand",
+    fabricante: "manufacturer",
+    manufacturer: "manufacturer",
+    modelo: "model_name",
+    model: "model_name",
+    cor: "color",
+    color: "color",
+    tamanho: "size",
+    size: "size",
+    material: "material",
+    estilo: "style",
+    style: "style",
+  };
+  const spKey = scrapeToSpApi[keyNorm];
+  if (spKey && list[index].value.trim()) {
+    next = withAmazonAttrText(next, spKey, list[index].value.trim());
+    next = { ...next, _scraped_attributes: list };
+  }
+
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function updateAmazonExtraTextAttribute(
+  draft: N8nAmazonListingDraft,
+  key: string,
+  value: string,
+): N8nAmazonListingDraft {
+  const next = withAmazonAttrText(draft, key, value);
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function getAmazonGtin(draft: N8nAmazonListingDraft): string {
+  const raw = draft.payload.attributes?.externally_assigned_product_identifier;
+  if (!Array.isArray(raw) || !raw[0]) return "";
+  return String((raw[0] as { value?: string }).value || "");
+}
+
+export function updateAmazonGtin(
+  draft: N8nAmazonListingDraft,
+  gtin: string,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+  const trimmed = gtin.trim();
+  if (trimmed) {
+    next.payload.attributes.externally_assigned_product_identifier = [
+      { type: "ean", value: trimmed, marketplace_id: marketplaceId },
+    ];
+  } else {
+    delete next.payload.attributes.externally_assigned_product_identifier;
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function getAmazonCondition(draft: N8nAmazonListingDraft): string {
+  return getAmazonAttrText(draft, "condition_type") || "new_new";
+}
+
+export function updateAmazonCondition(
+  draft: N8nAmazonListingDraft,
+  condition: string,
+): N8nAmazonListingDraft {
+  const next = withAmazonAttrText(draft, "condition_type", condition);
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }

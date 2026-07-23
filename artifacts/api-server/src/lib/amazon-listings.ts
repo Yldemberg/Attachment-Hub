@@ -316,13 +316,13 @@ export async function createAmazonListing(
     (asin ? "LISTING_OFFER_ONLY" : "LISTING");
 
   let productType = input.productType.trim();
-  if (asin && requirements === "LISTING_OFFER_ONLY") {
+  if (asin) {
     const catalogType = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
     if (catalogType) {
       if (catalogType !== productType) {
         logger.info(
-          { asin, fromDraft: productType, catalogType },
-          "Using catalog productType for Amazon offer",
+          { asin, fromDraft: productType, catalogType, requirements },
+          "Using catalog productType for Amazon listing",
         );
       }
       productType = catalogType;

@@ -99,6 +99,8 @@ export type N8nAmazonListingDraft = {
   _marketplace_id?: string;
   _asin?: string | null;
   _description?: string;
+  _bullet_points?: string[];
+  _scraped_attributes?: Array<{ key: string; value: string }>;
   _pronto_para_publicar?: boolean;
   _product_type_sugerido?: string;
   _bloqueios?: unknown[];

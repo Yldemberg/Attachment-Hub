@@ -62,6 +62,17 @@ Exemplos: [listing-prepared-completed.json](examples/listing-prepared-completed.
 
 Alinha ao Listings Items API (`putListingsItem`).
 
+Além de `payload.attributes` (SP-API), o prepare Amazon deve trazer tudo o que o scrape capturou:
+
+| Campo | Descrição |
+| --- | --- |
+| `_scraped_attributes` | Lista `{ key, value }` da página Amazon |
+| `_bullet_points` | Features / bullets (até 10; 5 vão em `bullet_point`) |
+| `_description` | Descrição completa |
+| `_asin` | ASIN fonte |
+
+O frontend do iHub exibe e permite editar esses campos antes de `putListingsItem` com `requirements: LISTING`.
+
 ```json
 {
   "platform": "amazon",
@@ -73,6 +84,9 @@ Alinha ao Listings Items API (`putListingsItem`).
       "item_name": [{ "value": "Título", "marketplace_id": "A2Q3Y263D00KWC" }],
       "condition_type": [{ "value": "new_new", "marketplace_id": "A2Q3Y263D00KWC" }],
       "brand": [{ "value": "Marca", "marketplace_id": "A2Q3Y263D00KWC" }],
+      "bullet_point": [
+        { "value": "Benefício 1", "marketplace_id": "A2Q3Y263D00KWC" }
+      ],
       "fulfillment_availability": [
         { "fulfillment_channel_code": "DEFAULT", "quantity": 5 }
       ],
@@ -90,6 +104,9 @@ Alinha ao Listings Items API (`putListingsItem`).
   },
   "_marketplace_id": "A2Q3Y263D00KWC",
   "_asin": "B0…",
+  "_description": "…",
+  "_bullet_points": ["Benefício 1", "Benefício 2"],
+  "_scraped_attributes": [{ "key": "Cor", "value": "Preto" }],
   "_pronto_para_publicar": false,
   "_product_type_sugerido": "SHOES"
 }
@@ -97,7 +114,7 @@ Alinha ao Listings Items API (`putListingsItem`).
 
 Exemplo: [listing-prepared-amazon-needs-review.json](examples/listing-prepared-amazon-needs-review.json).
 
-Publicação no iHub: `createAmazonListing` / SP-API.
+Publicação no iHub: `createAmazonListing` / SP-API com os atributos revisados.
 
 ---
 

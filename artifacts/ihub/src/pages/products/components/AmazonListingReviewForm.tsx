@@ -1,15 +1,26 @@
 import { AlertTriangle } from "lucide-react";
+import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCurrency } from "@/lib/utils";
 import {
   getAmazonAttrText,
+  getAmazonBulletPoints,
+  getAmazonCondition,
+  getAmazonGtin,
   getAmazonImageUrls,
   getAmazonPrice,
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
+  getAmazonScrapedAttributes,
+  listAmazonExtraTextAttributes,
   suggestAmazonProductType,
+  updateAmazonBulletPoints,
+  updateAmazonCondition,
   updateAmazonDraftBasics,
+  updateAmazonExtraTextAttribute,
+  updateAmazonGtin,
+  updateAmazonScrapedAttribute,
   type N8nAmazonListingDraft,
 } from "./n8n-listing-types";
 
@@ -22,11 +33,26 @@ const COMMON_PRODUCT_TYPES = [
   { id: "SHIRT", label: "Camiseta / roupa" },
 ] as const;
 
+const CONDITION_OPTIONS = [
+  { id: "new_new", label: "Novo" },
+  { id: "used_like_new", label: "Usado — como novo" },
+  { id: "used_very_good", label: "Usado — muito bom" },
+  { id: "used_good", label: "Usado — bom" },
+] as const;
+
 type AmazonListingReviewFormProps = {
   draft: N8nAmazonListingDraft;
   onDraftChange: (draft: N8nAmazonListingDraft) => void;
   jobNeedsReview?: boolean;
 };
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1.5">
+      {children}
+    </h3>
+  );
+}
 
 export function AmazonListingReviewForm({
   draft,
@@ -41,13 +67,21 @@ export function AmazonListingReviewForm({
   const price = getAmazonPrice(draft);
   const quantity = getAmazonQuantity(draft);
   const suggestedType = suggestAmazonProductType(title);
+  const bullets = getAmazonBulletPoints(draft);
+  const scraped = getAmazonScrapedAttributes(draft);
+  const extraAttrs = listAmazonExtraTextAttributes(draft);
+  const gtin = getAmazonGtin(draft);
+  const condition = getAmazonCondition(draft);
+
+  // Garante 5 slots de bullet para edição
+  const bulletSlots = Array.from({ length: 5 }, (_, i) => bullets[i] ?? "");
 
   const patch = (partial: Parameters<typeof updateAmazonDraftBasics>[1]) => {
     onDraftChange(updateAmazonDraftBasics(draft, partial));
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {jobNeedsReview || publishBlockReasons.length > 0 ? (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -65,7 +99,7 @@ export function AmazonListingReviewForm({
               </ul>
             ) : (
               <p className="text-amber-700">
-                Confirme product type, SKU, preço e fotos antes de criar o listing.
+                Revise product type, atributos do scrape e bullets antes de criar o listing.
               </p>
             )}
           </div>
@@ -83,139 +117,258 @@ export function AmazonListingReviewForm({
           {draft._marketplace_id || "A2Q3Y263D00KWC"}
         </div>
         <div>
+          <span className="font-medium text-foreground">Modo:</span>{" "}
+          {draft.payload.requirements || "LISTING"}
+        </div>
+        <div>
           <span className="font-medium text-foreground">Pronto para publicar:</span>{" "}
           {publishBlockReasons.length === 0 ? "Sim" : "Não"}
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label>
-          Título <span className="text-destructive">*</span>
-        </Label>
-        <Input
-          value={title}
-          onChange={(e) => patch({ title: e.target.value })}
-          className="h-9"
-        />
-      </div>
+      <section className="space-y-4">
+        <SectionTitle>Dados principais</SectionTitle>
 
-      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>
-            Seller SKU <span className="text-destructive">*</span>
+            Título <span className="text-destructive">*</span>
           </Label>
           <Input
-            value={draft.payload.sellerSku}
-            onChange={(e) => patch({ sellerSku: e.target.value })}
+            value={title}
+            onChange={(e) => patch({ title: e.target.value })}
             className="h-9"
           />
         </div>
-        <div className="space-y-1.5">
-          <Label>
-            Product type <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            value={draft.payload.productType}
-            onChange={(e) => patch({ productType: e.target.value.trim().toUpperCase() })}
-            placeholder="COSMETIC_CASE, BAG, SHOES…"
-            className="h-9"
-          />
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {COMMON_PRODUCT_TYPES.map((opt) => {
-              const selected = draft.payload.productType === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => patch({ productType: opt.id })}
-                  className={`text-[11px] rounded-md border px-2 py-1 transition-colors ${
-                    selected
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>
+              Seller SKU <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={draft.payload.sellerSku}
+              onChange={(e) => patch({ sellerSku: e.target.value })}
+              className="h-9"
+            />
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {suggestedType && draft.payload.productType === "PRODUCT" ? (
-              <>
-                Sugestão para este título:{" "}
-                <button
-                  type="button"
-                  className="text-primary hover:underline font-medium"
-                  onClick={() => patch({ productType: suggestedType })}
-                >
-                  {suggestedType}
-                </button>
-                .{" "}
-              </>
+          <div className="space-y-1.5">
+            <Label>
+              Product type <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={draft.payload.productType}
+              onChange={(e) => patch({ productType: e.target.value.trim().toUpperCase() })}
+              placeholder="COSMETIC_CASE, BAG, SHOES…"
+              className="h-9"
+            />
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {COMMON_PRODUCT_TYPES.map((opt) => {
+                const selected = draft.payload.productType === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => patch({ productType: opt.id })}
+                    className={`text-[11px] rounded-md border px-2 py-1 transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {suggestedType && draft.payload.productType === "PRODUCT" ? (
+                <>
+                  Sugestão para este título:{" "}
+                  <button
+                    type="button"
+                    className="text-primary hover:underline font-medium"
+                    onClick={() => patch({ productType: suggestedType })}
+                  >
+                    {suggestedType}
+                  </button>
+                  .{" "}
+                </>
+              ) : null}
+              Deve existir no catálogo Amazon BR. Evite o genérico PRODUCT.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>
+              Preço (R$) <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={price || ""}
+              onChange={(e) =>
+                patch({
+                  price: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
+              className="h-9"
+            />
+            {price > 0 ? (
+              <p className="text-[11px] text-muted-foreground">{formatCurrency(price)}</p>
             ) : null}
-            Deve existir no catálogo Amazon BR. Evite o genérico PRODUCT.
+          </div>
+          <div className="space-y-1.5">
+            <Label>Estoque</Label>
+            <Input
+              type="number"
+              min={0}
+              value={quantity}
+              onChange={(e) => patch({ availableQuantity: Number(e.target.value) || 0 })}
+              className="h-9"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Marca</Label>
+            <Input
+              value={brand}
+              onChange={(e) => patch({ brand: e.target.value })}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Condição</Label>
+            <select
+              value={condition}
+              onChange={(e) => onDraftChange(updateAmazonCondition(draft, e.target.value))}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {CONDITION_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>GTIN / EAN</Label>
+          <Input
+            value={gtin}
+            onChange={(e) => onDraftChange(updateAmazonGtin(draft, e.target.value))}
+            placeholder="Código de barras (se houver)"
+            className="h-9"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Descrição</Label>
+          <textarea
+            value={description}
+            onChange={(e) => patch({ description: e.target.value })}
+            rows={5}
+            className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[100px]"
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle>Bullet points (até 5)</SectionTitle>
+        <p className="text-[11px] text-muted-foreground">
+          Extraídos das features / descrição do produto na Amazon.
+        </p>
+        <div className="space-y-2">
+          {bulletSlots.map((value, index) => (
+            <Input
+              key={`bullet-${index}`}
+              value={value}
+              onChange={(e) => {
+                const next = [...bulletSlots];
+                next[index] = e.target.value;
+                onDraftChange(updateAmazonBulletPoints(draft, next));
+              }}
+              placeholder={`Bullet ${index + 1}`}
+              className="h-9"
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle>
+          Atributos do scrape Amazon ({scraped.length})
+        </SectionTitle>
+        <p className="text-[11px] text-muted-foreground">
+          Todos os campos chave/valor capturados da página do produto. Edite antes de publicar.
+        </p>
+        {scraped.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nenhum atributo estruturado veio do scrape. Reimporte o workflow Amazon no n8n e prepare de
+            novo.
           </p>
-        </div>
-      </div>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto rounded-lg border border-border p-2">
+            {scraped.map((attr, index) => (
+              <div key={`${attr.key}-${index}`} className="grid grid-cols-[1fr_1.4fr] gap-2">
+                <Input
+                  value={attr.key}
+                  onChange={(e) =>
+                    onDraftChange(
+                      updateAmazonScrapedAttribute(draft, index, { key: e.target.value }),
+                    )
+                  }
+                  className="h-8 text-xs"
+                />
+                <Input
+                  value={attr.value}
+                  onChange={(e) =>
+                    onDraftChange(
+                      updateAmazonScrapedAttribute(draft, index, { value: e.target.value }),
+                    )
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label>
-            Preço (R$) <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            value={price || ""}
-            onChange={(e) =>
-              patch({
-                price: e.target.value === "" ? 0 : Number(e.target.value),
-              })
-            }
-            className="h-9"
-          />
-          {price > 0 ? (
-            <p className="text-[11px] text-muted-foreground">{formatCurrency(price)}</p>
-          ) : null}
-        </div>
-        <div className="space-y-1.5">
-          <Label>Estoque</Label>
-          <Input
-            type="number"
-            min={0}
-            value={quantity}
-            onChange={(e) => patch({ availableQuantity: Number(e.target.value) || 0 })}
-            className="h-9"
-          />
-        </div>
-      </div>
+      {extraAttrs.length > 0 ? (
+        <section className="space-y-3">
+          <SectionTitle>Atributos SP-API mapeados ({extraAttrs.length})</SectionTitle>
+          <p className="text-[11px] text-muted-foreground">
+            Campos já convertidos para o formato da Amazon (cor, material, modelo, etc.).
+          </p>
+          <div className="space-y-2">
+            {extraAttrs.map((attr) => (
+              <div key={attr.key} className="space-y-1">
+                <Label className="text-xs font-mono text-muted-foreground">{attr.key}</Label>
+                <Input
+                  value={attr.value}
+                  onChange={(e) =>
+                    onDraftChange(updateAmazonExtraTextAttribute(draft, attr.key, e.target.value))
+                  }
+                  className="h-9"
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-      <div className="space-y-1.5">
-        <Label>Marca</Label>
-        <Input
-          value={brand}
-          onChange={(e) => patch({ brand: e.target.value })}
-          className="h-9"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Descrição</Label>
-        <textarea
-          value={description}
-          onChange={(e) => patch({ description: e.target.value })}
-          rows={5}
-          className="w-full bg-input border border-border text-sm rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[100px]"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Fotos ({images.length})</Label>
+      <section className="space-y-1.5">
+        <SectionTitle>Fotos ({images.length})</SectionTitle>
         {images.length === 0 ? (
           <p className="text-xs text-destructive">Nenhuma foto no rascunho.</p>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 pt-1">
             {images.map((url) => (
               <a
                 key={url}
@@ -229,7 +382,7 @@ export function AmazonListingReviewForm({
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
