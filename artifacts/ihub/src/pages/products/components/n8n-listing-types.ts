@@ -169,6 +169,7 @@ export function updateAmazonDraftBasics(
     };
   }
   if (patch.price !== undefined) {
+    const amount = Number(Number(patch.price).toFixed(2));
     next = {
       ...next,
       payload: {
@@ -179,7 +180,16 @@ export function updateAmazonDraftBasics(
             {
               marketplace_id: marketplaceId,
               currency: "BRL",
-              our_price: [{ schedule: [{ value_with_tax: patch.price }] }],
+              audience: "ALL",
+              our_price: [{ schedule: [{ value_with_tax: amount }] }],
+              list_price: [{ schedule: [{ value_with_tax: amount }] }],
+            },
+          ],
+          list_price: [
+            {
+              currency: "BRL",
+              marketplace_id: marketplaceId,
+              value_with_tax: amount,
             },
           ],
         },
@@ -413,9 +423,26 @@ export type AmazonItemDimensions = {
 
 export function getAmazonListPrice(draft: N8nAmazonListingDraft): number {
   const raw = draft.payload.attributes?.list_price;
-  if (!Array.isArray(raw) || !raw[0]) return 0;
-  const value = (raw[0] as { value?: number }).value;
-  return typeof value === "number" ? value : 0;
+  if (Array.isArray(raw) && raw[0]) {
+    const first = raw[0] as {
+      value_with_tax?: number;
+      value?: number;
+      schedule?: Array<{ value_with_tax?: number }>;
+    };
+    if (typeof first.value_with_tax === "number") return first.value_with_tax;
+    if (typeof first.value === "number") return first.value;
+    const scheduled = first.schedule?.[0]?.value_with_tax;
+    if (typeof scheduled === "number") return scheduled;
+  }
+  // Fallback: MSRP aninhado no purchasable_offer
+  const offer = draft.payload.attributes?.purchasable_offer;
+  if (Array.isArray(offer) && offer[0]) {
+    const nested = (
+      offer[0] as { list_price?: Array<{ schedule?: Array<{ value_with_tax?: number }> }> }
+    ).list_price?.[0]?.schedule?.[0]?.value_with_tax;
+    if (typeof nested === "number") return nested;
+  }
+  return getAmazonPrice(draft);
 }
 
 export function updateAmazonListPrice(
@@ -423,22 +450,48 @@ export function updateAmazonListPrice(
   price: number,
 ): N8nAmazonListingDraft {
   const marketplaceId = marketplaceIdOf(draft);
+  const amount = Number(Number(price).toFixed(2));
+  const prevOffer = Array.isArray(draft.payload.attributes?.purchasable_offer)
+    ? (draft.payload.attributes.purchasable_offer[0] as Record<string, unknown>)
+    : {};
+
+  const offer: Record<string, unknown> = {
+    ...prevOffer,
+    marketplace_id: marketplaceId,
+    currency: "BRL",
+    audience: "ALL",
+  };
+
+  if (amount > 0) {
+    offer.our_price = [{ schedule: [{ value_with_tax: amount }] }];
+    offer.list_price = [{ schedule: [{ value_with_tax: amount }] }];
+  }
+
+  const nextAttrs: Record<string, unknown> = {
+    ...draft.payload.attributes,
+    purchasable_offer: [offer],
+  };
+
+  if (amount > 0) {
+    nextAttrs.list_price = [
+      {
+        currency: "BRL",
+        marketplace_id: marketplaceId,
+        value_with_tax: amount,
+      },
+    ];
+  } else {
+    delete nextAttrs.list_price;
+    delete offer.list_price;
+  }
+
   const next: N8nAmazonListingDraft = {
     ...draft,
     payload: {
       ...draft.payload,
-      attributes: {
-        ...draft.payload.attributes,
-        list_price:
-          price > 0
-            ? [{ value: Number(price.toFixed(2)), currency: "BRL", marketplace_id: marketplaceId }]
-            : [],
-      },
+      attributes: nextAttrs,
     },
   };
-  if (!(price > 0)) {
-    delete next.payload.attributes.list_price;
-  }
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
@@ -567,7 +620,7 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
     reasons.push("Informe as dimensões do item (C × L × A) com unidade.");
   }
   if (getAmazonListPrice(draft) <= 0) {
-    reasons.push("Informe o list_price (preço sugerido sem impostos).");
+    reasons.push("Informe o list_price (preço sugerido com impostos).");
   }
   if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
     for (const b of draft._bloqueios) {

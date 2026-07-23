@@ -54,6 +54,79 @@ function attrLocaleValue(value: string | number, marketplaceId: string) {
   return [{ value, marketplace_id: marketplaceId }];
 }
 
+function attrLocalizedText(value: string | number, marketplaceId: string) {
+  return [
+    {
+      value,
+      language_tag: "pt_BR",
+      marketplace_id: marketplaceId,
+    },
+  ];
+}
+
+function buildPurchasableOffer(price: number, marketplaceId: string) {
+  const amount = Number(Number(price).toFixed(2));
+  return [
+    {
+      marketplace_id: marketplaceId,
+      currency: "BRL",
+      audience: "ALL",
+      our_price: [{ schedule: [{ value_with_tax: amount }] }],
+      // MSRP / preço sugerido com impostos (mapeamento oficial Amazon)
+      list_price: [{ schedule: [{ value_with_tax: amount }] }],
+    },
+  ];
+}
+
+/** Top-level list_price no schema BR exige value_with_tax (não "value"). */
+function buildTopLevelListPrice(price: number, marketplaceId: string) {
+  const amount = Number(Number(price).toFixed(2));
+  return [
+    {
+      currency: "BRL",
+      marketplace_id: marketplaceId,
+      value_with_tax: amount,
+    },
+  ];
+}
+
+function extractPriceFromAttrs(attrs: Record<string, unknown>, fallback: number): number {
+  const offer = attrs.purchasable_offer;
+  if (Array.isArray(offer) && offer[0]) {
+    const our = (offer[0] as { our_price?: Array<{ schedule?: Array<{ value_with_tax?: number }> }> })
+      .our_price;
+    const v = our?.[0]?.schedule?.[0]?.value_with_tax;
+    if (typeof v === "number" && v > 0) return v;
+  }
+  const list = attrs.list_price;
+  if (Array.isArray(list) && list[0]) {
+    const first = list[0] as {
+      value_with_tax?: number;
+      value?: number;
+      schedule?: Array<{ value_with_tax?: number }>;
+    };
+    if (typeof first.value_with_tax === "number" && first.value_with_tax > 0) {
+      return first.value_with_tax;
+    }
+    if (typeof first.value === "number" && first.value > 0) return first.value;
+    const scheduled = first.schedule?.[0]?.value_with_tax;
+    if (typeof scheduled === "number" && scheduled > 0) return scheduled;
+  }
+  return fallback > 0 ? fallback : 0;
+}
+
+function normalizeAmazonPricingAttributes(
+  attrs: Record<string, unknown>,
+  marketplaceId: string,
+  priceFallback: number,
+): void {
+  const price = extractPriceFromAttrs(attrs, priceFallback);
+  if (price <= 0) return;
+
+  attrs.purchasable_offer = buildPurchasableOffer(price, marketplaceId);
+  attrs.list_price = buildTopLevelListPrice(price, marketplaceId);
+}
+
 const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   br: "BR",
   brasil: "BR",
@@ -222,21 +295,8 @@ export function ensureRequiredAmazonListingAttributes(
     );
   }
 
-  // list_price (preço sugerido sem impostos)
-  const listRaw = attrs.list_price;
-  const hasList =
-    Array.isArray(listRaw) &&
-    listRaw[0] &&
-    typeof (listRaw[0] as { value?: unknown }).value === "number";
-  if (!hasList && opts.price > 0) {
-    attrs.list_price = [
-      {
-        value: Number(opts.price.toFixed(2)),
-        currency: "BRL",
-        marketplace_id: marketplaceId,
-      },
-    ];
-  }
+  // Precificação SP-API (BR): our_price + list_price com value_with_tax
+  normalizeAmazonPricingAttributes(attrs, marketplaceId, opts.price);
 
   // item_length_width_height estruturado
   if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {
@@ -289,13 +349,7 @@ function buildOfferAttributes(
         quantity: input.availableQuantity,
       },
     ],
-    purchasable_offer: [
-      {
-        marketplace_id: marketplaceId,
-        currency: "BRL",
-        our_price: [{ schedule: [{ value_with_tax: input.price }] }],
-      },
-    ],
+    purchasable_offer: buildPurchasableOffer(input.price, marketplaceId),
   };
 
   if (input.imageUrls?.[0]) {
@@ -317,7 +371,7 @@ function buildCreateAttributes(
   // Base offer/product facts — draft attrs can fill gaps, but we keep critical offer fields.
   const attrs: Record<string, unknown> = {
     ...fromDraft,
-    item_name: fromDraft.item_name ?? attrLocaleValue(input.title, marketplaceId),
+    item_name: fromDraft.item_name ?? attrLocalizedText(input.title, marketplaceId),
     condition_type:
       fromDraft.condition_type ?? attrLocaleValue(condition, marketplaceId),
     fulfillment_availability: fromDraft.fulfillment_availability ?? [
@@ -326,20 +380,14 @@ function buildCreateAttributes(
         quantity: input.availableQuantity,
       },
     ],
-    purchasable_offer: fromDraft.purchasable_offer ?? [
-      {
-        marketplace_id: marketplaceId,
-        currency: "BRL",
-        our_price: [{ schedule: [{ value_with_tax: input.price }] }],
-      },
-    ],
+    purchasable_offer: buildPurchasableOffer(input.price, marketplaceId),
   };
 
   if (input.brand && !attrs.brand) {
-    attrs.brand = attrLocaleValue(input.brand, marketplaceId);
+    attrs.brand = attrLocalizedText(input.brand, marketplaceId);
   }
   if (input.description && !attrs.product_description) {
-    attrs.product_description = attrLocaleValue(input.description, marketplaceId);
+    attrs.product_description = attrLocalizedText(input.description, marketplaceId);
   }
 
   if (input.imageUrls?.length) {
@@ -724,13 +772,7 @@ export async function patchAmazonListingPrice(
       {
         op: "replace",
         path: "/attributes/purchasable_offer",
-        value: [
-          {
-            marketplace_id: marketplaceId,
-            currency: "BRL",
-            our_price: [{ schedule: [{ value_with_tax: price }] }],
-          },
-        ],
+        value: buildPurchasableOffer(price, marketplaceId),
       },
     ],
   };

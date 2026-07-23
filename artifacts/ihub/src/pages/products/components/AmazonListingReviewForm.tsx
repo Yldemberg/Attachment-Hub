@@ -405,7 +405,9 @@ export function AmazonListingReviewForm({
               }
               className="h-9"
             />
-            <p className="text-[11px] text-muted-foreground">Preço sugerido sem impostos.</p>
+            <p className="text-[11px] text-muted-foreground">
+              Preço sugerido com impostos (value_with_tax).
+            </p>
           </div>
         </div>
 
