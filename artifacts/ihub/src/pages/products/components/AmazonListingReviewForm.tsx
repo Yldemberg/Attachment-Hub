@@ -1,20 +1,25 @@
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
 import {
+  AMAZON_MODEL_NAME_MAX,
+  applyAmazonGtinExemption,
   getAmazonAttrText,
   getAmazonBulletPoints,
   getAmazonCondition,
-  getAmazonGtin,
   getAmazonImageUrls,
   getAmazonItemDimensions,
   getAmazonListPrice,
+  getAmazonModelName,
   getAmazonPrice,
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
   getAmazonScrapedAttributes,
+  hasAmazonGtinExemption,
   listAmazonExtraTextAttributes,
   normalizeAmazonCountryCode,
   suggestAmazonProductType,
@@ -22,9 +27,9 @@ import {
   updateAmazonCondition,
   updateAmazonDraftBasics,
   updateAmazonExtraTextAttribute,
-  updateAmazonGtin,
   updateAmazonItemDimensions,
   updateAmazonListPrice,
+  updateAmazonModelName,
   updateAmazonScrapedAttribute,
   type N8nAmazonListingDraft,
 } from "./n8n-listing-types";
@@ -72,10 +77,13 @@ const DG_OPTIONS = [
   { id: "waste", label: "waste" },
 ] as const;
 
+type ProductTypeOption = { name: string; displayName?: string };
+
 type AmazonListingReviewFormProps = {
   draft: N8nAmazonListingDraft;
   onDraftChange: (draft: N8nAmazonListingDraft) => void;
   jobNeedsReview?: boolean;
+  accountId?: string;
 };
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -90,6 +98,7 @@ export function AmazonListingReviewForm({
   draft,
   onDraftChange,
   jobNeedsReview = false,
+  accountId,
 }: AmazonListingReviewFormProps) {
   const publishBlockReasons = getAmazonPublishBlockReasons(draft);
   const images = getAmazonImageUrls(draft);
@@ -98,16 +107,17 @@ export function AmazonListingReviewForm({
   const description = draft._description || getAmazonAttrText(draft, "product_description");
   const price = getAmazonPrice(draft);
   const quantity = getAmazonQuantity(draft);
-  const suggestedType = suggestAmazonProductType(title);
+  const suggestedTypeLocal = suggestAmazonProductType(title);
   const bullets = getAmazonBulletPoints(draft);
   const scraped = getAmazonScrapedAttributes(draft);
   const extraAttrs = listAmazonExtraTextAttributes(draft);
-  const gtin = getAmazonGtin(draft);
   const condition = getAmazonCondition(draft);
   const department = getAmazonAttrText(draft, "department");
   const country = normalizeAmazonCountryCode(getAmazonAttrText(draft, "country_of_origin") || "BR");
   const dg = getAmazonAttrText(draft, "supplier_declared_dg_hz_regulation") || "not_applicable";
   const listPrice = getAmazonListPrice(draft) || price;
+  const modelName = getAmazonModelName(draft);
+  const gtinExempt = hasAmazonGtinExemption(draft);
   const dims = getAmazonItemDimensions(draft) || {
     length: 0,
     width: 0,
@@ -115,7 +125,83 @@ export function AmazonListingReviewForm({
     unit: "centimeters" as const,
   };
 
-  // Garante 5 slots de bullet para edição
+  const [productTypeOptions, setProductTypeOptions] = useState<ProductTypeOption[]>([]);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+  const appliedExemption = useRef(false);
+  const lastTitleFetch = useRef("");
+
+  // Garante isenção GTIN ao abrir o form
+  useEffect(() => {
+    if (appliedExemption.current) return;
+    if (gtinExempt && !draft.payload.attributes?.externally_assigned_product_identifier) {
+      appliedExemption.current = true;
+      return;
+    }
+    appliedExemption.current = true;
+    onDraftChange(applyAmazonGtinExemption(draft));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount / first paint
+  }, []);
+
+  // Truncar model_name se vier > 12 do scrape
+  useEffect(() => {
+    if (modelName.length > AMAZON_MODEL_NAME_MAX) {
+      onDraftChange(updateAmazonModelName(draft, modelName));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Busca product types similares na SP-API
+  useEffect(() => {
+    if (!accountId || !title.trim()) return;
+    if (lastTitleFetch.current === title.trim()) return;
+
+    const timer = window.setTimeout(async () => {
+      lastTitleFetch.current = title.trim();
+      setLoadingTypes(true);
+      try {
+        const params = new URLSearchParams({
+          accountId,
+          itemName: title.trim().slice(0, 200),
+        });
+        if (typeof draft._asin === "string" && draft._asin.trim()) {
+          params.set("asin", draft._asin.trim());
+        }
+        const res = await fetch(`/api/products/amazon/product-types?${params}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as {
+          suggested?: string | null;
+          productTypes?: ProductTypeOption[];
+        };
+        const list = data.productTypes ?? [];
+        setProductTypeOptions(list);
+
+        const suggested = data.suggested || list[0]?.name;
+        if (
+          suggested &&
+          (draft.payload.productType === "PRODUCT" ||
+            !draft.payload.productType ||
+            draft.payload.productType === suggestedTypeLocal)
+        ) {
+          // Só auto-aplica se ainda estiver genérico/heurística inicial
+          if (draft.payload.productType === "PRODUCT" || !draft.payload.productType) {
+            onDraftChange(
+              updateAmazonDraftBasics(draft, { productType: suggested.toUpperCase() }),
+            );
+          }
+        }
+      } catch {
+        // fallback: chips locais
+        setProductTypeOptions([]);
+      } finally {
+        setLoadingTypes(false);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [accountId, title, draft, onDraftChange, suggestedTypeLocal]);
+
   const bulletSlots = Array.from({ length: 5 }, (_, i) => bullets[i] ?? "");
 
   const patch = (partial: Parameters<typeof updateAmazonDraftBasics>[1]) => {
@@ -125,6 +211,26 @@ export function AmazonListingReviewForm({
   const setAttr = (key: string, value: string) => {
     onDraftChange(updateAmazonExtraTextAttribute(draft, key, value));
   };
+
+  const typeOptionsMerged: ProductTypeOption[] = (() => {
+    const map = new Map<string, ProductTypeOption>();
+    for (const opt of productTypeOptions) {
+      map.set(opt.name.toUpperCase(), {
+        name: opt.name.toUpperCase(),
+        displayName: opt.displayName || opt.name,
+      });
+    }
+    for (const opt of COMMON_PRODUCT_TYPES) {
+      if (!map.has(opt.id)) {
+        map.set(opt.id, { name: opt.id, displayName: opt.label });
+      }
+    }
+    const current = draft.payload.productType?.toUpperCase();
+    if (current && !map.has(current)) {
+      map.set(current, { name: current, displayName: current });
+    }
+    return [...map.values()];
+  })();
 
   return (
     <div className="space-y-6">
@@ -157,11 +263,15 @@ export function AmazonListingReviewForm({
           <div className="col-span-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
             <span className="font-medium">ASIN fonte (referência):</span> {draft._asin}
             <p className="mt-1 text-[11px] text-amber-800">
-              O iHub cria um <strong>ASIN novo</strong> com os dados raspados. Não vinculamos ao ASIN
-              de terceiros (Amazon bloqueia ASINs genéricos/restritos).
+              A Amazon cria o <strong>ASIN novo</strong> na publicação. Não enviamos ASIN sugerido de
+              terceiros.
             </p>
           </div>
-        ) : null}
+        ) : (
+          <div className="col-span-2 text-[11px]">
+            ASIN será criado pela Amazon após a publicação.
+          </div>
+        )}
         <div>
           <span className="font-medium text-foreground">Marketplace:</span>{" "}
           {draft._marketplace_id || "A2Q3Y263D00KWC"}
@@ -204,46 +314,33 @@ export function AmazonListingReviewForm({
             <Label>
               Product type <span className="text-destructive">*</span>
             </Label>
+            <select
+              value={draft.payload.productType}
+              onChange={(e) => patch({ productType: e.target.value.trim().toUpperCase() })}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {typeOptionsMerged.map((opt) => (
+                <option key={opt.name} value={opt.name}>
+                  {opt.displayName && opt.displayName !== opt.name
+                    ? `${opt.name} — ${opt.displayName}`
+                    : opt.name}
+                </option>
+              ))}
+            </select>
             <Input
               value={draft.payload.productType}
               onChange={(e) => patch({ productType: e.target.value.trim().toUpperCase() })}
-              placeholder="COSMETIC_CASE, BAG, SHOES…"
+              placeholder="Ou digite o product type…"
               className="h-9"
             />
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {COMMON_PRODUCT_TYPES.map((opt) => {
-                const selected = draft.payload.productType === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => patch({ productType: opt.id })}
-                    className={`text-[11px] rounded-md border px-2 py-1 transition-colors ${
-                      selected
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
             <p className="text-[11px] text-muted-foreground">
-              {suggestedType && draft.payload.productType === "PRODUCT" ? (
-                <>
-                  Sugestão para este título:{" "}
-                  <button
-                    type="button"
-                    className="text-primary hover:underline font-medium"
-                    onClick={() => patch({ productType: suggestedType })}
-                  >
-                    {suggestedType}
-                  </button>
-                  .{" "}
-                </>
-              ) : null}
-              Deve existir no catálogo Amazon BR. Evite o genérico PRODUCT.
+              {loadingTypes
+                ? "Buscando categorias similares na Amazon…"
+                : productTypeOptions.length > 0
+                  ? `${productTypeOptions.length} categorias sugeridas pela SP-API (título/ASIN).`
+                  : suggestedTypeLocal
+                    ? `Fallback local: ${suggestedTypeLocal}`
+                    : "Informe um product type válido do catálogo BR."}
             </p>
           </div>
         </div>
@@ -289,6 +386,9 @@ export function AmazonListingReviewForm({
               onChange={(e) => patch({ brand: e.target.value })}
               className="h-9"
             />
+            <p className="text-[11px] text-muted-foreground">
+              Marca aprovada na Seller Central (ex.: OTM SHOP).
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label>Condição</Label>
@@ -307,13 +407,30 @@ export function AmazonListingReviewForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label>GTIN / EAN</Label>
+          <Label>
+            model_name <span className="text-muted-foreground font-normal">(máx. {AMAZON_MODEL_NAME_MAX})</span>
+          </Label>
           <Input
-            value={gtin}
-            onChange={(e) => onDraftChange(updateAmazonGtin(draft, e.target.value))}
-            placeholder="Código de barras (se houver)"
+            value={modelName}
+            maxLength={AMAZON_MODEL_NAME_MAX}
+            onChange={(e) => onDraftChange(updateAmazonModelName(draft, e.target.value))}
+            placeholder="Até 12 caracteres"
             className="h-9"
           />
+          <p className="text-[11px] text-muted-foreground">
+            {modelName.length}/{AMAZON_MODEL_NAME_MAX}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
+          <label className="flex items-center gap-2.5 text-sm cursor-default">
+            <Checkbox checked disabled />
+            <span>Produto isento de GTIN/EAN</span>
+          </label>
+          <p className="text-[11px] text-muted-foreground pl-7">
+            Marcado automaticamente. O iHub não envia código de barras — na Amazon aparece que o
+            produto não possui GTIN/EAN.
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -552,7 +669,7 @@ export function AmazonListingReviewForm({
         <section className="space-y-3">
           <SectionTitle>Atributos SP-API mapeados ({extraAttrs.length})</SectionTitle>
           <p className="text-[11px] text-muted-foreground">
-            Campos já convertidos para o formato da Amazon (cor, material, modelo, etc.).
+            Campos já convertidos para o formato da Amazon (cor, material, etc.).
           </p>
           <div className="space-y-2">
             {extraAttrs.map((attr) => (

@@ -32,6 +32,11 @@ import {
   AmazonListingError,
   type CreateAmazonListingInput,
 } from "../lib/amazon-listings";
+import {
+  getCatalogProductTypeForAsin,
+  searchAmazonProductTypes,
+  getAmazonMarketplaceId,
+} from "../lib/amazon";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import {
   bulkChangeProductListingStatus,
@@ -456,6 +461,58 @@ router.post("/products/pictures", ...auth, async (req, res) => {
     res.json(result);
   } catch (err) {
     handleMlListingRouteError(err, res, req.log, "Failed to upload picture");
+  }
+});
+
+router.get("/products/amazon/product-types", ...auth, async (req, res) => {
+  try {
+    const accountId = String(req.query.accountId || "").trim();
+    const itemName = String(req.query.itemName || "").trim();
+    const keywords = String(req.query.keywords || "").trim();
+    const asin = String(req.query.asin || "").trim();
+    if (!accountId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Informe accountId" } });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const db = getDb();
+    const [account] = await db
+      .select({
+        platform: accountsTable.platform,
+        amazonMarketplaceId: accountsTable.amazonMarketplaceId,
+      })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, accountId));
+    if (!account || account.platform !== "amazon") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta Amazon inválida" } });
+      return;
+    }
+
+    const marketplaceId = account.amazonMarketplaceId || getAmazonMarketplaceId();
+    const productTypes = await searchAmazonProductTypes(accountId, {
+      marketplaceId,
+      itemName: itemName || undefined,
+      keywords: keywords || undefined,
+    });
+
+    let suggested: string | null = null;
+    if (asin) {
+      suggested = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
+    }
+    if (suggested && !productTypes.some((p) => p.name === suggested)) {
+      productTypes.unshift({ name: suggested, displayName: suggested });
+    }
+
+    res.json({
+      suggested: suggested || productTypes[0]?.name || null,
+      productTypes,
+    });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to search Amazon product types");
   }
 });
 

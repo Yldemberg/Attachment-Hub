@@ -391,6 +391,7 @@ export default function ProductCreate() {
                   draft={draft}
                   onDraftChange={setDraft}
                   jobNeedsReview={jobNeedsReview}
+                  accountId={accountIds[0]}
                 />
               ) : (
                 <N8nListingReviewForm

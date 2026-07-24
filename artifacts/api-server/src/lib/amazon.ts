@@ -435,6 +435,50 @@ export async function getCatalogProductTypeForAsin(
   }
 }
 
+export type AmazonProductTypeOption = {
+  name: string;
+  displayName?: string;
+};
+
+/** Busca product types no catálogo SP-API (similares por título/keywords). */
+export async function searchAmazonProductTypes(
+  accountId: string,
+  opts: {
+    marketplaceId?: string;
+    itemName?: string;
+    keywords?: string;
+  },
+): Promise<AmazonProductTypeOption[]> {
+  const marketplaceId = opts.marketplaceId || getAmazonMarketplaceId();
+  const params = new URLSearchParams({
+    marketplaceIds: marketplaceId,
+  });
+  if (opts.itemName?.trim()) {
+    params.set("itemName", opts.itemName.trim().slice(0, 200));
+  } else if (opts.keywords?.trim()) {
+    params.set("keywords", opts.keywords.trim().slice(0, 200));
+  } else {
+    return [];
+  }
+
+  const data = await amazon.get<{
+    productTypes?: Array<{ name?: string; displayName?: string }>;
+  }>(accountId, `/definitions/2020-09-01/productTypes?${params}`);
+
+  const out: AmazonProductTypeOption[] = [];
+  const seen = new Set<string>();
+  for (const pt of data.productTypes ?? []) {
+    const name = pt.name?.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({
+      name,
+      displayName: pt.displayName?.trim() || name,
+    });
+  }
+  return out;
+}
+
 export function extractListingQuantity(item: AmazonListingsItem): number {
   const qty = item.fulfillmentAvailability?.find(
     (f) => f.fulfillmentChannelCode === "DEFAULT" || f.quantity != null,

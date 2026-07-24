@@ -228,12 +228,14 @@ const AMAZON_SYSTEM_ATTR_KEYS = new Set([
   "main_product_image_locator",
   "merchant_suggested_asin",
   "externally_assigned_product_identifier",
+  "supplier_declared_has_product_identifier_exemption",
   "bullet_point",
   "list_price",
   "item_length_width_height",
   "department",
   "country_of_origin",
   "supplier_declared_dg_hz_regulation",
+  "model_name",
 ]);
 
 function isAmazonImageLocatorKey(key: string): boolean {
@@ -377,10 +379,14 @@ export function getAmazonGtin(draft: N8nAmazonListingDraft): string {
   return String((raw[0] as { value?: string }).value || "");
 }
 
-export function updateAmazonGtin(
-  draft: N8nAmazonListingDraft,
-  gtin: string,
-): N8nAmazonListingDraft {
+export function hasAmazonGtinExemption(draft: N8nAmazonListingDraft): boolean {
+  const raw = draft.payload.attributes?.supplier_declared_has_product_identifier_exemption;
+  if (!Array.isArray(raw) || !raw[0]) return false;
+  return (raw[0] as { value?: boolean }).value === true;
+}
+
+/** Força isenção GTIN/EAN e remove identificador — produto novo sem código de barras. */
+export function applyAmazonGtinExemption(draft: N8nAmazonListingDraft): N8nAmazonListingDraft {
   const marketplaceId = marketplaceIdOf(draft);
   const next: N8nAmazonListingDraft = {
     ...draft,
@@ -389,14 +395,50 @@ export function updateAmazonGtin(
       attributes: { ...draft.payload.attributes },
     },
   };
-  const trimmed = gtin.trim();
-  if (trimmed) {
-    next.payload.attributes.externally_assigned_product_identifier = [
-      { type: "ean", value: trimmed, marketplace_id: marketplaceId },
-    ];
-  } else {
-    delete next.payload.attributes.externally_assigned_product_identifier;
+  delete next.payload.attributes.externally_assigned_product_identifier;
+  next.payload.attributes.supplier_declared_has_product_identifier_exemption = [
+    { value: true, marketplace_id: marketplaceId },
+  ];
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export const AMAZON_MODEL_NAME_MAX = 12;
+
+export function getAmazonModelName(draft: N8nAmazonListingDraft): string {
+  return getAmazonAttrText(draft, "model_name");
+}
+
+export function updateAmazonModelName(
+  draft: N8nAmazonListingDraft,
+  value: string,
+): N8nAmazonListingDraft {
+  const truncated = value.slice(0, AMAZON_MODEL_NAME_MAX);
+  const next = withAmazonAttrText(draft, "model_name", truncated);
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+export function updateAmazonGtin(
+  draft: N8nAmazonListingDraft,
+  gtin: string,
+): N8nAmazonListingDraft {
+  // Fluxo produto novo: não enviar GTIN — sempre isento.
+  if (!gtin.trim()) {
+    return applyAmazonGtinExemption(draft);
   }
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+  next.payload.attributes.externally_assigned_product_identifier = [
+    { type: "ean", value: gtin.trim(), marketplace_id: marketplaceId },
+  ];
+  delete next.payload.attributes.supplier_declared_has_product_identifier_exemption;
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
@@ -633,6 +675,15 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   const sku = draft.payload.sellerSku?.trim() || "";
   if (/^B0[A-Z0-9]{8}$/i.test(sku)) {
     reasons.push("Seller SKU não pode ser um ASIN. Use um SKU próprio (ex.: IHUB-…).");
+  }
+
+  const modelName = getAmazonAttrText(draft, "model_name");
+  if (modelName.length > AMAZON_MODEL_NAME_MAX) {
+    reasons.push(`model_name deve ter no máximo ${AMAZON_MODEL_NAME_MAX} caracteres.`);
+  }
+
+  if (getAmazonGtin(draft)) {
+    reasons.push("Remova o GTIN/EAN ou marque o produto como isento (este fluxo não envia código de barras).");
   }
   if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
     for (const b of draft._bloqueios) {

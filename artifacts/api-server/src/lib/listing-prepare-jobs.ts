@@ -556,9 +556,29 @@ export async function publishDraftOnAmazon(
   const matchCatalogAsin = false;
   const requirements = "LISTING";
 
-  // Remove vínculo acidental ao ASIN raspado e normaliza SKU.
+  // Remove vínculo acidental ao ASIN raspado, GTIN e normaliza SKU.
   const attrsClean = { ...attrs };
   delete attrsClean.merchant_suggested_asin;
+  delete attrsClean.externally_assigned_product_identifier;
+  attrsClean.supplier_declared_has_product_identifier_exemption = [
+    {
+      value: true,
+      marketplace_id:
+        (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
+        "A2Q3Y263D00KWC",
+    },
+  ];
+  // model_name ≤ 12
+  const modelRaw = attrsClean.model_name;
+  if (Array.isArray(modelRaw) && modelRaw[0] && typeof (modelRaw[0] as { value?: unknown }).value === "string") {
+    const v = String((modelRaw[0] as { value: string }).value).trim().slice(0, 12);
+    attrsClean.model_name = [
+      {
+        ...(modelRaw[0] as object),
+        value: v,
+      },
+    ];
+  }
 
   let sellerSku = p.sellerSku?.trim() || "";
   if (

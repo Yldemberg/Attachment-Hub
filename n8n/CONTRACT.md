@@ -69,7 +69,14 @@ Além de `payload.attributes` (SP-API), o prepare Amazon deve trazer tudo o que 
 | `_scraped_attributes` | Lista `{ key, value }` da página Amazon |
 | `_bullet_points` | Features / bullets (até 10; 5 vão em `bullet_point`) |
 | `_description` | Descrição completa |
-| `_asin` | ASIN fonte |
+| `_asin` | ASIN **fonte** (referência); a publicação cria ASIN **novo** (sem `merchant_suggested_asin`) |
+
+Produto novo a partir do scrape:
+
+- Sempre `supplier_declared_has_product_identifier_exemption: true`
+- **Não** enviar `externally_assigned_product_identifier` (GTIN/EAN)
+- `model_name` com no máximo **12** caracteres
+- `requirements: LISTING` (Amazon cria o ASIN)
 
 O frontend do iHub exibe e permite editar esses campos antes de `putListingsItem` com `requirements: LISTING`.
 

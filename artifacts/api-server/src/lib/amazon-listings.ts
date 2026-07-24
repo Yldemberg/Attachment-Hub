@@ -266,6 +266,23 @@ function isStructuredAmazonDimension(raw: unknown): boolean {
   return typeof length?.value === "number" && typeof length?.unit === "string";
 }
 
+function truncateAmazonLocaleAttr(
+  attrs: Record<string, unknown>,
+  key: string,
+  maxLen: number,
+): void {
+  const raw = attrs[key];
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return;
+  const first = raw[0] as { value?: unknown };
+  if (typeof first.value !== "string") return;
+  const trimmed = first.value.trim();
+  if (trimmed.length <= maxLen) {
+    first.value = trimmed;
+    return;
+  }
+  first.value = trimmed.slice(0, maxLen);
+}
+
 function collectDimensionSourceTexts(attrs: Record<string, unknown>): string[] {
   const texts: string[] = [];
   for (const [key, raw] of Object.entries(attrs)) {
@@ -338,21 +355,16 @@ export function ensureRequiredAmazonListingAttributes(
   // Precificação SP-API (BR): our_price + list_price com value_with_tax
   normalizeAmazonPricingAttributes(attrs, marketplaceId, opts.price);
 
-  // Produto novo sem GTIN real → isenção de identificador (evita EAN inventado inválido)
+  // Produto novo: sempre isento de GTIN/EAN (Amazon mostra "não possui GTIN/EAN")
   if (opts.createNewCatalogProduct) {
-    const gtinRaw = attrs.externally_assigned_product_identifier;
-    const hasGtin =
-      Array.isArray(gtinRaw) &&
-      gtinRaw[0] &&
-      typeof (gtinRaw[0] as { value?: unknown }).value === "string" &&
-      String((gtinRaw[0] as { value: string }).value).trim().length >= 8;
-    if (!hasGtin) {
-      delete attrs.externally_assigned_product_identifier;
-      attrs.supplier_declared_has_product_identifier_exemption = [
-        { value: true, marketplace_id: marketplaceId },
-      ];
-    }
+    delete attrs.externally_assigned_product_identifier;
+    attrs.supplier_declared_has_product_identifier_exemption = [
+      { value: true, marketplace_id: marketplaceId },
+    ];
   }
+
+  // model_name: limite Amazon de 12 caracteres
+  truncateAmazonLocaleAttr(attrs, "model_name", 12);
 
   // item_length_width_height estruturado
   if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {
@@ -509,21 +521,25 @@ function assertSubmissionAccepted(
     "Amazon putListingsItem response",
   );
 
+  const brandGateHint = formatAmazonBrandGateHint(issuesText || issues.map((i) => i.message || "").join(" "));
+
   // HTTP 200 + INVALID = rejeitado (antes tratávamos como sucesso e só gravávamos no iHub).
   if (status === "INVALID" || (!status && errorIssues.length > 0)) {
     throw new AmazonListingError(
-      issuesText
-        ? `Amazon rejeitou o anúncio: ${issuesText}`
-        : "Amazon rejeitou o anúncio (status INVALID). Verifique product type e atributos obrigatórios.",
+      brandGateHint ||
+        (issuesText
+          ? `Amazon rejeitou o anúncio: ${issuesText}`
+          : "Amazon rejeitou o anúncio (status INVALID). Verifique product type e atributos obrigatórios."),
       "AMAZON_API_ERROR",
     );
   }
 
   if (status && status !== "ACCEPTED" && status !== "VALID") {
     throw new AmazonListingError(
-      issuesText
-        ? `Amazon não aceitou o anúncio (${status}): ${issuesText}`
-        : `Amazon não aceitou o anúncio (status: ${status}).`,
+      brandGateHint ||
+        (issuesText
+          ? `Amazon não aceitou o anúncio (${status}): ${issuesText}`
+          : `Amazon não aceitou o anúncio (status: ${status}).`),
       "AMAZON_API_ERROR",
     );
   }
@@ -534,6 +550,36 @@ function assertSubmissionAccepted(
       "Amazon putListingsItem ACCEPTED with ERROR issues — listing may stay incomplete",
     );
   }
+}
+
+/** Mensagem amigável para bloqueio de marca / criação de ASIN na Amazon. */
+export function formatAmazonBrandGateHint(blob: string): string | null {
+  const text = String(blob || "");
+  if (
+    !/create_asin|novos ASINs|novo ASIN|approvalrequest|restrictionScope=CONTRIBUTION|marca .+não|brandName|brand gate|ungating|aprovação de venda/i.test(
+      text,
+    )
+  ) {
+    // Também detecta o texto típico da Seller Central colado/retornado
+    if (!/Você não pode criar novos ASINs para a marca/i.test(text)) return null;
+  }
+
+  const brandMatch =
+    text.match(/ASINs para a marca\s+([^.]+)\./i) ||
+    text.match(/brandName=([^&\s]+)/i) ||
+    text.match(/marca\s+([A-Z0-9][A-Z0-9 &\-]{1,40})/i);
+  const brand = brandMatch?.[1]?.trim().replace(/\+/g, " ");
+
+  return [
+    brand
+      ? `A Amazon não permite criar ASIN novo para a marca "${brand}" nesta conta.`
+      : "A Amazon não permite criar ASIN novo para esta marca nesta conta.",
+    "Solicite aprovação em Seller Central → Catálogo → Solicitar aprovação (create_asin / CONTRIBUTION).",
+    brand
+      ? `Link direto (troque a marca se necessário): https://sellercentral.amazon.com.br/hz/approvalrequest?restrictionScope=CONTRIBUTION&brandName=${encodeURIComponent(brand)}&operationFilter=create_asin`
+      : "https://sellercentral.amazon.com.br/hz/approvalrequest?restrictionScope=CONTRIBUTION&operationFilter=create_asin",
+    "Enquanto isso, use uma marca já aprovada na sua conta ou venda um ASIN existente que você possa ofertar.",
+  ].join(" ");
 }
 
 async function loadAmazonAccount(accountId: string) {
