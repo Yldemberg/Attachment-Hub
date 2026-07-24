@@ -20,6 +20,7 @@ import {
   canPublishDraft,
   getPublishBlockReasons,
   isAmazonListingDraft,
+  normalizeAmazonDraftForReview,
   revalidateDraftReadiness,
   type ListingPrepareDraft,
 } from "./components/n8n-listing-types";
@@ -112,7 +113,11 @@ export default function ProductCreate() {
     ) {
       const nextDraft = jobData.data as ListingPrepareDraft;
       const amazon = isAmazonListingDraft(nextDraft);
-      setDraft(nextDraft);
+      setDraft(
+        amazon
+          ? normalizeAmazonDraftForReview(nextDraft)
+          : nextDraft,
+      );
       setJobNeedsReview(jobData.status === "needs_review");
       setStep(2);
       clearPrepareJob();
@@ -391,7 +396,11 @@ export default function ProductCreate() {
                   draft={draft}
                   onDraftChange={setDraft}
                   jobNeedsReview={jobNeedsReview}
-                  accountId={accountIds[0]}
+                  accountId={
+                    accountIds.find(
+                      (id) => accounts.find((a) => a.id === id)?.platform === "amazon",
+                    ) ?? accountIds[0]
+                  }
                 />
               ) : (
                 <N8nListingReviewForm

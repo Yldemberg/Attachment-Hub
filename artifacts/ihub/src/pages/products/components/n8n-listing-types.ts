@@ -343,6 +343,8 @@ export function updateAmazonScrapedAttribute(
     manufacturer: "manufacturer",
     modelo: "model_name",
     model: "model_name",
+    "nome do modelo": "model_name",
+    "model name": "model_name",
     cor: "color",
     color: "color",
     tamanho: "size",
@@ -404,6 +406,71 @@ export function applyAmazonGtinExemption(draft: N8nAmazonListingDraft): N8nAmazo
 }
 
 export const AMAZON_MODEL_NAME_MAX = 12;
+
+function normalizeScrapeKey(key: string): string {
+  return key
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findScrapedModelName(draft: N8nAmazonListingDraft): string {
+  for (const attr of getAmazonScrapedAttributes(draft)) {
+    const key = normalizeScrapeKey(attr.key);
+    if (
+      key === "modelo" ||
+      key === "model" ||
+      key === "nome do modelo" ||
+      key === "model name" ||
+      key.includes("modelo")
+    ) {
+      const value = attr.value?.trim();
+      if (value) return value;
+    }
+  }
+  return "";
+}
+
+/**
+ * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 12
+ * e product_type heurístico quando ainda for PRODUCT/vazio (mesmo sem SP-API).
+ */
+export function normalizeAmazonDraftForReview(
+  draft: N8nAmazonListingDraft,
+): N8nAmazonListingDraft {
+  let next = applyAmazonGtinExemption(draft);
+
+  let model = getAmazonModelName(next).trim();
+  if (!model || model.length > AMAZON_MODEL_NAME_MAX) {
+    const fromScrape = findScrapedModelName(next);
+    if (fromScrape) model = fromScrape;
+  }
+  if (model) {
+    next = updateAmazonModelName(next, model);
+  }
+
+  const productType = (next.payload.productType || "").trim().toUpperCase();
+  if (!productType || productType === "PRODUCT") {
+    const fromDraft =
+      typeof next._product_type_sugerido === "string"
+        ? next._product_type_sugerido.trim()
+        : "";
+    const suggested =
+      (fromDraft && fromDraft.toUpperCase() !== "PRODUCT" ? fromDraft : null) ||
+      suggestAmazonProductType(getAmazonAttrText(next, "item_name"));
+    if (suggested) {
+      next = updateAmazonDraftBasics(next, {
+        productType: suggested.toUpperCase(),
+      });
+    }
+  }
+
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
 
 export function getAmazonModelName(draft: N8nAmazonListingDraft): string {
   return getAmazonAttrText(draft, "model_name");

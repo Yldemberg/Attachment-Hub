@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
 import {
   AMAZON_MODEL_NAME_MAX,
-  applyAmazonGtinExemption,
   getAmazonAttrText,
   getAmazonBulletPoints,
   getAmazonCondition,
@@ -19,9 +18,9 @@ import {
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
   getAmazonScrapedAttributes,
-  hasAmazonGtinExemption,
   listAmazonExtraTextAttributes,
   normalizeAmazonCountryCode,
+  normalizeAmazonDraftForReview,
   suggestAmazonProductType,
   updateAmazonBulletPoints,
   updateAmazonCondition,
@@ -117,7 +116,6 @@ export function AmazonListingReviewForm({
   const dg = getAmazonAttrText(draft, "supplier_declared_dg_hz_regulation") || "not_applicable";
   const listPrice = getAmazonListPrice(draft) || price;
   const modelName = getAmazonModelName(draft);
-  const gtinExempt = hasAmazonGtinExemption(draft);
   const dims = getAmazonItemDimensions(draft) || {
     length: 0,
     width: 0,
@@ -127,30 +125,18 @@ export function AmazonListingReviewForm({
 
   const [productTypeOptions, setProductTypeOptions] = useState<ProductTypeOption[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
-  const appliedExemption = useRef(false);
+  const appliedNormalize = useRef(false);
   const lastTitleFetch = useRef("");
 
-  // Garante isenção GTIN ao abrir o form
+  // Isenção GTIN + model_name ≤ 12 + product_type heurístico ao abrir
   useEffect(() => {
-    if (appliedExemption.current) return;
-    if (gtinExempt && !draft.payload.attributes?.externally_assigned_product_identifier) {
-      appliedExemption.current = true;
-      return;
-    }
-    appliedExemption.current = true;
-    onDraftChange(applyAmazonGtinExemption(draft));
+    if (appliedNormalize.current) return;
+    appliedNormalize.current = true;
+    onDraftChange(normalizeAmazonDraftForReview(draft));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount / first paint
   }, []);
 
-  // Truncar model_name se vier > 12 do scrape
-  useEffect(() => {
-    if (modelName.length > AMAZON_MODEL_NAME_MAX) {
-      onDraftChange(updateAmazonModelName(draft, modelName));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Busca product types similares na SP-API
+  // Busca product types similares na SP-API (substitui heurística se ainda genérico)
   useEffect(() => {
     if (!accountId || !title.trim()) return;
     if (lastTitleFetch.current === title.trim()) return;
@@ -178,22 +164,28 @@ export function AmazonListingReviewForm({
         setProductTypeOptions(list);
 
         const suggested = data.suggested || list[0]?.name;
+        const current = (draft.payload.productType || "").toUpperCase();
         if (
           suggested &&
-          (draft.payload.productType === "PRODUCT" ||
-            !draft.payload.productType ||
-            draft.payload.productType === suggestedTypeLocal)
+          (current === "PRODUCT" ||
+            !current ||
+            (suggestedTypeLocal && current === suggestedTypeLocal.toUpperCase()))
         ) {
-          // Só auto-aplica se ainda estiver genérico/heurística inicial
-          if (draft.payload.productType === "PRODUCT" || !draft.payload.productType) {
-            onDraftChange(
-              updateAmazonDraftBasics(draft, { productType: suggested.toUpperCase() }),
-            );
-          }
+          onDraftChange(
+            updateAmazonDraftBasics(draft, { productType: suggested.toUpperCase() }),
+          );
         }
       } catch {
-        // fallback: chips locais
+        // fallback: COMMON_PRODUCT_TYPES no select
         setProductTypeOptions([]);
+        const current = (draft.payload.productType || "").toUpperCase();
+        if ((!current || current === "PRODUCT") && suggestedTypeLocal) {
+          onDraftChange(
+            updateAmazonDraftBasics(draft, {
+              productType: suggestedTypeLocal.toUpperCase(),
+            }),
+          );
+        }
       } finally {
         setLoadingTypes(false);
       }
