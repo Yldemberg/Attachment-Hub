@@ -75,7 +75,7 @@ Produto novo a partir do scrape:
 
 - Sempre `supplier_declared_has_product_identifier_exemption: true`
 - **Não** enviar `externally_assigned_product_identifier` (GTIN/EAN)
-- `model_name` com no máximo **12** caracteres
+- `model_name` com no máximo **120** caracteres
 - `requirements: LISTING` (Amazon cria o ASIN)
 
 O frontend do iHub exibe e permite editar esses campos antes de `putListingsItem` com `requirements: LISTING`.

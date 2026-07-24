@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, ImagePlus, Loader2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import {
+  AMAZON_MAX_IMAGES,
   AMAZON_MODEL_NAME_MAX,
   getAmazonAttrText,
   getAmazonBulletPoints,
@@ -21,6 +23,7 @@ import {
   listAmazonExtraTextAttributes,
   normalizeAmazonCountryCode,
   normalizeAmazonDraftForReview,
+  setAmazonImageUrls,
   suggestAmazonProductType,
   updateAmazonBulletPoints,
   updateAmazonCondition,
@@ -32,6 +35,7 @@ import {
   updateAmazonScrapedAttribute,
   type N8nAmazonListingDraft,
 } from "./n8n-listing-types";
+import { readFileAsBase64 } from "./PictureUploader";
 
 const COMMON_PRODUCT_TYPES = [
   { id: "COSMETIC_CASE", label: "Necessaire / maquiagem" },
@@ -125,10 +129,13 @@ export function AmazonListingReviewForm({
 
   const [productTypeOptions, setProductTypeOptions] = useState<ProductTypeOption[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState("");
   const appliedNormalize = useRef(false);
   const lastTitleFetch = useRef("");
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
-  // Isenção GTIN + model_name ≤ 12 + product_type heurístico ao abrir
+  // Isenção GTIN + model_name ≤ 120 + product_type heurístico ao abrir
   useEffect(() => {
     if (appliedNormalize.current) return;
     appliedNormalize.current = true;
@@ -202,6 +209,58 @@ export function AmazonListingReviewForm({
 
   const setAttr = (key: string, value: string) => {
     onDraftChange(updateAmazonExtraTextAttribute(draft, key, value));
+  };
+
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= images.length) return;
+    const next = [...images];
+    const [item] = next.splice(index, 1);
+    next.splice(nextIndex, 0, item!);
+    onDraftChange(setAmazonImageUrls(draft, next));
+  };
+
+  const removeImage = (index: number) => {
+    onDraftChange(setAmazonImageUrls(draft, images.filter((_, i) => i !== index)));
+  };
+
+  const addImageUrl = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (images.length >= AMAZON_MAX_IMAGES) return;
+    if (images.includes(trimmed)) return;
+    onDraftChange(setAmazonImageUrls(draft, [...images, trimmed]));
+  };
+
+  const handleAddImageUrl = () => {
+    addImageUrl(imageUrlInput);
+    setImageUrlInput("");
+  };
+
+  const handleImageFiles = async (files: FileList | null) => {
+    if (!files?.length || uploadingImages) return;
+    const remaining = AMAZON_MAX_IMAGES - images.length;
+    const toProcess = Array.from(files).slice(0, remaining);
+    if (toProcess.length === 0) return;
+
+    setUploadingImages(true);
+    let next = [...images];
+    try {
+      for (const file of toProcess) {
+        if (file.size > 10 * 1024 * 1024) continue;
+        if (!file.type.startsWith("image/") && !/\.(jpe?g|png|gif|webp)$/i.test(file.name)) {
+          continue;
+        }
+        const base64 = await readFileAsBase64(file);
+        const mime = file.type || "image/jpeg";
+        const dataUrl = `data:${mime};base64,${base64}`;
+        if (!next.includes(dataUrl)) next = [...next, dataUrl];
+      }
+      onDraftChange(setAmazonImageUrls(draft, next));
+    } finally {
+      setUploadingImages(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
   };
 
   const typeOptionsMerged: ProductTypeOption[] = (() => {
@@ -680,25 +739,107 @@ export function AmazonListingReviewForm({
         </section>
       ) : null}
 
-      <section className="space-y-1.5">
-        <SectionTitle>Fotos ({images.length})</SectionTitle>
+      <section className="space-y-3">
+        <SectionTitle>Fotos ({images.length}/{AMAZON_MAX_IMAGES})</SectionTitle>
+        <p className="text-[11px] text-muted-foreground">
+          A primeira foto é a capa. Use as setas para mudar a ordem, remova ou adicione novas.
+        </p>
+
         {images.length === 0 ? (
-          <p className="text-xs text-destructive">Nenhuma foto no rascunho.</p>
+          <p className="text-xs text-destructive">Adicione ao menos uma foto antes de publicar.</p>
         ) : (
           <div className="flex flex-wrap gap-2 pt-1">
-            {images.map((url) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block w-16 h-16 rounded-md overflow-hidden border border-border bg-muted"
+            {images.map((url, index) => (
+              <div
+                key={`${index}-${url.slice(0, 48)}`}
+                className="relative w-24 rounded-md overflow-hidden border border-border bg-muted"
               >
-                <img src={url} alt="" className="w-full h-full object-cover" />
-              </a>
+                <img src={url} alt="" className="w-full h-20 object-cover" />
+                {index === 0 ? (
+                  <span className="absolute bottom-1 left-1 rounded bg-background/90 px-1 text-[9px] font-medium">
+                    Capa
+                  </span>
+                ) : null}
+                <div className="flex items-center justify-between gap-0.5 p-1 bg-background/95 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => moveImage(index, -1)}
+                    disabled={index === 0}
+                    className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    aria-label="Mover para a esquerda"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-destructive"
+                    aria-label="Remover foto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveImage(index, 1)}
+                    disabled={index === images.length - 1}
+                    className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    aria-label="Mover para a direita"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
+            multiple
+            className="hidden"
+            onChange={(e) => void handleImageFiles(e.target.files)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploadingImages || images.length >= AMAZON_MAX_IMAGES}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            {uploadingImages ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+            ) : (
+              <ImagePlus className="w-3.5 h-3.5 mr-1" />
+            )}
+            Subir imagens
+          </Button>
+          <span className="text-[11px] text-muted-foreground">ou cole uma URL:</span>
+          <Input
+            value={imageUrlInput}
+            onChange={(e) => setImageUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddImageUrl();
+              }
+            }}
+            placeholder="https://…"
+            className="h-8 max-w-xs"
+            disabled={images.length >= AMAZON_MAX_IMAGES}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={!imageUrlInput.trim() || images.length >= AMAZON_MAX_IMAGES}
+            onClick={handleAddImageUrl}
+          >
+            Adicionar URL
+          </Button>
+        </div>
       </section>
     </div>
   );

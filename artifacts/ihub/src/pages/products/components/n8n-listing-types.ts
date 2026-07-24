@@ -89,6 +89,9 @@ export function getAmazonQuantity(draft: N8nAmazonListingDraft): number {
   return typeof qty === "number" ? qty : 0;
 }
 
+/** Capa + até 8 adicionais (SP-API other_product_image_locator_1..8). */
+export const AMAZON_MAX_IMAGES = 9;
+
 export function getAmazonImageUrls(draft: N8nAmazonListingDraft): string[] {
   const urls: string[] = [];
   const main = draft.payload.attributes?.main_product_image_locator;
@@ -102,6 +105,41 @@ export function getAmazonImageUrls(draft: N8nAmazonListingDraft): string[] {
     }
   }
   return urls;
+}
+
+/** Define a galeria Amazon (1ª = capa). Até 9 fotos (main + other_1..8). */
+export function setAmazonImageUrls(
+  draft: N8nAmazonListingDraft,
+  urls: string[],
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+
+  delete next.payload.attributes.main_product_image_locator;
+  for (let i = 1; i <= 8; i++) {
+    delete next.payload.attributes[`other_product_image_locator_${i}`];
+  }
+
+  const cleaned = urls.map((u) => u.trim()).filter(Boolean).slice(0, AMAZON_MAX_IMAGES);
+  if (cleaned[0]) {
+    next.payload.attributes.main_product_image_locator = [
+      { media_location: cleaned[0], marketplace_id: marketplaceId },
+    ];
+  }
+  for (let i = 1; i < cleaned.length; i++) {
+    next.payload.attributes[`other_product_image_locator_${i}`] = [
+      { media_location: cleaned[i], marketplace_id: marketplaceId },
+    ];
+  }
+
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
 function withAmazonAttrText(
@@ -405,7 +443,7 @@ export function applyAmazonGtinExemption(draft: N8nAmazonListingDraft): N8nAmazo
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
-export const AMAZON_MODEL_NAME_MAX = 12;
+export const AMAZON_MODEL_NAME_MAX = 120;
 
 function normalizeScrapeKey(key: string): string {
   return key
@@ -435,7 +473,7 @@ function findScrapedModelName(draft: N8nAmazonListingDraft): string {
 }
 
 /**
- * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 12
+ * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 120
  * e product_type heurístico quando ainda for PRODUCT/vazio (mesmo sem SP-API).
  */
 export function normalizeAmazonDraftForReview(

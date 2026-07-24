@@ -363,8 +363,8 @@ export function ensureRequiredAmazonListingAttributes(
     ];
   }
 
-  // model_name: limite Amazon de 12 caracteres
-  truncateAmazonLocaleAttr(attrs, "model_name", 12);
+  // model_name: limite prático no iHub (schema Amazon costuma aceitar bem mais que 12)
+  truncateAmazonLocaleAttr(attrs, "model_name", 120);
 
   // item_length_width_height estruturado
   if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {

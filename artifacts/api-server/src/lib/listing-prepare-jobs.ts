@@ -568,10 +568,10 @@ export async function publishDraftOnAmazon(
         "A2Q3Y263D00KWC",
     },
   ];
-  // model_name ≤ 12
+  // model_name ≤ 120
   const modelRaw = attrsClean.model_name;
   if (Array.isArray(modelRaw) && modelRaw[0] && typeof (modelRaw[0] as { value?: unknown }).value === "string") {
-    const v = String((modelRaw[0] as { value: string }).value).trim().slice(0, 12);
+    const v = String((modelRaw[0] as { value: string }).value).trim().slice(0, 120);
     attrsClean.model_name = [
       {
         ...(modelRaw[0] as object),
