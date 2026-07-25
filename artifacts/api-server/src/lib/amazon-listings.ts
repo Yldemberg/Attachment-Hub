@@ -103,6 +103,41 @@ function attrLocalizedText(value: string | number, marketplaceId: string) {
   ];
 }
 
+/**
+ * Schema DUFFEL_BAG (BR): compartment NÃO é locale plano.
+ * Formato exigido:
+ * [{ description: [{ language_tag, value }], marketplace_id }]
+ */
+function attrCompartmentDescription(value: string, marketplaceId: string) {
+  return [
+    {
+      description: [
+        {
+          language_tag: "pt_BR",
+          value: value.trim(),
+        },
+      ],
+      marketplace_id: marketplaceId,
+    },
+  ];
+}
+
+function extractCompartmentDescription(raw: unknown): string {
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return "";
+  const first = raw[0] as {
+    description?: Array<{ value?: unknown }>;
+    value?: unknown;
+  };
+  // Formato correto (aninhado)
+  if (Array.isArray(first.description) && first.description[0]) {
+    const v = first.description[0].value;
+    return typeof v === "string" ? v.trim() : "";
+  }
+  // Formato legado (plano) — ainda lê para migrar
+  if (typeof first.value === "string") return first.value.trim();
+  return "";
+}
+
 function buildPurchasableOffer(price: number, marketplaceId: string) {
   const amount = Number(Number(price).toFixed(2));
   return [
@@ -426,11 +461,11 @@ export function ensureRequiredAmazonListingAttributes(
     );
   }
 
-  // compartment (Descrição do compartimento) — obrigatório em DUFFEL_BAG / bolsas
-  // Sempre regrava no formato SP-API (value + language_tag + marketplace_id).
-  if (productTypeNeedsCompartment(opts.productType) || hasAmazonLocaleTextValue(attrs.compartment)) {
-    const existing = hasAmazonLocaleTextValue(attrs.compartment);
-    attrs.compartment = attrLocalizedText(
+  // compartment (Descrição do compartimento) — schema aninhado DUFFEL_BAG
+  // [{ description: [{ language_tag, value }], marketplace_id }]
+  if (productTypeNeedsCompartment(opts.productType) || extractCompartmentDescription(attrs.compartment)) {
+    const existing = extractCompartmentDescription(attrs.compartment);
+    attrs.compartment = attrCompartmentDescription(
       existing || suggestAmazonCompartment(opts.productType, opts.title || ""),
       marketplaceId,
     );
@@ -875,10 +910,10 @@ export async function createAmazonListing(
     delete attributes.merchant_suggested_asin;
   }
 
-  // Garantia final: bags sempre levam compartment no putListingsItem
+  // Garantia final: bags sempre levam compartment no formato aninhado do schema
   if (productTypeNeedsCompartment(productType)) {
-    const existing = hasAmazonLocaleTextValue(attributes.compartment);
-    attributes.compartment = attrLocalizedText(
+    const existing = extractCompartmentDescription(attributes.compartment);
+    attributes.compartment = attrCompartmentDescription(
       existing || suggestAmazonCompartment(productType, input.title),
       marketplaceId,
     );
@@ -902,8 +937,11 @@ export async function createAmazonListing(
       matchCatalog,
       sourceAsin: asin,
       hasMerchantSuggestedAsin: !!attributes.merchant_suggested_asin,
-      hasCompartment: !!hasAmazonLocaleTextValue(attributes.compartment),
-      compartmentPreview: hasAmazonLocaleTextValue(attributes.compartment).slice(0, 80),
+      hasCompartment: !!extractCompartmentDescription(attributes.compartment),
+      compartmentPreview: extractCompartmentDescription(attributes.compartment).slice(0, 80),
+      compartmentShape: Array.isArray(attributes.compartment)
+        ? Object.keys((attributes.compartment[0] as object) || {})
+        : [],
       hasNumberOfCompartments: Array.isArray(attributes.number_of_compartments),
     },
     "Amazon putListingsItem request",

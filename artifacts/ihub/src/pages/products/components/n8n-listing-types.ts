@@ -195,25 +195,13 @@ export function updateAmazonDraftBasics(
     };
     if (
       productTypeNeedsCompartment(patch.productType) &&
-      !getAmazonAttrText(next, "compartment").trim()
+      !getAmazonCompartment(next).trim()
     ) {
       const title = getAmazonAttrText(next, "item_name");
-      next = {
-        ...next,
-        payload: {
-          ...next.payload,
-          attributes: {
-            ...next.payload.attributes,
-            compartment: [
-              {
-                value: suggestAmazonCompartment(patch.productType, title),
-                language_tag: "pt_BR",
-                marketplace_id: marketplaceId,
-              },
-            ],
-          },
-        },
-      };
+      next = updateAmazonCompartment(
+        next,
+        suggestAmazonCompartment(patch.productType, title),
+      );
     }
   }
   if (patch.title !== undefined) {
@@ -802,7 +790,20 @@ export function suggestAmazonCompartment(productType: string, title = ""): strin
 }
 
 export function getAmazonCompartment(draft: N8nAmazonListingDraft): string {
-  return getAmazonAttrText(draft, "compartment");
+  const raw = draft.payload.attributes?.compartment;
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return "";
+  const first = raw[0] as {
+    description?: Array<{ value?: unknown }>;
+    value?: unknown;
+  };
+  // Schema DUFFEL_BAG: compartment[].description[].value
+  if (Array.isArray(first.description) && first.description[0]) {
+    const v = first.description[0].value;
+    return typeof v === "string" ? v.trim() : "";
+  }
+  // Legado (formato plano incorreto)
+  if (typeof first.value === "string") return first.value.trim();
+  return "";
 }
 
 export function updateAmazonCompartment(
@@ -816,18 +817,26 @@ export function updateAmazonCompartment(
       ...draft.payload,
       attributes: {
         ...draft.payload.attributes,
-        compartment: [
-          {
-            value: value.trim(),
-            language_tag: "pt_BR",
-            marketplace_id: marketplaceId,
-          },
-        ],
       },
     },
   };
-  if (!value.trim()) {
+  const trimmed = value.trim();
+  if (!trimmed) {
     delete next.payload.attributes.compartment;
+  } else {
+    // Formato exigido pelo schema SP-API (DUFFEL_BAG):
+    // [{ description: [{ language_tag, value }], marketplace_id }]
+    next.payload.attributes.compartment = [
+      {
+        description: [
+          {
+            language_tag: "pt_BR",
+            value: trimmed,
+          },
+        ],
+        marketplace_id: marketplaceId,
+      },
+    ];
   }
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
@@ -858,7 +867,7 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   }
   if (
     productTypeNeedsCompartment(draft.payload.productType || "") &&
-    !getAmazonAttrText(draft, "compartment").trim()
+    !getAmazonCompartment(draft).trim()
   ) {
     reasons.push("Informe a descrição do compartimento (compartment).");
   }

@@ -590,7 +590,7 @@ export async function publishDraftOnAmazon(
     },
   ];
 
-  // Garante compartment no draft antes do put (DUFFEL_BAG / bolsas)
+  // Garante compartment no draft antes do put (formato aninhado do schema DUFFEL_BAG)
   {
     const pt = (p.productType || "").toUpperCase();
     const needs =
@@ -601,16 +601,28 @@ export async function publishDraftOnAmazon(
       const marketplaceId =
         (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
         "A2Q3Y263D00KWC";
-      const existing =
-        Array.isArray(attrsClean.compartment) &&
-        attrsClean.compartment[0] &&
-        typeof (attrsClean.compartment[0] as { value?: unknown }).value === "string"
-          ? String((attrsClean.compartment[0] as { value: string }).value).trim()
-          : "";
+      const first =
+        Array.isArray(attrsClean.compartment) && attrsClean.compartment[0]
+          ? (attrsClean.compartment[0] as {
+              description?: Array<{ value?: unknown }>;
+              value?: unknown;
+            })
+          : null;
+      let existing = "";
+      if (first && Array.isArray(first.description) && first.description[0]) {
+        const v = first.description[0].value;
+        if (typeof v === "string") existing = v.trim();
+      } else if (first && typeof first.value === "string") {
+        existing = first.value.trim();
+      }
       attrsClean.compartment = [
         {
-          value: existing || "Compartimento principal",
-          language_tag: "pt_BR",
+          description: [
+            {
+              language_tag: "pt_BR",
+              value: existing || "Compartimento principal",
+            },
+          ],
           marketplace_id: marketplaceId,
         },
       ];
