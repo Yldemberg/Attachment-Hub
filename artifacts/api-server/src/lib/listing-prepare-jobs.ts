@@ -21,7 +21,7 @@ import {
   type N8nListingDraft,
   type N8nAmazonListingDraft,
 } from "./n8n-listings";
-import { createAmazonListing } from "./amazon-listings";
+import { createAmazonListing, ensurePositiveAmazonQuantity, AMAZON_MIN_QUANTITY } from "./amazon-listings";
 
 export type ListingPrepareJobStatus = ListingPrepareJob["status"];
 
@@ -523,11 +523,13 @@ export async function publishDraftOnAmazon(
   const description = Array.isArray(attrs.product_description)
     ? String((attrs.product_description as Array<{ value?: string }>)[0]?.value || "")
     : draft._description;
-  const qty =
+  const qty = ensurePositiveAmazonQuantity(
     Array.isArray(attrs.fulfillment_availability) &&
-    typeof (attrs.fulfillment_availability as Array<{ quantity?: number }>)[0]?.quantity === "number"
+      typeof (attrs.fulfillment_availability as Array<{ quantity?: number }>)[0]?.quantity ===
+        "number"
       ? (attrs.fulfillment_availability as Array<{ quantity: number }>)[0].quantity
-      : 1;
+      : AMAZON_MIN_QUANTITY,
+  );
   let price = 0;
   const offer = Array.isArray(attrs.purchasable_offer)
     ? (attrs.purchasable_offer as Array<{
@@ -579,6 +581,14 @@ export async function publishDraftOnAmazon(
       },
     ];
   }
+
+  // Força estoque > 0 no payload enviado à Amazon
+  attrsClean.fulfillment_availability = [
+    {
+      fulfillment_channel_code: "DEFAULT",
+      quantity: qty,
+    },
+  ];
 
   let sellerSku = p.sellerSku?.trim() || "";
   if (

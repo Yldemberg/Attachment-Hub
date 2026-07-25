@@ -30,6 +30,40 @@ export class AmazonListingError extends Error {
   }
 }
 
+/** Estoque mínimo para a oferta ficar ativa (0 gera "Oferta não encontrada"). */
+export const AMAZON_MIN_QUANTITY = 1;
+
+export function ensurePositiveAmazonQuantity(qty: unknown): number {
+  if (typeof qty === "number" && Number.isFinite(qty) && qty > 0) {
+    return Math.floor(qty);
+  }
+  if (typeof qty === "string" && qty.trim() && Number.isFinite(Number(qty))) {
+    const n = Number(qty);
+    if (n > 0) return Math.floor(n);
+  }
+  return AMAZON_MIN_QUANTITY;
+}
+
+function setFulfillmentQuantity(attrs: Record<string, unknown>, quantity: unknown): void {
+  const qty = ensurePositiveAmazonQuantity(quantity);
+  const existing = attrs.fulfillment_availability;
+  if (Array.isArray(existing) && existing[0] && typeof existing[0] === "object") {
+    attrs.fulfillment_availability = [
+      {
+        ...(existing[0] as object),
+        fulfillment_channel_code:
+          (existing[0] as { fulfillment_channel_code?: string }).fulfillment_channel_code ||
+          "DEFAULT",
+        quantity: qty,
+      },
+    ];
+    return;
+  }
+  attrs.fulfillment_availability = [
+    { fulfillment_channel_code: "DEFAULT", quantity: qty },
+  ];
+}
+
 export type CreateAmazonListingInput = {
   sellerSku: string;
   productType: string;
@@ -355,6 +389,14 @@ export function ensureRequiredAmazonListingAttributes(
   // Precificação SP-API (BR): our_price + list_price com value_with_tax
   normalizeAmazonPricingAttributes(attrs, marketplaceId, opts.price);
 
+  // Oferta ativa exige estoque > 0 (Seller Central: "Oferta não encontrada" se qty=0)
+  {
+    const rawQty =
+      Array.isArray(attrs.fulfillment_availability) &&
+      (attrs.fulfillment_availability[0] as { quantity?: unknown } | undefined)?.quantity;
+    setFulfillmentQuantity(attrs, rawQty);
+  }
+
   // Produto novo: sempre isento de GTIN/EAN (Amazon mostra "não possui GTIN/EAN")
   if (opts.createNewCatalogProduct) {
     delete attrs.externally_assigned_product_identifier;
@@ -408,13 +450,14 @@ function buildOfferAttributes(
   asin: string,
 ): Record<string, unknown> {
   const condition = input.condition ?? "new_new";
+  const quantity = ensurePositiveAmazonQuantity(input.availableQuantity);
   const attrs: Record<string, unknown> = {
     merchant_suggested_asin: [{ value: asin, marketplace_id: marketplaceId }],
     condition_type: attrLocaleValue(condition, marketplaceId),
     fulfillment_availability: [
       {
         fulfillment_channel_code: "DEFAULT",
-        quantity: input.availableQuantity,
+        quantity,
       },
     ],
     purchasable_offer: buildPurchasableOffer(input.price, marketplaceId),
@@ -435,6 +478,7 @@ function buildCreateAttributes(
 ): Record<string, unknown> {
   const condition = input.condition ?? "new_new";
   const fromDraft = input.attributes ? { ...input.attributes } : {};
+  const quantity = ensurePositiveAmazonQuantity(input.availableQuantity);
 
   // Base offer/product facts — draft attrs can fill gaps, but we keep critical offer fields.
   const attrs: Record<string, unknown> = {
@@ -442,10 +486,11 @@ function buildCreateAttributes(
     item_name: fromDraft.item_name ?? attrLocalizedText(input.title, marketplaceId),
     condition_type:
       fromDraft.condition_type ?? attrLocaleValue(condition, marketplaceId),
-    fulfillment_availability: fromDraft.fulfillment_availability ?? [
+    // Sempre sobrescreve estoque do draft (qty 0 gera oferta ausente na Seller Central)
+    fulfillment_availability: [
       {
         fulfillment_channel_code: "DEFAULT",
-        quantity: input.availableQuantity,
+        quantity,
       },
     ],
     purchasable_offer: buildPurchasableOffer(input.price, marketplaceId),
@@ -680,9 +725,10 @@ export async function createAmazonListing(
   if (typeof input.price !== "number" || input.price <= 0) {
     throw new AmazonListingError("Preço inválido", "VALIDATION_ERROR");
   }
-  if (typeof input.availableQuantity !== "number" || input.availableQuantity < 0) {
-    throw new AmazonListingError("Quantidade inválida", "VALIDATION_ERROR");
-  }
+
+  // Estoque 0 deixa a oferta inativa ("Oferta não encontrada") — força mínimo 1
+  const availableQuantity = ensurePositiveAmazonQuantity(input.availableQuantity);
+  input = { ...input, availableQuantity };
 
   const brand = input.brand?.trim() || extractBrandFromAttrs(input.attributes);
   if (brand && isGenericBrandName(brand)) {

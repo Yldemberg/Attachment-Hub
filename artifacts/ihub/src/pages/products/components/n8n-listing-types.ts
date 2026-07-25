@@ -235,6 +235,12 @@ export function updateAmazonDraftBasics(
     };
   }
   if (patch.availableQuantity !== undefined) {
+    const quantity =
+      typeof patch.availableQuantity === "number" &&
+      Number.isFinite(patch.availableQuantity) &&
+      patch.availableQuantity > 0
+        ? Math.floor(patch.availableQuantity)
+        : 1;
     next = {
       ...next,
       payload: {
@@ -244,7 +250,7 @@ export function updateAmazonDraftBasics(
           fulfillment_availability: [
             {
               fulfillment_channel_code: "DEFAULT",
-              quantity: patch.availableQuantity,
+              quantity,
             },
           ],
         },
@@ -473,8 +479,8 @@ function findScrapedModelName(draft: N8nAmazonListingDraft): string {
 }
 
 /**
- * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 120
- * e product_type heurístico quando ainda for PRODUCT/vazio (mesmo sem SP-API).
+ * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 120,
+ * estoque > 0 e product_type heurístico quando ainda for PRODUCT/vazio.
  */
 export function normalizeAmazonDraftForReview(
   draft: N8nAmazonListingDraft,
@@ -488,6 +494,11 @@ export function normalizeAmazonDraftForReview(
   }
   if (model) {
     next = updateAmazonModelName(next, model);
+  }
+
+  const qty = getAmazonQuantity(next);
+  if (qty <= 0) {
+    next = updateAmazonDraftBasics(next, { availableQuantity: 1 });
   }
 
   const productType = (next.payload.productType || "").trim().toUpperCase();
@@ -747,7 +758,9 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
     reasons.push("Informe o título do produto.");
   }
   if (getAmazonPrice(draft) <= 0) reasons.push("Informe um preço válido.");
-  if (getAmazonQuantity(draft) < 0) reasons.push("Informe o estoque.");
+  if (getAmazonQuantity(draft) <= 0) {
+    reasons.push("Informe estoque maior que zero (mínimo 1).");
+  }
   if (getAmazonImageUrls(draft).length === 0) reasons.push("É necessário ao menos uma foto.");
 
   if (!getAmazonAttrText(draft, "department").trim()) {
