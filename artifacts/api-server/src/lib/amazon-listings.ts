@@ -89,7 +89,7 @@ export type CreateAmazonListingInput = {
   attributes?: Record<string, unknown>;
 };
 
-function attrLocaleValue(value: string | number, marketplaceId: string) {
+function attrLocaleValue(value: string | number | boolean, marketplaceId: string) {
   return [{ value, marketplace_id: marketplaceId }];
 }
 
@@ -427,12 +427,41 @@ export function ensureRequiredAmazonListingAttributes(
   }
 
   // compartment (Descrição do compartimento) — obrigatório em DUFFEL_BAG / bolsas
-  if (productTypeNeedsCompartment(opts.productType)) {
+  // Sempre regrava no formato SP-API (value + language_tag + marketplace_id).
+  if (productTypeNeedsCompartment(opts.productType) || hasAmazonLocaleTextValue(attrs.compartment)) {
     const existing = hasAmazonLocaleTextValue(attrs.compartment);
     attrs.compartment = attrLocalizedText(
       existing || suggestAmazonCompartment(opts.productType, opts.title || ""),
       marketplaceId,
     );
+  }
+
+  // number_of_compartments — frequentemente exigido junto com compartment
+  if (productTypeNeedsCompartment(opts.productType)) {
+    const rawCount = attrs.number_of_compartments;
+    let count = 1;
+    if (Array.isArray(rawCount) && rawCount[0]) {
+      const v = (rawCount[0] as { value?: unknown }).value;
+      if (typeof v === "number" && v > 0) count = Math.floor(v);
+      else if (typeof v === "string" && Number(v) > 0) count = Math.floor(Number(v));
+    }
+    attrs.number_of_compartments = attrLocaleValue(count, marketplaceId);
+  }
+
+  // bullet_point precisa de language_tag no schema BR
+  if (Array.isArray(attrs.bullet_point)) {
+    attrs.bullet_point = (attrs.bullet_point as Array<Record<string, unknown>>)
+      .map((item) => {
+        const value = item?.value;
+        if (typeof value !== "string" || !value.trim()) return null;
+        return {
+          value: value.trim(),
+          language_tag: typeof item.language_tag === "string" ? item.language_tag : "pt_BR",
+          marketplace_id:
+            typeof item.marketplace_id === "string" ? item.marketplace_id : marketplaceId,
+        };
+      })
+      .filter(Boolean);
   }
 
   // Precificação SP-API (BR): our_price + list_price com value_with_tax
@@ -804,17 +833,25 @@ export async function createAmazonListing(
     : input.requirements?.trim() || "LISTING";
 
   let productType = input.productType.trim();
-  // Mesmo sem vincular, o ASIN fonte ajuda a descobrir o product type correto.
-  if (asin) {
+  // ASIN fonte só sugere product type quando o draft ainda está genérico (PRODUCT/vazio).
+  // Não sobrescrever a escolha do usuário (ex.: DUFFEL_BAG) — isso gerava schema/attrs desalinhados.
+  const draftTypeUpper = productType.toUpperCase();
+  if (asin && (!draftTypeUpper || draftTypeUpper === "PRODUCT")) {
     const catalogType = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
     if (catalogType) {
-      if (catalogType !== productType) {
-        logger.info(
-          { asin, fromDraft: productType, catalogType, matchCatalog },
-          "Using catalog productType for Amazon listing",
-        );
-      }
+      logger.info(
+        { asin, catalogType },
+        "Using catalog productType because draft productType was empty/PRODUCT",
+      );
       productType = catalogType;
+    }
+  } else if (asin) {
+    const catalogType = await getCatalogProductTypeForAsin(accountId, asin, marketplaceId);
+    if (catalogType && catalogType !== productType) {
+      logger.info(
+        { asin, fromDraft: productType, catalogType, matchCatalog },
+        "Keeping draft productType (not overriding with catalog)",
+      );
     }
   }
 
@@ -838,6 +875,18 @@ export async function createAmazonListing(
     delete attributes.merchant_suggested_asin;
   }
 
+  // Garantia final: bags sempre levam compartment no putListingsItem
+  if (productTypeNeedsCompartment(productType)) {
+    const existing = hasAmazonLocaleTextValue(attributes.compartment);
+    attributes.compartment = attrLocalizedText(
+      existing || suggestAmazonCompartment(productType, input.title),
+      marketplaceId,
+    );
+    if (!Array.isArray(attributes.number_of_compartments) || !attributes.number_of_compartments[0]) {
+      attributes.number_of_compartments = attrLocaleValue(1, marketplaceId);
+    }
+  }
+
   const body = {
     productType,
     requirements,
@@ -853,6 +902,9 @@ export async function createAmazonListing(
       matchCatalog,
       sourceAsin: asin,
       hasMerchantSuggestedAsin: !!attributes.merchant_suggested_asin,
+      hasCompartment: !!hasAmazonLocaleTextValue(attributes.compartment),
+      compartmentPreview: hasAmazonLocaleTextValue(attributes.compartment).slice(0, 80),
+      hasNumberOfCompartments: Array.isArray(attributes.number_of_compartments),
     },
     "Amazon putListingsItem request",
   );

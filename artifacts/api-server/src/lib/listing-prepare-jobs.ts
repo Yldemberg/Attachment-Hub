@@ -590,6 +590,36 @@ export async function publishDraftOnAmazon(
     },
   ];
 
+  // Garante compartment no draft antes do put (DUFFEL_BAG / bolsas)
+  {
+    const pt = (p.productType || "").toUpperCase();
+    const needs =
+      /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
+        pt,
+      );
+    if (needs) {
+      const marketplaceId =
+        (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
+        "A2Q3Y263D00KWC";
+      const existing =
+        Array.isArray(attrsClean.compartment) &&
+        attrsClean.compartment[0] &&
+        typeof (attrsClean.compartment[0] as { value?: unknown }).value === "string"
+          ? String((attrsClean.compartment[0] as { value: string }).value).trim()
+          : "";
+      attrsClean.compartment = [
+        {
+          value: existing || "Compartimento principal",
+          language_tag: "pt_BR",
+          marketplace_id: marketplaceId,
+        },
+      ];
+      if (!Array.isArray(attrsClean.number_of_compartments) || !attrsClean.number_of_compartments[0]) {
+        attrsClean.number_of_compartments = [{ value: 1, marketplace_id: marketplaceId }];
+      }
+    }
+  }
+
   let sellerSku = p.sellerSku?.trim() || "";
   if (
     !sellerSku ||
