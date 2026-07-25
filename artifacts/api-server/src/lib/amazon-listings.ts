@@ -221,8 +221,48 @@ export function suggestAmazonDepartment(productType: string, title = ""): string
   ) {
     return "beauty";
   }
-  if (type.includes("BAG") || /bolsa|bag|carteira/.test(titleL)) return "handbags";
+  if (
+    type.includes("DUFFEL") ||
+    type.includes("BAG") ||
+    type.includes("HANDBAG") ||
+    /bolsa|duffel|tote/.test(titleL)
+  ) {
+    return "handbags";
+  }
   return "unisex";
+}
+
+/** Product types de bolsa/mala que a Amazon BR costuma exigir `compartment`. */
+export function productTypeNeedsCompartment(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
+    type,
+  );
+}
+
+/** Valor padrão de "Descrição do compartimento" quando o schema exige `compartment`. */
+export function suggestAmazonCompartment(productType: string, title = ""): string {
+  const type = (productType || "").toUpperCase();
+  const titleL = title.toLowerCase();
+  if (type.includes("COSMETIC") || /necessaire|maquiagem|cosmetic|estojo/.test(titleL)) {
+    return "Compartimento principal para maquiagem e acessórios";
+  }
+  if (type.includes("BACKPACK") || /mochila/.test(titleL)) {
+    return "Compartimento principal amplo";
+  }
+  if (type.includes("LUGGAGE") || /mala|bordo|bagagem/.test(titleL)) {
+    return "Compartimento principal";
+  }
+  if (type.includes("DUFFEL") || /academia|viagem|duffel|esport/.test(titleL)) {
+    return "Compartimento principal amplo";
+  }
+  return "Compartimento principal";
+}
+
+function hasAmazonLocaleTextValue(raw: unknown): string {
+  if (!Array.isArray(raw) || !raw[0]) return "";
+  const value = (raw[0] as { value?: unknown }).value;
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export function isGenericBrandName(brand: string): boolean {
@@ -382,6 +422,15 @@ export function ensureRequiredAmazonListingAttributes(
   if (!hasDept) {
     attrs.department = attrLocaleValue(
       suggestAmazonDepartment(opts.productType, opts.title || ""),
+      marketplaceId,
+    );
+  }
+
+  // compartment (Descrição do compartimento) — obrigatório em DUFFEL_BAG / bolsas
+  if (productTypeNeedsCompartment(opts.productType)) {
+    const existing = hasAmazonLocaleTextValue(attrs.compartment);
+    attrs.compartment = attrLocalizedText(
+      existing || suggestAmazonCompartment(opts.productType, opts.title || ""),
       marketplaceId,
     );
   }

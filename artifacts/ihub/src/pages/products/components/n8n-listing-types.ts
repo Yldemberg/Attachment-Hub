@@ -193,6 +193,28 @@ export function updateAmazonDraftBasics(
           ? []
           : next._bloqueios,
     };
+    if (
+      productTypeNeedsCompartment(patch.productType) &&
+      !getAmazonAttrText(next, "compartment").trim()
+    ) {
+      const title = getAmazonAttrText(next, "item_name");
+      next = {
+        ...next,
+        payload: {
+          ...next.payload,
+          attributes: {
+            ...next.payload.attributes,
+            compartment: [
+              {
+                value: suggestAmazonCompartment(patch.productType, title),
+                language_tag: "pt_BR",
+                marketplace_id: marketplaceId,
+              },
+            ],
+          },
+        },
+      };
+    }
   }
   if (patch.title !== undefined) {
     next = withAmazonAttrText(next, "item_name", patch.title);
@@ -280,6 +302,7 @@ const AMAZON_SYSTEM_ATTR_KEYS = new Set([
   "country_of_origin",
   "supplier_declared_dg_hz_regulation",
   "model_name",
+  "compartment",
 ]);
 
 function isAmazonImageLocatorKey(key: string): boolean {
@@ -517,6 +540,14 @@ export function normalizeAmazonDraftForReview(
     }
   }
 
+  const resolvedType = (next.payload.productType || "").trim();
+  if (productTypeNeedsCompartment(resolvedType) && !getAmazonCompartment(next).trim()) {
+    next = updateAmazonCompartment(
+      next,
+      suggestAmazonCompartment(resolvedType, getAmazonAttrText(next, "item_name")),
+    );
+  }
+
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
@@ -739,8 +770,67 @@ export function suggestAmazonProductType(title: string): string | null {
   }
   if (/mochila|backpack/.test(titleL)) return "BACKPACK";
   if (/\bmala\b|luggage|suitcase|bagagem/.test(titleL)) return "LUGGAGE";
+  if (/duffel|academia|esportiva|weekender/.test(titleL)) return "DUFFEL_BAG";
   if (/bolsa|bag|carteira|wallet|pochete|shoulder bag/.test(titleL)) return "BAG";
   return null;
+}
+
+/** Product types de bolsa/mala que a Amazon BR costuma exigir `compartment`. */
+export function productTypeNeedsCompartment(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
+    type,
+  );
+}
+
+export function suggestAmazonCompartment(productType: string, title = ""): string {
+  const type = (productType || "").toUpperCase();
+  const titleL = title.toLowerCase();
+  if (type.includes("COSMETIC") || /necessaire|maquiagem|cosmetic|estojo/.test(titleL)) {
+    return "Compartimento principal para maquiagem e acessórios";
+  }
+  if (type.includes("BACKPACK") || /mochila/.test(titleL)) {
+    return "Compartimento principal amplo";
+  }
+  if (type.includes("LUGGAGE") || /mala|bordo|bagagem/.test(titleL)) {
+    return "Compartimento principal";
+  }
+  if (type.includes("DUFFEL") || /academia|viagem|duffel|esport/.test(titleL)) {
+    return "Compartimento principal amplo";
+  }
+  return "Compartimento principal";
+}
+
+export function getAmazonCompartment(draft: N8nAmazonListingDraft): string {
+  return getAmazonAttrText(draft, "compartment");
+}
+
+export function updateAmazonCompartment(
+  draft: N8nAmazonListingDraft,
+  value: string,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: {
+        ...draft.payload.attributes,
+        compartment: [
+          {
+            value: value.trim(),
+            language_tag: "pt_BR",
+            marketplace_id: marketplaceId,
+          },
+        ],
+      },
+    },
+  };
+  if (!value.trim()) {
+    delete next.payload.attributes.compartment;
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
 export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): string[] {
@@ -765,6 +855,12 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
 
   if (!getAmazonAttrText(draft, "department").trim()) {
     reasons.push("Informe o department (ex.: beauty, handbags).");
+  }
+  if (
+    productTypeNeedsCompartment(draft.payload.productType || "") &&
+    !getAmazonAttrText(draft, "compartment").trim()
+  ) {
+    reasons.push("Informe a descrição do compartimento (compartment).");
   }
   const country = getAmazonAttrText(draft, "country_of_origin").trim();
   if (!country) {

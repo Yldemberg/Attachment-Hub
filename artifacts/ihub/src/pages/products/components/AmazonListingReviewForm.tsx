@@ -11,6 +11,7 @@ import {
   AMAZON_MODEL_NAME_MAX,
   getAmazonAttrText,
   getAmazonBulletPoints,
+  getAmazonCompartment,
   getAmazonCondition,
   getAmazonImageUrls,
   getAmazonItemDimensions,
@@ -23,9 +24,12 @@ import {
   listAmazonExtraTextAttributes,
   normalizeAmazonCountryCode,
   normalizeAmazonDraftForReview,
+  productTypeNeedsCompartment,
   setAmazonImageUrls,
+  suggestAmazonCompartment,
   suggestAmazonProductType,
   updateAmazonBulletPoints,
+  updateAmazonCompartment,
   updateAmazonCondition,
   updateAmazonDraftBasics,
   updateAmazonExtraTextAttribute,
@@ -120,6 +124,8 @@ export function AmazonListingReviewForm({
   const dg = getAmazonAttrText(draft, "supplier_declared_dg_hz_regulation") || "not_applicable";
   const listPrice = getAmazonListPrice(draft) || price;
   const modelName = getAmazonModelName(draft);
+  const compartment = getAmazonCompartment(draft);
+  const needsCompartment = productTypeNeedsCompartment(draft.payload.productType || "");
   const dims = getAmazonItemDimensions(draft) || {
     length: 0,
     width: 0,
@@ -581,6 +587,24 @@ export function AmazonListingReviewForm({
             </p>
           </div>
         </div>
+
+        {needsCompartment ? (
+          <div className="space-y-1.5">
+            <Label>
+              Descrição do compartimento <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={compartment}
+              onChange={(e) => onDraftChange(updateAmazonCompartment(draft, e.target.value))}
+              placeholder={suggestAmazonCompartment(draft.payload.productType || "", title)}
+              className="h-9"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Atributo <code className="text-[10px]">compartment</code> exigido para{" "}
+              {draft.payload.productType || "este product type"}.
+            </p>
+          </div>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label>
