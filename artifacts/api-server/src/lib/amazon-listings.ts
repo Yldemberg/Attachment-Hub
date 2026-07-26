@@ -7,10 +7,12 @@ import {
   extractListingQuantity,
   extractListingSummary,
   formatAmazonListingsIssues,
+  getAmazonRecommendedBrowseNodes,
   getCatalogProductTypeForAsin,
   getListingsItem,
   listingsItemPath,
   resolveAmazonSellerId,
+  suggestAmazonBrowseNode,
   type AmazonListingsItem,
   type AmazonListingsSubmissionResponse,
 } from "./amazon";
@@ -922,6 +924,51 @@ export async function createAmazonListing(
     }
   }
 
+  // Produto novo: isenção GTIN/EAN (Seller Central: "Este produto não tem uma ID do produto")
+  if (!matchCatalog) {
+    delete attributes.externally_assigned_product_identifier;
+    attributes.supplier_declared_has_product_identifier_exemption = [
+      { value: true, marketplace_id: marketplaceId },
+    ];
+  }
+
+  // Caminhos de Navegação (recommended_browse_nodes) — enum do schema do product type
+  {
+    const existingBrowse =
+      Array.isArray(attributes.recommended_browse_nodes) &&
+      attributes.recommended_browse_nodes[0] &&
+      typeof (attributes.recommended_browse_nodes[0] as { value?: unknown }).value === "string"
+        ? String((attributes.recommended_browse_nodes[0] as { value: string }).value).trim()
+        : "";
+    if (!existingBrowse) {
+      try {
+        const nodes = await getAmazonRecommendedBrowseNodes(accountId, productType, marketplaceId);
+        const suggested = suggestAmazonBrowseNode(nodes, {
+          title: input.title,
+          productType,
+        });
+        if (suggested) {
+          attributes.recommended_browse_nodes = [
+            { value: suggested.id, marketplace_id: marketplaceId },
+          ];
+          logger.info(
+            { sellerSku, productType, browseNodeId: suggested.id, browseNodeName: suggested.name },
+            "Auto-selected Amazon recommended_browse_nodes",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            sellerSku,
+            productType,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "Failed to auto-select recommended_browse_nodes",
+        );
+      }
+    }
+  }
+
   const body = {
     productType,
     requirements,
@@ -943,6 +990,16 @@ export async function createAmazonListing(
         ? Object.keys((attributes.compartment[0] as object) || {})
         : [],
       hasNumberOfCompartments: Array.isArray(attributes.number_of_compartments),
+      hasGtinExemption:
+        Array.isArray(attributes.supplier_declared_has_product_identifier_exemption) &&
+        (attributes.supplier_declared_has_product_identifier_exemption[0] as { value?: boolean })
+          ?.value === true,
+      hasExternalProductId: Array.isArray(attributes.externally_assigned_product_identifier),
+      browseNodeId:
+        Array.isArray(attributes.recommended_browse_nodes) &&
+        (attributes.recommended_browse_nodes[0] as { value?: string } | undefined)?.value
+          ? String((attributes.recommended_browse_nodes[0] as { value: string }).value)
+          : null,
     },
     "Amazon putListingsItem request",
   );
@@ -961,6 +1018,46 @@ export async function createAmazonListing(
   }
 
   assertSubmissionAccepted(submission, sellerSku);
+
+  // Reforça isenção GTIN após o put (Seller Central às vezes não marca o check só com o LISTING inicial)
+  if (!matchCatalog) {
+    try {
+      const exemptionPatch = await amazon.patch<AmazonListingsSubmissionResponse>(
+        accountId,
+        listingsItemPath(sellerId, sellerSku, marketplaceId),
+        {
+          productType,
+          patches: [
+            {
+              op: "replace",
+              path: "/attributes/supplier_declared_has_product_identifier_exemption",
+              value: [{ value: true, marketplace_id: marketplaceId }],
+            },
+            {
+              op: "delete",
+              path: "/attributes/externally_assigned_product_identifier",
+            },
+          ],
+        },
+      );
+      logger.info(
+        {
+          sellerSku,
+          status: exemptionPatch?.status,
+          issues: exemptionPatch?.issues,
+        },
+        "Amazon GTIN exemption patch after create",
+      );
+    } catch (err) {
+      logger.warn(
+        {
+          sellerSku,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Amazon GTIN exemption patch failed (listing may still need manual checkbox)",
+      );
+    }
+  }
 
   let item: AmazonListingsItem | null = null;
   try {

@@ -291,6 +291,8 @@ const AMAZON_SYSTEM_ATTR_KEYS = new Set([
   "supplier_declared_dg_hz_regulation",
   "model_name",
   "compartment",
+  "recommended_browse_nodes",
+  "number_of_compartments",
 ]);
 
 function isAmazonImageLocatorKey(key: string): boolean {
@@ -787,6 +789,37 @@ export function suggestAmazonCompartment(productType: string, title = ""): strin
     return "Compartimento principal amplo";
   }
   return "Compartimento principal";
+}
+
+export function getAmazonBrowseNodeId(draft: N8nAmazonListingDraft): string {
+  const raw = draft.payload.attributes?.recommended_browse_nodes;
+  if (!Array.isArray(raw) || !raw[0]) return "";
+  const value = (raw[0] as { value?: unknown }).value;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function updateAmazonBrowseNode(
+  draft: N8nAmazonListingDraft,
+  browseNodeId: string,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+  const id = browseNodeId.trim();
+  if (!id) {
+    delete next.payload.attributes.recommended_browse_nodes;
+  } else {
+    next.payload.attributes.recommended_browse_nodes = [
+      { value: id, marketplace_id: marketplaceId },
+    ];
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
 export function getAmazonCompartment(draft: N8nAmazonListingDraft): string {

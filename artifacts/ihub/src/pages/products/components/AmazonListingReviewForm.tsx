@@ -10,6 +10,7 @@ import {
   AMAZON_MAX_IMAGES,
   AMAZON_MODEL_NAME_MAX,
   getAmazonAttrText,
+  getAmazonBrowseNodeId,
   getAmazonBulletPoints,
   getAmazonCompartment,
   getAmazonCondition,
@@ -28,6 +29,7 @@ import {
   setAmazonImageUrls,
   suggestAmazonCompartment,
   suggestAmazonProductType,
+  updateAmazonBrowseNode,
   updateAmazonBulletPoints,
   updateAmazonCompartment,
   updateAmazonCondition,
@@ -43,12 +45,15 @@ import { readFileAsBase64 } from "./PictureUploader";
 
 const COMMON_PRODUCT_TYPES = [
   { id: "COSMETIC_CASE", label: "Necessaire / maquiagem" },
+  { id: "DUFFEL_BAG", label: "Bolsa esportiva / duffel" },
   { id: "BAG", label: "Bolsa" },
   { id: "LUGGAGE", label: "Mala / viagem" },
   { id: "BACKPACK", label: "Mochila" },
   { id: "SHOES", label: "Calçados" },
   { id: "SHIRT", label: "Camiseta / roupa" },
 ] as const;
+
+type BrowseNodeOption = { id: string; name: string };
 
 const CONDITION_OPTIONS = [
   { id: "new_new", label: "Novo" },
@@ -126,6 +131,7 @@ export function AmazonListingReviewForm({
   const modelName = getAmazonModelName(draft);
   const compartment = getAmazonCompartment(draft);
   const needsCompartment = productTypeNeedsCompartment(draft.payload.productType || "");
+  const browseNodeId = getAmazonBrowseNodeId(draft);
   const dims = getAmazonItemDimensions(draft) || {
     length: 0,
     width: 0,
@@ -135,10 +141,13 @@ export function AmazonListingReviewForm({
 
   const [productTypeOptions, setProductTypeOptions] = useState<ProductTypeOption[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
+  const [browseNodeOptions, setBrowseNodeOptions] = useState<BrowseNodeOption[]>([]);
+  const [loadingBrowseNodes, setLoadingBrowseNodes] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState("");
   const appliedNormalize = useRef(false);
   const lastTitleFetch = useRef("");
+  const lastBrowseFetch = useRef("");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Isenção GTIN + model_name ≤ 120 + product_type heurístico ao abrir
@@ -206,6 +215,50 @@ export function AmazonListingReviewForm({
 
     return () => window.clearTimeout(timer);
   }, [accountId, title, draft, onDraftChange, suggestedTypeLocal]);
+
+  // Caminhos de navegação (browse nodes) conforme product type
+  useEffect(() => {
+    const productType = (draft.payload.productType || "").trim().toUpperCase();
+    if (!accountId || !productType || productType === "PRODUCT") {
+      setBrowseNodeOptions([]);
+      return;
+    }
+    const fetchKey = `${accountId}|${productType}|${title.trim().slice(0, 80)}`;
+    if (lastBrowseFetch.current === fetchKey) return;
+
+    const timer = window.setTimeout(async () => {
+      lastBrowseFetch.current = fetchKey;
+      setLoadingBrowseNodes(true);
+      try {
+        const params = new URLSearchParams({
+          accountId,
+          productType,
+          itemName: title.trim().slice(0, 200),
+        });
+        const res = await fetch(`/api/products/amazon/browse-nodes?${params}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as {
+          suggested?: string | null;
+          suggestedName?: string | null;
+          browseNodes?: BrowseNodeOption[];
+        };
+        const list = data.browseNodes ?? [];
+        setBrowseNodeOptions(list);
+        const current = getAmazonBrowseNodeId(draft);
+        if ((!current || !list.some((n) => n.id === current)) && data.suggested) {
+          onDraftChange(updateAmazonBrowseNode(draft, data.suggested));
+        }
+      } catch {
+        setBrowseNodeOptions([]);
+      } finally {
+        setLoadingBrowseNodes(false);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [accountId, draft, onDraftChange, title]);
 
   const bulletSlots = Array.from({ length: 5 }, (_, i) => bullets[i] ?? "");
 
@@ -401,6 +454,34 @@ export function AmazonListingReviewForm({
             </p>
           </div>
         </div>
+
+        {browseNodeOptions.length > 0 || loadingBrowseNodes ? (
+          <div className="space-y-1.5">
+            <Label>
+              Caminhos de Navegação{" "}
+              <span className="text-muted-foreground font-normal">(recommended_browse_nodes)</span>
+            </Label>
+            <select
+              value={browseNodeId}
+              onChange={(e) => onDraftChange(updateAmazonBrowseNode(draft, e.target.value))}
+              className="w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              disabled={loadingBrowseNodes}
+            >
+              <option value="">
+                {loadingBrowseNodes ? "Carregando caminhos…" : "Selecione o caminho…"}
+              </option>
+              {browseNodeOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Preenchido automaticamente conforme o product type e o título. Evita caminhos
+              genéricos/errados (ex.: “Barras dietéticas”).
+            </p>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">

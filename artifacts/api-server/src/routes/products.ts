@@ -35,6 +35,8 @@ import {
 import {
   getCatalogProductTypeForAsin,
   searchAmazonProductTypes,
+  getAmazonRecommendedBrowseNodes,
+  suggestAmazonBrowseNode,
   getAmazonMarketplaceId,
 } from "../lib/amazon";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
@@ -513,6 +515,56 @@ router.get("/products/amazon/product-types", ...auth, async (req, res) => {
     });
   } catch (err) {
     handleMlListingRouteError(err, res, req.log, "Failed to search Amazon product types");
+  }
+});
+
+router.get("/products/amazon/browse-nodes", ...auth, async (req, res) => {
+  try {
+    const accountId = String(req.query.accountId || "").trim();
+    const productType = String(req.query.productType || "").trim();
+    const itemName = String(req.query.itemName || "").trim();
+    if (!accountId || !productType) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe accountId e productType" },
+      });
+      return;
+    }
+    if (!(await assertUserOwnsAccount(req.user!.id, accountId))) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
+      return;
+    }
+
+    const db = getDb();
+    const [account] = await db
+      .select({
+        platform: accountsTable.platform,
+        amazonMarketplaceId: accountsTable.amazonMarketplaceId,
+      })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, accountId));
+    if (!account || account.platform !== "amazon") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta Amazon inválida" } });
+      return;
+    }
+
+    const marketplaceId = account.amazonMarketplaceId || getAmazonMarketplaceId();
+    const browseNodes = await getAmazonRecommendedBrowseNodes(
+      accountId,
+      productType,
+      marketplaceId,
+    );
+    const suggested = suggestAmazonBrowseNode(browseNodes, {
+      title: itemName,
+      productType,
+    });
+
+    res.json({
+      suggested: suggested?.id || null,
+      suggestedName: suggested?.name || null,
+      browseNodes,
+    });
+  } catch (err) {
+    handleMlListingRouteError(err, res, req.log, "Failed to list Amazon browse nodes");
   }
 });
 

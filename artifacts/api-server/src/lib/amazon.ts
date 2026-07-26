@@ -440,6 +440,157 @@ export type AmazonProductTypeOption = {
   displayName?: string;
 };
 
+export type AmazonBrowseNodeOption = {
+  id: string;
+  name: string;
+};
+
+const browseNodeCache = new Map<
+  string,
+  { expiresAt: number; nodes: AmazonBrowseNodeOption[] }
+>();
+const BROWSE_NODE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Extrai enums de recommended_browse_nodes do schema JSON do product type. */
+function extractBrowseNodesFromSchema(schema: {
+  properties?: Record<string, unknown>;
+}): AmazonBrowseNodeOption[] {
+  const prop = schema.properties?.recommended_browse_nodes as
+    | {
+        items?: {
+          properties?: {
+            value?: {
+              anyOf?: Array<{ enum?: string[]; enumNames?: string[] }>;
+              enum?: string[];
+              enumNames?: string[];
+            };
+          };
+        };
+      }
+    | undefined;
+  const valueSchema = prop?.items?.properties?.value;
+  if (!valueSchema) return [];
+
+  let ids: string[] = [];
+  let names: string[] = [];
+  if (Array.isArray(valueSchema.enum)) {
+    ids = valueSchema.enum;
+    names = valueSchema.enumNames ?? [];
+  } else if (Array.isArray(valueSchema.anyOf)) {
+    const block = valueSchema.anyOf.find((a) => Array.isArray(a.enum));
+    if (block?.enum) {
+      ids = block.enum;
+      names = block.enumNames ?? [];
+    }
+  }
+
+  return ids
+    .map((id, i) => ({
+      id: String(id),
+      name: String(names[i] || id),
+    }))
+    .filter((n) => n.id.trim());
+}
+
+/**
+ * Lista caminhos de navegação (browse nodes) válidos para o product type no BR.
+ * Fonte: Product Type Definitions schema → recommended_browse_nodes.enum
+ */
+export async function getAmazonRecommendedBrowseNodes(
+  accountId: string,
+  productType: string,
+  marketplaceId?: string,
+): Promise<AmazonBrowseNodeOption[]> {
+  const type = productType.trim().toUpperCase();
+  if (!type || type === "PRODUCT") return [];
+  const mp = marketplaceId || getAmazonMarketplaceId();
+  const cacheKey = `${accountId}:${mp}:${type}`;
+  const cached = browseNodeCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.nodes;
+
+  const params = new URLSearchParams({
+    marketplaceIds: mp,
+    requirements: "LISTING",
+    locale: "pt_BR",
+  });
+  const definition = await amazon.get<{
+    schema?: { link?: { resource?: string } };
+  }>(accountId, `/definitions/2020-09-01/productTypes/${encodeURIComponent(type)}?${params}`);
+
+  const schemaUrl = definition.schema?.link?.resource;
+  if (!schemaUrl) {
+    browseNodeCache.set(cacheKey, { expiresAt: Date.now() + BROWSE_NODE_CACHE_TTL_MS, nodes: [] });
+    return [];
+  }
+
+  // URL S3 pré-assinada — sem header x-amz-access-token
+  const schemaRes = await fetch(schemaUrl, { headers: { Accept: "application/json" } });
+  if (!schemaRes.ok) {
+    logger.warn(
+      { productType: type, status: schemaRes.status },
+      "Failed to fetch Amazon product type schema for browse nodes",
+    );
+    return [];
+  }
+  const schema = (await schemaRes.json()) as { properties?: Record<string, unknown> };
+  const nodes = extractBrowseNodesFromSchema(schema);
+  browseNodeCache.set(cacheKey, {
+    expiresAt: Date.now() + BROWSE_NODE_CACHE_TTL_MS,
+    nodes,
+  });
+  return nodes;
+}
+
+/** Escolhe o browse node mais adequado ao título / product type. */
+export function suggestAmazonBrowseNode(
+  nodes: AmazonBrowseNodeOption[],
+  opts: { title?: string; productType?: string } = {},
+): AmazonBrowseNodeOption | null {
+  if (!nodes.length) return null;
+  const title = (opts.title || "").toLowerCase();
+  const type = (opts.productType || "").toUpperCase();
+
+  const boostTerms: string[] = [];
+  if (type.includes("DUFFEL") || /duffel|academia|esportiva|fitness|gym/.test(title)) {
+    boostTerms.push("duffel", "esportiva", "marinheira", "academia");
+  }
+  if (type.includes("COSMETIC") || /necessaire|maquiagem|cosmetic|estojo/.test(title)) {
+    boostTerms.push("necessaire", "maquiagem", "cosmético", "cosmetico", "viagem");
+  }
+  if (type.includes("BACKPACK") || /mochila/.test(title)) {
+    boostTerms.push("mochila");
+  }
+  if (type.includes("LUGGAGE") || /\bmala\b|bagagem|bordo/.test(title)) {
+    boostTerms.push("mala", "viagem", "bagagem");
+  }
+  if (type.includes("BAG") || /bolsa/.test(title)) {
+    boostTerms.push("bolsa");
+  }
+  if (/feminina|mulher|lady/.test(title)) boostTerms.push("feminin");
+  if (/masculina|homem|men/.test(title)) boostTerms.push("masculin");
+
+  let best = nodes[0]!;
+  let bestScore = -1;
+  for (const node of nodes) {
+    const nameL = node.name.toLowerCase();
+    let score = 0;
+    for (const term of boostTerms) {
+      if (nameL.includes(term)) score += 3;
+    }
+    // palavras do título presentes no caminho
+    for (const word of title.split(/[^a-zà-ú0-9]+/i).filter((w) => w.length > 3)) {
+      if (nameL.includes(word.toLowerCase())) score += 1;
+    }
+    // prefere caminhos mais específicos (mais segmentos)
+    score += Math.min((node.name.match(/>/g) || []).length, 4) * 0.1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = node;
+    }
+  }
+  return best;
+}
+
 /** Busca product types no catálogo SP-API (similares por título/keywords). */
 export async function searchAmazonProductTypes(
   accountId: string,
