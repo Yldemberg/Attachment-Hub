@@ -269,13 +269,37 @@ export function suggestAmazonDepartment(productType: string, title = ""): string
   return "unisex";
 }
 
-/** Product types de bolsa/mala que a Amazon BR costuma exigir `compartment`. */
+/**
+ * Só product types cujo schema BR realmente tem `compartment`.
+ * NÃO usar /BAG/ genérico — casa com BACKPACK e a Amazon ignora/rejeita o atributo.
+ */
 export function productTypeNeedsCompartment(productType: string): boolean {
   const type = (productType || "").toUpperCase();
-  return /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
-    type,
+  return type === "DUFFEL_BAG" || type.includes("DUFFEL");
+}
+
+/** BACKPACK (e similares) usam P×L×A (`item_depth_width_height`), não C×L×A. */
+export function productTypeUsesDepthDimensions(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return type === "BACKPACK" || type.endsWith("_BACKPACK");
+}
+
+/** Product types de bolsa/mochila que pedem atributos soft extras no BR. */
+export function productTypeNeedsBagSoftAttributes(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return (
+    type === "BACKPACK" ||
+    type === "DUFFEL_BAG" ||
+    type === "HANDBAG" ||
+    type === "TOTE_BAG" ||
+    type === "BAG" ||
+    type === "LUGGAGE" ||
+    type === "SUITCASE" ||
+    type === "COSMETIC_CASE"
   );
 }
+
+export const AMAZON_BULLET_POINT_MAX = 700;
 
 /** Valor padrão de "Descrição do compartimento" quando o schema exige `compartment`. */
 export function suggestAmazonCompartment(productType: string, title = ""): string {
@@ -377,6 +401,131 @@ function isStructuredAmazonDimension(raw: unknown): boolean {
   return typeof length?.value === "number" && typeof length?.unit === "string";
 }
 
+function isStructuredAmazonDepthDimension(raw: unknown): boolean {
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return false;
+  const first = raw[0] as Record<string, unknown>;
+  const depth = first.depth as { value?: unknown; unit?: unknown } | undefined;
+  const width = first.width as { value?: unknown; unit?: unknown } | undefined;
+  const height = first.height as { value?: unknown; unit?: unknown } | undefined;
+  return (
+    typeof depth?.value === "number" &&
+    typeof width?.value === "number" &&
+    typeof height?.value === "number"
+  );
+}
+
+function attrClosureType(value: string, marketplaceId: string) {
+  return [
+    {
+      type: [{ language_tag: "pt_BR", value }],
+      marketplace_id: marketplaceId,
+    },
+  ];
+}
+
+function attrOuterMaterial(value: string, marketplaceId: string) {
+  return [
+    {
+      material: [{ language_tag: "pt_BR", value }],
+      marketplace_id: marketplaceId,
+    },
+  ];
+}
+
+function extractNestedAttrValue(raw: unknown, nestedKey: "type" | "material"): string {
+  if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return "";
+  const nested = (raw[0] as Record<string, unknown>)[nestedKey];
+  if (!Array.isArray(nested) || !nested[0]) return "";
+  const value = (nested[0] as { value?: unknown }).value;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function suggestOuterMaterial(attrs: Record<string, unknown>, title = ""): string {
+  const blob = [
+    hasAmazonLocaleTextValue(attrs.material),
+    hasAmazonLocaleTextValue(attrs.outer),
+    extractNestedAttrValue(attrs.outer, "material"),
+    title,
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (/nylon/.test(blob)) return "Nylon";
+  if (/poli[eé]ster|polyester/.test(blob)) return "Poliéster";
+  if (/couro sintético|synthetic leather/.test(blob)) return "Couro sintético";
+  if (/\bcouro\b|leather/.test(blob)) return "Couro";
+  if (/neoprene/.test(blob)) return "Neoprene";
+  if (/pvc|vinil|vinyl/.test(blob)) return "Cloreto de polivinilo (PVC)";
+  if (/algod[aã]o|cotton/.test(blob)) return "Algodão";
+  return "Nylon";
+}
+
+function suggestLiningDescription(attrs: Record<string, unknown>, title = ""): string {
+  const blob = [
+    hasAmazonLocaleTextValue(attrs.lining_description),
+    hasAmazonLocaleTextValue(attrs.material),
+    title,
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (/poli[eé]ster|polyester/.test(blob)) return "Poliéster";
+  if (/nylon/.test(blob)) return "Nylon";
+  if (/algod[aã]o|cotton/.test(blob)) return "Algodão";
+  return "Poliéster";
+}
+
+function parseStorageVolumeLiters(texts: string[]): number | null {
+  for (const text of texts) {
+    const m = String(text || "").match(/(\d+[.,]?\d*)\s*(?:l|litros?)\b/i);
+    if (!m) continue;
+    const n = Number(m[1].replace(",", "."));
+    if (Number.isFinite(n) && n > 0 && n <= 11000) return n;
+  }
+  return null;
+}
+
+function extractDimensionTriple(
+  attrs: Record<string, unknown>,
+  scrapedTexts: string[] = [],
+): { a: number; b: number; c: number; unit: "centimeters" | "inches" } | null {
+  if (isStructuredAmazonDepthDimension(attrs.item_depth_width_height)) {
+    const first = (attrs.item_depth_width_height as Array<Record<string, unknown>>)[0];
+    const depth = first.depth as { value: number; unit?: string };
+    const width = first.width as { value: number; unit?: string };
+    const height = first.height as { value: number; unit?: string };
+    return {
+      a: depth.value,
+      b: width.value,
+      c: height.value,
+      unit: depth.unit === "inches" ? "inches" : "centimeters",
+    };
+  }
+  if (isStructuredAmazonDimension(attrs.item_length_width_height)) {
+    const first = (attrs.item_length_width_height as Array<Record<string, unknown>>)[0];
+    const length = first.length as { value: number; unit?: string };
+    const width = first.width as { value: number; unit?: string };
+    const height = first.height as { value: number; unit?: string };
+    return {
+      a: length.value,
+      b: width.value,
+      c: height.value,
+      unit: length.unit === "inches" ? "inches" : "centimeters",
+    };
+  }
+  const sources = [...collectDimensionSourceTexts(attrs), ...scrapedTexts];
+  for (const text of sources) {
+    const parsed = parseAmazonItemDimensions(text);
+    if (parsed) {
+      return {
+        a: parsed.length,
+        b: parsed.width,
+        c: parsed.height,
+        unit: parsed.unit,
+      };
+    }
+  }
+  return null;
+}
+
 function truncateAmazonLocaleAttr(
   attrs: Record<string, unknown>,
   key: string,
@@ -463,18 +612,13 @@ export function ensureRequiredAmazonListingAttributes(
     );
   }
 
-  // compartment (Descrição do compartimento) — schema aninhado DUFFEL_BAG
-  // [{ description: [{ language_tag, value }], marketplace_id }]
-  if (productTypeNeedsCompartment(opts.productType) || extractCompartmentDescription(attrs.compartment)) {
+  // compartment — só DUFFEL_BAG (schema aninhado). Em BACKPACK a Amazon ignora/rejeita.
+  if (productTypeNeedsCompartment(opts.productType)) {
     const existing = extractCompartmentDescription(attrs.compartment);
     attrs.compartment = attrCompartmentDescription(
       existing || suggestAmazonCompartment(opts.productType, opts.title || ""),
       marketplaceId,
     );
-  }
-
-  // number_of_compartments — frequentemente exigido junto com compartment
-  if (productTypeNeedsCompartment(opts.productType)) {
     const rawCount = attrs.number_of_compartments;
     let count = 1;
     if (Array.isArray(rawCount) && rawCount[0]) {
@@ -483,22 +627,110 @@ export function ensureRequiredAmazonListingAttributes(
       else if (typeof v === "string" && Number(v) > 0) count = Math.floor(Number(v));
     }
     attrs.number_of_compartments = attrLocaleValue(count, marketplaceId);
+  } else {
+    delete attrs.compartment;
+    delete attrs.number_of_compartments;
   }
 
-  // bullet_point precisa de language_tag no schema BR
+  // bullet_point: language_tag + maxLength 700 (schema BR)
   if (Array.isArray(attrs.bullet_point)) {
     attrs.bullet_point = (attrs.bullet_point as Array<Record<string, unknown>>)
       .map((item) => {
         const value = item?.value;
         if (typeof value !== "string" || !value.trim()) return null;
+        const trimmed = value.trim().slice(0, AMAZON_BULLET_POINT_MAX);
         return {
-          value: value.trim(),
+          value: trimmed,
           language_tag: typeof item.language_tag === "string" ? item.language_tag : "pt_BR",
           marketplace_id:
             typeof item.marketplace_id === "string" ? item.marketplace_id : marketplaceId,
         };
       })
       .filter(Boolean);
+  }
+
+  // Atributos soft exigidos em BACKPACK / bolsas (schema BR)
+  if (productTypeNeedsBagSoftAttributes(opts.productType)) {
+    const title = opts.title || "";
+    const type = (opts.productType || "").toUpperCase();
+    const isBackpack = type === "BACKPACK";
+    const isDuffel = type.includes("DUFFEL");
+    const isHandbagFamily = type === "HANDBAG" || type === "TOTE_BAG";
+    const isBag = type === "BAG";
+    const isSuitcase = type === "SUITCASE";
+    const isCosmetic = type === "COSMETIC_CASE";
+
+    if (
+      !hasAmazonLocaleTextValue(attrs.strap_type) &&
+      (isBackpack || isDuffel || isHandbagFamily)
+    ) {
+      attrs.strap_type = attrLocalizedText(
+        isBackpack ? "Alças traseiras" : "Ajustável",
+        marketplaceId,
+      );
+    }
+
+    if (
+      !extractNestedAttrValue(attrs.closure, "type") &&
+      (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic)
+    ) {
+      attrs.closure = attrClosureType("Zíper", marketplaceId);
+    }
+
+    if (
+      !hasAmazonLocaleTextValue(attrs.target_gender) &&
+      (isBackpack || isBag || isHandbagFamily || isCosmetic)
+    ) {
+      attrs.target_gender = attrLocaleValue("unisex", marketplaceId);
+    }
+
+    const hasVolume =
+      Array.isArray(attrs.storage_volume) &&
+      attrs.storage_volume[0] &&
+      typeof (attrs.storage_volume[0] as { value?: unknown }).value === "number" &&
+      typeof (attrs.storage_volume[0] as { unit?: unknown }).unit === "string";
+    if (!hasVolume && (isBackpack || isSuitcase)) {
+      const liters =
+        parseStorageVolumeLiters([
+          title,
+          ...(opts.scrapedTexts || []),
+          ...collectDimensionSourceTexts(attrs),
+        ]) || 20;
+      attrs.storage_volume = [
+        { value: liters, unit: "liters", marketplace_id: marketplaceId },
+      ];
+    }
+
+    if (
+      !hasAmazonLocaleTextValue(attrs.water_resistance_level) &&
+      (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+    ) {
+      attrs.water_resistance_level = attrLocaleValue("water_repellent", marketplaceId);
+    }
+
+    if (
+      !extractNestedAttrValue(attrs.outer, "material") &&
+      (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+    ) {
+      attrs.outer = attrOuterMaterial(suggestOuterMaterial(attrs, title), marketplaceId);
+    }
+
+    if (
+      !hasAmazonLocaleTextValue(attrs.lining_description) &&
+      (isBackpack || isBag || isHandbagFamily)
+    ) {
+      attrs.lining_description = attrLocalizedText(
+        suggestLiningDescription(attrs, title),
+        marketplaceId,
+      );
+    }
+
+    if (
+      !hasAmazonLocaleTextValue(attrs.age_range_description) &&
+      (isBackpack || isBag || isHandbagFamily)
+    ) {
+      attrs.age_range_description = attrLocalizedText("Adulto", marketplaceId);
+    }
   }
 
   // Precificação SP-API (BR): our_price + list_price com value_with_tax
@@ -523,32 +755,44 @@ export function ensureRequiredAmazonListingAttributes(
   // model_name: limite prático no iHub (schema Amazon costuma aceitar bem mais que 12)
   truncateAmazonLocaleAttr(attrs, "model_name", 120);
 
-  // item_length_width_height estruturado
-  if (!isStructuredAmazonDimension(attrs.item_length_width_height)) {
-    const sources = [
-      ...collectDimensionSourceTexts(attrs),
-      ...(opts.scrapedTexts || []),
-    ];
-    let parsed: ReturnType<typeof parseAmazonItemDimensions> = null;
-    for (const text of sources) {
-      parsed = parseAmazonItemDimensions(text);
-      if (parsed) break;
-    }
-    if (parsed) {
-      attrs.item_length_width_height = [
+  // Dimensões: BACKPACK → item_depth_width_height; demais bolsas → item_length_width_height
+  const dims = extractDimensionTriple(attrs, opts.scrapedTexts || []);
+  if (dims) {
+    const unit = productTypeUsesDepthDimensions(opts.productType)
+      ? "centimeters"
+      : dims.unit;
+    if (productTypeUsesDepthDimensions(opts.productType)) {
+      attrs.item_depth_width_height = [
         {
-          length: { value: parsed.length, unit: parsed.unit },
-          width: { value: parsed.width, unit: parsed.unit },
-          height: { value: parsed.height, unit: parsed.unit },
+          depth: { value: dims.a, unit },
+          width: { value: dims.b, unit },
+          height: { value: dims.c, unit },
           marketplace_id: marketplaceId,
         },
       ];
+      delete attrs.item_length_width_height;
+    } else {
+      attrs.item_length_width_height = [
+        {
+          length: { value: dims.a, unit: dims.unit },
+          width: { value: dims.b, unit: dims.unit },
+          height: { value: dims.c, unit: dims.unit },
+          marketplace_id: marketplaceId,
+        },
+      ];
+      delete attrs.item_depth_width_height;
     }
   }
 
   // Remove atributos de dimensão em texto livre que confundem a SP-API
   for (const key of Object.keys(attrs)) {
-    if (key === "item_length_width_height" || key === "item_package_dimensions") continue;
+    if (
+      key === "item_length_width_height" ||
+      key === "item_depth_width_height" ||
+      key === "item_package_dimensions"
+    ) {
+      continue;
+    }
     if (!/dimens|length_width|medida/i.test(key)) continue;
     const raw = attrs[key];
     if (Array.isArray(raw) && raw[0] && typeof (raw[0] as { value?: unknown }).value === "string") {

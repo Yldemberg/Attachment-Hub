@@ -202,7 +202,15 @@ export function updateAmazonDraftBasics(
         next,
         suggestAmazonCompartment(patch.productType, title),
       );
+    } else if (!productTypeNeedsCompartment(patch.productType)) {
+      const attrs = { ...next.payload.attributes };
+      delete attrs.compartment;
+      delete attrs.number_of_compartments;
+      next = { ...next, payload: { ...next.payload, attributes: attrs } };
     }
+    const dims = getAmazonItemDimensions(next);
+    if (dims) next = updateAmazonItemDimensions(next, dims);
+    next = ensureAmazonBagSoftAttributes(next);
   }
   if (patch.title !== undefined) {
     next = withAmazonAttrText(next, "item_name", patch.title);
@@ -345,7 +353,10 @@ export function updateAmazonBulletPoints(
   bullets: string[],
 ): N8nAmazonListingDraft {
   const marketplaceId = marketplaceIdOf(draft);
-  const cleaned = bullets.map((b) => b.trim()).filter(Boolean).slice(0, 10);
+  const cleaned = bullets
+    .map((b) => b.trim().slice(0, AMAZON_BULLET_POINT_MAX))
+    .filter(Boolean)
+    .slice(0, 10);
   const next: N8nAmazonListingDraft = {
     ...draft,
     _bullet_points: cleaned,
@@ -357,6 +368,7 @@ export function updateAmazonBulletPoints(
   if (cleaned.length) {
     next.payload.attributes.bullet_point = cleaned.slice(0, 5).map((value) => ({
       value,
+      language_tag: "pt_BR",
       marketplace_id: marketplaceId,
     }));
   } else {
@@ -463,6 +475,7 @@ export function applyAmazonGtinExemption(draft: N8nAmazonListingDraft): N8nAmazo
 }
 
 export const AMAZON_MODEL_NAME_MAX = 120;
+export const AMAZON_BULLET_POINT_MAX = 700;
 
 function normalizeScrapeKey(key: string): string {
   return key
@@ -536,8 +549,173 @@ export function normalizeAmazonDraftForReview(
       next,
       suggestAmazonCompartment(resolvedType, getAmazonAttrText(next, "item_name")),
     );
+  } else if (!productTypeNeedsCompartment(resolvedType)) {
+    const attrs = { ...next.payload.attributes };
+    if (attrs.compartment || attrs.number_of_compartments) {
+      delete attrs.compartment;
+      delete attrs.number_of_compartments;
+      next = {
+        ...next,
+        payload: { ...next.payload, attributes: attrs },
+      };
+    }
   }
 
+  // Truncar bullets > 700 (limite schema BR)
+  const bullets = getAmazonBulletPoints(next);
+  if (bullets.some((b) => b.length > AMAZON_BULLET_POINT_MAX)) {
+    next = updateAmazonBulletPoints(next, bullets);
+  }
+
+  // Regrava dimensões no atributo certo (depth vs length) conforme product type
+  const dims = getAmazonItemDimensions(next);
+  if (dims) {
+    next = updateAmazonItemDimensions(next, dims);
+  }
+
+  next = ensureAmazonBagSoftAttributes(next);
+
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
+function attrLocalizedTextDraft(
+  value: string,
+  marketplaceId: string,
+): Array<{ value: string; language_tag: string; marketplace_id: string }> {
+  return [{ value, language_tag: "pt_BR", marketplace_id: marketplaceId }];
+}
+
+/** Preenche atributos soft ausentes para BACKPACK/bolsas (evita 502 na publicação). */
+export function ensureAmazonBagSoftAttributes(
+  draft: N8nAmazonListingDraft,
+): N8nAmazonListingDraft {
+  const type = (draft.payload.productType || "").toUpperCase();
+  const isBackpack = type === "BACKPACK";
+  const isDuffel = type.includes("DUFFEL");
+  const isHandbagFamily = type === "HANDBAG" || type === "TOTE_BAG";
+  const isBag = type === "BAG";
+  const isSuitcase = type === "SUITCASE";
+  const isCosmetic = type === "COSMETIC_CASE";
+  if (
+    !isBackpack &&
+    !isDuffel &&
+    !isHandbagFamily &&
+    !isBag &&
+    !isSuitcase &&
+    !isCosmetic
+  ) {
+    return draft;
+  }
+
+  const marketplaceId = marketplaceIdOf(draft);
+  const attrs: Record<string, unknown> = { ...draft.payload.attributes };
+  const title = getAmazonAttrText(draft, "item_name");
+  let changed = false;
+
+  const localeVal = (raw: unknown) => {
+    if (!Array.isArray(raw) || !raw[0]) return "";
+    const v = (raw[0] as { value?: unknown }).value;
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const nestedVal = (raw: unknown, key: "type" | "material") => {
+    if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return "";
+    const nested = (raw[0] as Record<string, unknown>)[key];
+    if (!Array.isArray(nested) || !nested[0]) return "";
+    const v = (nested[0] as { value?: unknown }).value;
+    return typeof v === "string" ? v.trim() : "";
+  };
+
+  if (!localeVal(attrs.strap_type) && (isBackpack || isDuffel || isHandbagFamily)) {
+    attrs.strap_type = attrLocalizedTextDraft(
+      isBackpack ? "Alças traseiras" : "Ajustável",
+      marketplaceId,
+    );
+    changed = true;
+  }
+  if (
+    !nestedVal(attrs.closure, "type") &&
+    (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic)
+  ) {
+    attrs.closure = [
+      {
+        type: [{ language_tag: "pt_BR", value: "Zíper" }],
+        marketplace_id: marketplaceId,
+      },
+    ];
+    changed = true;
+  }
+  if (
+    !localeVal(attrs.target_gender) &&
+    (isBackpack || isBag || isHandbagFamily || isCosmetic)
+  ) {
+    attrs.target_gender = [{ value: "unisex", marketplace_id: marketplaceId }];
+    changed = true;
+  }
+  const hasVolume =
+    Array.isArray(attrs.storage_volume) &&
+    attrs.storage_volume[0] &&
+    typeof (attrs.storage_volume[0] as { value?: unknown }).value === "number";
+  if (!hasVolume && (isBackpack || isSuitcase)) {
+    const litersMatch = `${title} ${getAmazonScrapedAttributes(draft)
+      .map((a) => a.value)
+      .join(" ")}`.match(/(\d+[.,]?\d*)\s*(?:l|litros?)\b/i);
+    const liters = litersMatch ? Number(litersMatch[1].replace(",", ".")) : 20;
+    attrs.storage_volume = [
+      {
+        value: Number.isFinite(liters) && liters > 0 ? liters : 20,
+        unit: "liters",
+        marketplace_id: marketplaceId,
+      },
+    ];
+    changed = true;
+  }
+  if (
+    !localeVal(attrs.water_resistance_level) &&
+    (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+  ) {
+    attrs.water_resistance_level = [
+      { value: "water_repellent", marketplace_id: marketplaceId },
+    ];
+    changed = true;
+  }
+  if (
+    !nestedVal(attrs.outer, "material") &&
+    (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+  ) {
+    const blob = `${localeVal(attrs.material)} ${title}`.toLowerCase();
+    let material = "Nylon";
+    if (/poli[eé]ster|polyester/.test(blob)) material = "Poliéster";
+    else if (/nylon/.test(blob)) material = "Nylon";
+    else if (/couro/.test(blob)) material = "Couro";
+    attrs.outer = [
+      {
+        material: [{ language_tag: "pt_BR", value: material }],
+        marketplace_id: marketplaceId,
+      },
+    ];
+    changed = true;
+  }
+  if (
+    !localeVal(attrs.lining_description) &&
+    (isBackpack || isBag || isHandbagFamily)
+  ) {
+    attrs.lining_description = attrLocalizedTextDraft("Poliéster", marketplaceId);
+    changed = true;
+  }
+  if (
+    !localeVal(attrs.age_range_description) &&
+    (isBackpack || isBag || isHandbagFamily)
+  ) {
+    attrs.age_range_description = attrLocalizedTextDraft("Adulto", marketplaceId);
+    changed = true;
+  }
+
+  if (!changed) return draft;
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: { ...draft.payload, attributes: attrs },
+  };
   const reasons = getAmazonPublishBlockReasons(next);
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
@@ -676,6 +854,27 @@ export function updateAmazonListPrice(
 }
 
 export function getAmazonItemDimensions(draft: N8nAmazonListingDraft): AmazonItemDimensions | null {
+  const depthRaw = draft.payload.attributes?.item_depth_width_height;
+  if (Array.isArray(depthRaw) && depthRaw[0] && typeof depthRaw[0] === "object") {
+    const first = depthRaw[0] as {
+      depth?: { value?: number; unit?: string };
+      width?: { value?: number; unit?: string };
+      height?: { value?: number; unit?: string };
+    };
+    if (
+      typeof first.depth?.value === "number" &&
+      typeof first.width?.value === "number" &&
+      typeof first.height?.value === "number"
+    ) {
+      return {
+        length: first.depth.value,
+        width: first.width.value,
+        height: first.height.value,
+        unit: first.depth.unit === "inches" ? "inches" : "centimeters",
+      };
+    }
+  }
+
   const raw = draft.payload.attributes?.item_length_width_height;
   if (!Array.isArray(raw) || !raw[0] || typeof raw[0] !== "object") return null;
   const first = raw[0] as {
@@ -703,21 +902,37 @@ export function updateAmazonItemDimensions(
   dims: AmazonItemDimensions,
 ): N8nAmazonListingDraft {
   const marketplaceId = marketplaceIdOf(draft);
+  const useDepth = productTypeUsesDepthDimensions(draft.payload.productType || "");
+  const unit = useDepth ? "centimeters" : dims.unit;
+  const nextAttrs: Record<string, unknown> = {
+    ...draft.payload.attributes,
+  };
+  if (useDepth) {
+    nextAttrs.item_depth_width_height = [
+      {
+        depth: { value: dims.length, unit },
+        width: { value: dims.width, unit },
+        height: { value: dims.height, unit },
+        marketplace_id: marketplaceId,
+      },
+    ];
+    delete nextAttrs.item_length_width_height;
+  } else {
+    nextAttrs.item_length_width_height = [
+      {
+        length: { value: dims.length, unit: dims.unit },
+        width: { value: dims.width, unit: dims.unit },
+        height: { value: dims.height, unit: dims.unit },
+        marketplace_id: marketplaceId,
+      },
+    ];
+    delete nextAttrs.item_depth_width_height;
+  }
   const next: N8nAmazonListingDraft = {
     ...draft,
     payload: {
       ...draft.payload,
-      attributes: {
-        ...draft.payload.attributes,
-        item_length_width_height: [
-          {
-            length: { value: dims.length, unit: dims.unit },
-            width: { value: dims.width, unit: dims.unit },
-            height: { value: dims.height, unit: dims.unit },
-            marketplace_id: marketplaceId,
-          },
-        ],
-      },
+      attributes: nextAttrs,
     },
   };
   const reasons = getAmazonPublishBlockReasons(next);
@@ -765,12 +980,19 @@ export function suggestAmazonProductType(title: string): string | null {
   return null;
 }
 
-/** Product types de bolsa/mala que a Amazon BR costuma exigir `compartment`. */
+/**
+ * Só product types cujo schema BR realmente tem `compartment`.
+ * NÃO usar /BAG/ genérico — casa com BACKPACK e a Amazon ignora o atributo.
+ */
 export function productTypeNeedsCompartment(productType: string): boolean {
   const type = (productType || "").toUpperCase();
-  return /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
-    type,
-  );
+  return type === "DUFFEL_BAG" || type.includes("DUFFEL");
+}
+
+/** BACKPACK usa P×L×A (`item_depth_width_height`), não C×L×A. */
+export function productTypeUsesDepthDimensions(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return type === "BACKPACK" || type.endsWith("_BACKPACK");
 }
 
 export function suggestAmazonCompartment(productType: string, title = ""): string {
@@ -915,7 +1137,16 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   }
   const dims = getAmazonItemDimensions(draft);
   if (!dims || dims.length <= 0 || dims.width <= 0 || dims.height <= 0) {
-    reasons.push("Informe as dimensões do item (C × L × A) com unidade.");
+    const dimLabel = productTypeUsesDepthDimensions(draft.payload.productType || "")
+      ? "P × L × A"
+      : "C × L × A";
+    reasons.push(`Informe as dimensões do item (${dimLabel}) com unidade.`);
+  }
+  const longBullet = getAmazonBulletPoints(draft).find((b) => b.length > AMAZON_BULLET_POINT_MAX);
+  if (longBullet) {
+    reasons.push(
+      `Cada bullet point deve ter no máximo ${AMAZON_BULLET_POINT_MAX} caracteres.`,
+    );
   }
   if (getAmazonListPrice(draft) <= 0) {
     reasons.push("Informe o list_price (preço sugerido com impostos).");

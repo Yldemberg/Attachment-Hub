@@ -21,7 +21,12 @@ import {
   type N8nListingDraft,
   type N8nAmazonListingDraft,
 } from "./n8n-listings";
-import { createAmazonListing, ensurePositiveAmazonQuantity, AMAZON_MIN_QUANTITY } from "./amazon-listings";
+import {
+  createAmazonListing,
+  ensurePositiveAmazonQuantity,
+  productTypeNeedsCompartment,
+  AMAZON_MIN_QUANTITY,
+} from "./amazon-listings";
 
 export type ListingPrepareJobStatus = ListingPrepareJob["status"];
 
@@ -590,17 +595,12 @@ export async function publishDraftOnAmazon(
     },
   ];
 
-  // Garante compartment no draft antes do put (formato aninhado do schema DUFFEL_BAG)
+  // compartment só para DUFFEL_BAG (schema BR). Em BACKPACK a Amazon ignora/rejeita.
   {
-    const pt = (p.productType || "").toUpperCase();
-    const needs =
-      /DUFFEL|BAG|LUGGAGE|BACKPACK|HANDBAG|TOTE|MESSENGER|COSMETIC_CASE|PURSE|BRIEFCASE|SUITCASE|WEEKENDER/.test(
-        pt,
-      );
-    if (needs) {
-      const marketplaceId =
-        (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
-        "A2Q3Y263D00KWC";
+    const marketplaceId =
+      (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
+      "A2Q3Y263D00KWC";
+    if (productTypeNeedsCompartment(p.productType || "")) {
       const first =
         Array.isArray(attrsClean.compartment) && attrsClean.compartment[0]
           ? (attrsClean.compartment[0] as {
@@ -629,6 +629,9 @@ export async function publishDraftOnAmazon(
       if (!Array.isArray(attrsClean.number_of_compartments) || !attrsClean.number_of_compartments[0]) {
         attrsClean.number_of_compartments = [{ value: 1, marketplace_id: marketplaceId }];
       }
+    } else {
+      delete attrsClean.compartment;
+      delete attrsClean.number_of_compartments;
     }
   }
 

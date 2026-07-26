@@ -23,9 +23,11 @@ import {
   getAmazonQuantity,
   getAmazonScrapedAttributes,
   listAmazonExtraTextAttributes,
+  AMAZON_BULLET_POINT_MAX,
   normalizeAmazonCountryCode,
   normalizeAmazonDraftForReview,
   productTypeNeedsCompartment,
+  productTypeUsesDepthDimensions,
   setAmazonImageUrls,
   suggestAmazonCompartment,
   suggestAmazonProductType,
@@ -131,6 +133,7 @@ export function AmazonListingReviewForm({
   const modelName = getAmazonModelName(draft);
   const compartment = getAmazonCompartment(draft);
   const needsCompartment = productTypeNeedsCompartment(draft.payload.productType || "");
+  const usesDepthDims = productTypeUsesDepthDimensions(draft.payload.productType || "");
   const browseNodeId = getAmazonBrowseNodeId(draft);
   const dims = getAmazonItemDimensions(draft) || {
     length: 0,
@@ -689,7 +692,8 @@ export function AmazonListingReviewForm({
 
         <div className="space-y-1.5">
           <Label>
-            Dimensões do item (C × L × A) <span className="text-destructive">*</span>
+            Dimensões do item ({usesDepthDims ? "P × L × A" : "C × L × A"}){" "}
+            <span className="text-destructive">*</span>
           </Label>
           <div className="grid grid-cols-4 gap-2">
             <Input
@@ -705,7 +709,7 @@ export function AmazonListingReviewForm({
                   }),
                 )
               }
-              placeholder="Comp."
+              placeholder={usesDepthDims ? "Prof." : "Comp."}
               className="h-9"
             />
             <Input
@@ -762,7 +766,8 @@ export function AmazonListingReviewForm({
       <section className="space-y-3">
         <SectionTitle>Bullet points (até 5)</SectionTitle>
         <p className="text-[11px] text-muted-foreground">
-          Extraídos das features / descrição do produto na Amazon.
+          Extraídos das features / descrição do produto na Amazon. Máx.{" "}
+          {AMAZON_BULLET_POINT_MAX} caracteres por tópico.
         </p>
         <div className="space-y-2">
           {bulletSlots.map((value, index) => (
