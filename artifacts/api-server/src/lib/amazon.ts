@@ -14,6 +14,22 @@ export function getAmazonMarketplaceId(): string {
   return process.env.AMAZON_MARKETPLACE_ID?.trim() || AMAZON_BR_MARKETPLACE_ID;
 }
 
+/** Credenciais do app LWA (compartilhadas entre todas as lojas / CNPJs). */
+export function getAmazonLwaAppCredentials(): { clientId: string; clientSecret: string } {
+  const clientId = process.env.AMAZON_LWA_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.AMAZON_LWA_CLIENT_SECRET?.trim() ?? "";
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "Amazon SP-API não configurada: defina AMAZON_LWA_CLIENT_ID e AMAZON_LWA_CLIENT_SECRET",
+    );
+  }
+  return { clientId, clientSecret };
+}
+
+/**
+ * Credenciais padrão via env (1ª loja / legado).
+ * Lojas adicionais usam refresh token + seller id no body do connect (mesmo app LWA).
+ */
 export function getAmazonEnvCredentials(): {
   clientId: string;
   clientSecret: string;
@@ -21,17 +37,18 @@ export function getAmazonEnvCredentials(): {
   sellerId: string;
   marketplaceId: string;
 } {
-  const clientId = process.env.AMAZON_LWA_CLIENT_ID?.trim() ?? "";
-  const clientSecret = process.env.AMAZON_LWA_CLIENT_SECRET?.trim() ?? "";
+  const { clientId, clientSecret } = getAmazonLwaAppCredentials();
   const refreshToken = process.env.AMAZON_REFRESH_TOKEN?.trim() ?? "";
   const sellerId = process.env.AMAZON_SELLER_ID?.trim() ?? "";
-  if (!clientId || !clientSecret || !refreshToken) {
+  if (!refreshToken) {
     throw new Error(
-      "Amazon SP-API não configurada: defina AMAZON_LWA_CLIENT_ID, AMAZON_LWA_CLIENT_SECRET e AMAZON_REFRESH_TOKEN",
+      "Amazon SP-API: defina AMAZON_REFRESH_TOKEN ou informe refreshToken no connect da conta",
     );
   }
   if (!sellerId) {
-    throw new Error("Amazon SP-API: defina AMAZON_SELLER_ID (ID do vendedor / Selling Partner)");
+    throw new Error(
+      "Amazon SP-API: defina AMAZON_SELLER_ID ou informe sellerId no connect da conta",
+    );
   }
   return {
     clientId,
@@ -106,11 +123,15 @@ async function refreshAccessToken(accountId: string): Promise<string> {
 
   if (!account) throw new Error("Account not found");
 
-  const env = getAmazonEnvCredentials();
-  const refreshToken = account.refreshToken || env.refreshToken;
+  const lwa = getAmazonLwaAppCredentials();
+  const refreshToken =
+    account.refreshToken?.trim() || process.env.AMAZON_REFRESH_TOKEN?.trim() || "";
+  if (!refreshToken) {
+    throw new Error("Conta Amazon sem refresh token. Reconecte a loja em Integrações.");
+  }
 
   try {
-    const data = await exchangeRefreshTokenForAccess(refreshToken, env.clientId, env.clientSecret);
+    const data = await exchangeRefreshTokenForAccess(refreshToken, lwa.clientId, lwa.clientSecret);
     const expiresAt = new Date(Date.now() + data.expires_in * 1000);
     await db
       .update(accountsTable)

@@ -3,12 +3,13 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { accountsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNull } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
 import {
   exchangeRefreshTokenForAccess,
   fetchMarketplaceParticipationsWithToken,
   getAmazonEnvCredentials,
+  getAmazonLwaAppCredentials,
   getAmazonMarketplaceId,
 } from "../lib/amazon";
 import { syncAccount } from "../lib/sync";
@@ -78,13 +79,60 @@ router.get("/accounts/connect/url", ...auth, async (req, res) => {
 
 router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
   try {
-    const env = getAmazonEnvCredentials();
-    const body = (req.body ?? {}) as { sellerId?: string };
-    const sellerId = (typeof body.sellerId === "string" && body.sellerId.trim()) || env.sellerId;
+    const lwa = getAmazonLwaAppCredentials();
+    const body = (req.body ?? {}) as {
+      sellerId?: string;
+      refreshToken?: string;
+      marketplaceId?: string;
+      storeName?: string;
+    };
 
-    const tokenData = await exchangeRefreshTokenForAccess(env.refreshToken, env.clientId, env.clientSecret);
+    const bodyRefresh =
+      typeof body.refreshToken === "string" ? body.refreshToken.trim() : "";
+    const bodySellerId = typeof body.sellerId === "string" ? body.sellerId.trim() : "";
+    const bodyStoreName =
+      typeof body.storeName === "string" ? body.storeName.trim() : "";
+    const bodyMarketplaceId =
+      typeof body.marketplaceId === "string" ? body.marketplaceId.trim() : "";
+
+    if ((bodyRefresh && !bodySellerId) || (!bodyRefresh && bodySellerId)) {
+      res.status(400).json({
+        error: {
+          code: "BAD_REQUEST",
+          message: "Informe sellerId e refreshToken juntos (ou omita ambos para usar o env do servidor).",
+        },
+      });
+      return;
+    }
+
+    let refreshToken = bodyRefresh;
+    let sellerId = bodySellerId;
+
+    // Sem token no body: usa env legado (1ª loja / setup privado único).
+    if (!refreshToken || !sellerId) {
+      const env = getAmazonEnvCredentials();
+      if (!refreshToken) refreshToken = env.refreshToken;
+      if (!sellerId) sellerId = env.sellerId;
+    }
+
+    if (!refreshToken || !sellerId) {
+      res.status(400).json({
+        error: {
+          code: "BAD_REQUEST",
+          message:
+            "Informe sellerId e refreshToken da loja Amazon (ou configure AMAZON_SELLER_ID / AMAZON_REFRESH_TOKEN no servidor).",
+        },
+      });
+      return;
+    }
+
+    const tokenData = await exchangeRefreshTokenForAccess(
+      refreshToken,
+      lwa.clientId,
+      lwa.clientSecret,
+    );
     const participations = await fetchMarketplaceParticipationsWithToken(tokenData.access_token);
-    const marketplaceId = getAmazonMarketplaceId();
+    const marketplaceId = bodyMarketplaceId || getAmazonMarketplaceId();
     const br = participations.find((p) => p.marketplace.id === marketplaceId) ?? participations[0];
 
     if (!br?.participation?.isParticipating) {
@@ -100,11 +148,54 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
     const db = getDb();
     const userId = req.user!.id;
+    const storedRefresh = tokenData.refresh_token ?? refreshToken;
+    const storeName = bodyStoreName || br.storeName || "Amazon";
 
-    const [existing] = await db
+    // Mesmo Seller ID não pode pertencer a outro usuário iHub
+    const [linkedElsewhere] = await db
+      .select({ id: accountsTable.id, userId: accountsTable.userId })
+      .from(accountsTable)
+      .where(
+        and(eq(accountsTable.platform, "amazon"), eq(accountsTable.amazonSellerId, sellerId)),
+      );
+
+    if (linkedElsewhere && linkedElsewhere.userId !== userId) {
+      res.status(409).json({
+        error: {
+          code: "ACCOUNT_ALREADY_LINKED",
+          message: "Este Seller ID Amazon já está vinculado a outra conta iHub.",
+        },
+      });
+      return;
+    }
+
+    // Upsert por seller (permite várias lojas/CNPJs no mesmo usuário, mesmo app LWA)
+    const [existingBySeller] = await db
       .select()
       .from(accountsTable)
-      .where(and(eq(accountsTable.userId, userId), eq(accountsTable.platform, "amazon")));
+      .where(
+        and(
+          eq(accountsTable.userId, userId),
+          eq(accountsTable.platform, "amazon"),
+          eq(accountsTable.amazonSellerId, sellerId),
+        ),
+      );
+
+    // Legado: uma linha amazon sem seller id — atualiza em vez de duplicar
+    let existing = existingBySeller;
+    if (!existing) {
+      const [orphan] = await db
+        .select()
+        .from(accountsTable)
+        .where(
+          and(
+            eq(accountsTable.userId, userId),
+            eq(accountsTable.platform, "amazon"),
+            or(isNull(accountsTable.amazonSellerId), eq(accountsTable.amazonSellerId, "")),
+          ),
+        );
+      existing = orphan;
+    }
 
     let account: typeof accountsTable.$inferSelect;
     if (existing) {
@@ -113,9 +204,9 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
         .set({
           amazonSellerId: sellerId,
           amazonMarketplaceId: br.marketplace.id,
-          amazonStoreName: br.storeName ?? existing.amazonStoreName,
+          amazonStoreName: storeName,
           accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token ?? env.refreshToken,
+          refreshToken: storedRefresh,
           tokenExpiresAt: expiresAt,
           isActive: true,
           updatedAt: new Date(),
@@ -131,9 +222,9 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
           platform: "amazon",
           amazonSellerId: sellerId,
           amazonMarketplaceId: br.marketplace.id,
-          amazonStoreName: br.storeName ?? "Amazon",
+          amazonStoreName: storeName,
           accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token ?? env.refreshToken,
+          refreshToken: storedRefresh,
           tokenExpiresAt: expiresAt,
           isActive: true,
         })

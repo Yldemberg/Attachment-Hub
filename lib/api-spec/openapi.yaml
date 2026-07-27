@@ -127,7 +127,11 @@ paths:
     post:
       operationId: connectAmazonAccount
       tags: [accounts]
-      summary: Connect private Amazon SP-API seller account using server env credentials
+      summary: Connect an Amazon SP-API seller (same LWA app, per-seller refresh token)
+      description: |
+        Uses the shared server LWA app (AMAZON_LWA_CLIENT_ID / SECRET).
+        Pass sellerId + refreshToken to connect an additional store/CNPJ.
+        Omitting them falls back to AMAZON_SELLER_ID / AMAZON_REFRESH_TOKEN (legacy single-seller env).
       security:
         - bearerAuth: []
       requestBody:
@@ -139,7 +143,16 @@ paths:
               properties:
                 sellerId:
                   type: string
-                  description: Optional override for AMAZON_SELLER_ID
+                  description: Amazon Selling Partner ID for this store
+                refreshToken:
+                  type: string
+                  description: LWA refresh token from authorizing this seller on the shared app
+                marketplaceId:
+                  type: string
+                  description: Optional marketplace id (default AMAZON_MARKETPLACE_ID / BR)
+                storeName:
+                  type: string
+                  description: Optional display name for the store in iHub
       responses:
         "201":
           description: Amazon account connected
@@ -151,6 +164,12 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Seller already linked to another iHub user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: Amazon API error
           content:
@@ -158,7 +177,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Amazon credentials not configured
+          description: Amazon LWA app credentials not configured
           content:
             application/json:
               schema:

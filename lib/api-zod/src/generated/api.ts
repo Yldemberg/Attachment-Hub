@@ -80,13 +80,31 @@ export const GetConnectUrlResponse = zod.object({
 });
 
 /**
- * @summary Connect private Amazon SP-API seller account using server env credentials
+ * Uses the shared server LWA app (AMAZON_LWA_CLIENT_ID / SECRET).
+Pass sellerId + refreshToken to connect an additional store/CNPJ.
+Omitting them falls back to AMAZON_SELLER_ID / AMAZON_REFRESH_TOKEN (legacy single-seller env).
+
+ * @summary Connect an Amazon SP-API seller (same LWA app, per-seller refresh token)
  */
 export const ConnectAmazonAccountBody = zod.object({
   sellerId: zod
     .string()
     .optional()
-    .describe("Optional override for AMAZON_SELLER_ID"),
+    .describe("Amazon Selling Partner ID for this store"),
+  refreshToken: zod
+    .string()
+    .optional()
+    .describe(
+      "LWA refresh token from authorizing this seller on the shared app",
+    ),
+  marketplaceId: zod
+    .string()
+    .optional()
+    .describe("Optional marketplace id (default AMAZON_MARKETPLACE_ID \/ BR)"),
+  storeName: zod
+    .string()
+    .optional()
+    .describe("Optional display name for the store in iHub"),
 });
 
 /**

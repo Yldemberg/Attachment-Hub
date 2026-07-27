@@ -28,6 +28,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -130,25 +138,66 @@ function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" }) {
 }
 
 function ConnectAmazonButton() {
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sellerId, setSellerId] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [storeName, setStoreName] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [useServerEnv, setUseServerEnv] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const resetForm = () => {
+    setSellerId("");
+    setRefreshToken("");
+    setStoreName("");
+    setShowToken(false);
+    setUseServerEnv(false);
+  };
+
   const handleConnect = async () => {
+    if (!useServerEnv && (!sellerId.trim() || !refreshToken.trim())) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Informe o Seller ID e o Refresh Token da loja Amazon.",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const { connectAmazonAccount } = await import("@workspace/api-client-react");
-      await connectAmazonAccount({});
+      const body = useServerEnv
+        ? {}
+        : {
+            sellerId: sellerId.trim(),
+            refreshToken: refreshToken.trim(),
+            ...(storeName.trim() ? { storeName: storeName.trim() } : {}),
+          };
+      await connectAmazonAccount(body);
       toast({
         title: "Amazon conectada",
-        description: "Conta Amazon vinculada. A sincronização do catálogo foi iniciada.",
+        description: useServerEnv
+          ? "Conta Amazon vinculada via credenciais do servidor. Sincronização iniciada."
+          : `Loja ${storeName.trim() || sellerId.trim()} vinculada. Sincronização iniciada.`,
       });
       queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+      resetForm();
+      setOpen(false);
     } catch (err) {
-      let description = "Não foi possível conectar a Amazon. Verifique as credenciais SP-API no servidor.";
+      let description =
+        "Não foi possível conectar a Amazon. Verifique Seller ID, refresh token e o app LWA no servidor.";
       if (err instanceof ApiError) {
         if (err.status === 503) {
-          description = "Credenciais Amazon não configuradas no servidor (AMAZON_LWA_* / AMAZON_SELLER_ID).";
+          description =
+            "App Amazon não configurado no servidor (AMAZON_LWA_CLIENT_ID / AMAZON_LWA_CLIENT_SECRET).";
+        } else if (err.status === 409) {
+          const body = err.data as { error?: { message?: string } } | undefined;
+          description =
+            body?.error?.message ??
+            "Este Seller ID já está vinculado a outra conta iHub.";
         } else if (err.status === 502 || err.status === 400) {
           const body = err.data as { error?: { message?: string } } | undefined;
           description = body?.error?.message ?? description;
@@ -163,16 +212,117 @@ function ConnectAmazonButton() {
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="mt-3 h-8 text-xs w-full"
-      disabled={loading}
-      onClick={handleConnect}
-    >
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-      Conectar Amazon
-    </Button>
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-3 h-8 text-xs w-full"
+        onClick={() => setOpen(true)}
+      >
+        Conectar Amazon
+      </Button>
+
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) resetForm();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Conectar conta Amazon</DialogTitle>
+            <DialogDescription>
+              Use o mesmo app LWA do servidor. Cada loja/CNPJ precisa do próprio Seller ID e
+              Refresh Token (autorização no Seller Central).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={useServerEnv}
+                onChange={(e) => setUseServerEnv(e.target.checked)}
+              />
+              <span>
+                Usar credenciais do servidor (
+                <code className="text-[10px]">AMAZON_SELLER_ID</code> /{" "}
+                <code className="text-[10px]">AMAZON_REFRESH_TOKEN</code>)
+              </span>
+            </label>
+
+            {!useServerEnv ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="amazon-seller-id">Seller ID</Label>
+                  <Input
+                    id="amazon-seller-id"
+                    value={sellerId}
+                    onChange={(e) => setSellerId(e.target.value)}
+                    placeholder="Ex.: A1XXXXXXX"
+                    className="h-9 font-mono text-sm"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="amazon-refresh-token">Refresh Token</Label>
+                  <div className="relative">
+                    <Input
+                      id="amazon-refresh-token"
+                      type={showToken ? "text" : "password"}
+                      value={refreshToken}
+                      onChange={(e) => setRefreshToken(e.target.value)}
+                      placeholder="Atzr|…"
+                      className="h-9 font-mono text-sm pr-10"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowToken((v) => !v)}
+                      aria-label={showToken ? "Ocultar token" : "Mostrar token"}
+                    >
+                      {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="amazon-store-name">
+                    Nome da loja{" "}
+                    <span className="text-muted-foreground font-normal">(opcional)</span>
+                  </Label>
+                  <Input
+                    id="amazon-store-name"
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    placeholder="Ex.: Loja CNPJ 2"
+                    className="h-9"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground rounded-lg border border-border bg-muted/40 px-3 py-2">
+                Vai conectar a loja definida nas variáveis de ambiente do servidor. Para uma
+                segunda conta (outro CNPJ), desmarque esta opção e cole o token da nova
+                autorização.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConnect} disabled={loading} className="gap-2">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Conectar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -579,11 +729,13 @@ export default function Integrations() {
             <div className="rounded-lg border border-card-border bg-background p-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-foreground">Amazon</span>
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                  Em breve
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  Ativo
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">Conector para catálogo, estoque e anúncios via SP-API.</p>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Mesmo app LWA; cada loja/CNPJ com seu Seller ID e Refresh Token.
+              </p>
               <ConnectAmazonButton />
             </div>
           </div>
@@ -649,6 +801,11 @@ export default function Integrations() {
                       </div>
                       {!isAmazon && account.mlEmail && (
                         <p className="text-muted-foreground text-xs mt-0.5">{account.mlEmail}</p>
+                      )}
+                      {isAmazon && account.amazonSellerId && (
+                        <p className="text-muted-foreground text-xs mt-0.5 font-mono">
+                          Seller {account.amazonSellerId}
+                        </p>
                       )}
                       {isAmazon && account.amazonMarketplaceId && (
                         <p className="text-muted-foreground text-xs mt-0.5">
@@ -727,7 +884,11 @@ export default function Integrations() {
           <h3 className="text-foreground text-sm font-medium mb-2">Como funciona</h3>
           <div className="space-y-2 text-muted-foreground text-xs">
             <p>1. Mercado Livre: clique em "Conectar conta ML" e autorize no OAuth</p>
-            <p>2. Amazon: configure AMAZON_* no servidor e clique em "Conectar Amazon"</p>
+            <p>
+              2. Amazon: mantenha o mesmo app (
+              <code className="text-[10px]">AMAZON_LWA_*</code>) e conecte cada loja com Seller
+              ID + Refresh Token
+            </p>
             <p>3. A sincronização inicia automaticamente após conectar</p>
             <p>4. Use "Sincronizar" para atualizar catálogo e estoque</p>
           </div>

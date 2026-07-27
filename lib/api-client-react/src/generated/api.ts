@@ -422,7 +422,11 @@ export function useGetConnectUrl<
 }
 
 /**
- * @summary Connect private Amazon SP-API seller account using server env credentials
+ * Uses the shared server LWA app (AMAZON_LWA_CLIENT_ID / SECRET).
+Pass sellerId + refreshToken to connect an additional store/CNPJ.
+Omitting them falls back to AMAZON_SELLER_ID / AMAZON_REFRESH_TOKEN (legacy single-seller env).
+
+ * @summary Connect an Amazon SP-API seller (same LWA app, per-seller refresh token)
  */
 export const getConnectAmazonAccountUrl = () => {
   return `/api/accounts/amazon/connect`;
@@ -488,7 +492,7 @@ export type ConnectAmazonAccountMutationError = ErrorType<
 >;
 
 /**
- * @summary Connect private Amazon SP-API seller account using server env credentials
+ * @summary Connect an Amazon SP-API seller (same LWA app, per-seller refresh token)
  */
 export const useConnectAmazonAccount = <
   TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,

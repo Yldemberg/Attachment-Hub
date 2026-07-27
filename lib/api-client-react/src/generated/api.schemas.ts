@@ -1153,8 +1153,14 @@ export type GetConnectUrl200 = {
 };
 
 export type ConnectAmazonAccountBody = {
-  /** Optional override for AMAZON_SELLER_ID */
+  /** Amazon Selling Partner ID for this store */
   sellerId?: string;
+  /** LWA refresh token from authorizing this seller on the shared app */
+  refreshToken?: string;
+  /** Optional marketplace id (default AMAZON_MARKETPLACE_ID / BR) */
+  marketplaceId?: string;
+  /** Optional display name for the store in iHub */
+  storeName?: string;
 };
 
 export type HandleConnectCallbackParams = {
