@@ -1189,6 +1189,11 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   if (getAmazonGtin(draft)) {
     reasons.push("Remova o GTIN/EAN ou marque o produto como isento (este fluxo não envia código de barras).");
   }
+  if (!hasAmazonGtinExemption(draft)) {
+    reasons.push(
+      'Marque "ID externa de produto" (produto sem GTIN/EAN) antes de publicar na Amazon.',
+    );
+  }
   if (Array.isArray(draft._bloqueios) && draft.payload.productType === "PRODUCT") {
     for (const b of draft._bloqueios) {
       if (typeof b === "string" && b.trim() && !reasons.includes(b.trim())) {

@@ -23,6 +23,7 @@ import {
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
   getAmazonScrapedAttributes,
+  hasAmazonGtinExemption,
   listAmazonExtraTextAttributes,
   AMAZON_BULLET_POINT_MAX,
   isValidAmazonMediaUrl,
@@ -594,12 +595,14 @@ export function AmazonListingReviewForm({
 
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
           <label className="flex items-center gap-2.5 text-sm cursor-default">
-            <Checkbox checked disabled />
-            <span>Produto isento de GTIN/EAN</span>
+            <Checkbox checked={hasAmazonGtinExemption(draft)} disabled />
+            <span>
+              ID externa de produto <span className="text-destructive">*</span>
+            </span>
           </label>
           <p className="text-[11px] text-muted-foreground pl-7">
-            Marcado automaticamente. O iHub não envia código de barras — na Amazon aparece que o
-            produto não possui GTIN/EAN.
+            Obrigatório para anúncios novos: produto sem GTIN/EAN (isenção declarada à Amazon).
+            Marcado automaticamente pelo iHub.
           </p>
         </div>
 

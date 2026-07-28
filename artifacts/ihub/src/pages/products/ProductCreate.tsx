@@ -17,6 +17,7 @@ import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
 import {
   N8N_CREATE_STEPS,
   PREPARE_JOB_TIMEOUT_MS,
+  applyAmazonGtinExemption,
   canPublishDraft,
   getPublishBlockReasons,
   isAmazonListingDraft,
@@ -222,8 +223,11 @@ export default function ProductCreate() {
   };
 
   const handlePublish = async () => {
-    if (!draft || !canPublishDraft(draft)) {
-      const reasons = draft ? getPublishBlockReasons(draft) : ["Dados incompletos."];
+    const draftForPublish =
+      draft && isAmazonListingDraft(draft) ? applyAmazonGtinExemption(draft) : draft;
+
+    if (!draftForPublish || !canPublishDraft(draftForPublish)) {
+      const reasons = draftForPublish ? getPublishBlockReasons(draftForPublish) : ["Dados incompletos."];
       toast({
         variant: "destructive",
         title: "Revisão incompleta",
@@ -243,16 +247,16 @@ export default function ProductCreate() {
       return;
     }
 
-    const readyDraft: ListingPrepareDraft = isAmazonListingDraft(draft)
-      ? { ...draft, _pronto_para_publicar: true }
+    const readyDraft: ListingPrepareDraft = isAmazonListingDraft(draftForPublish)
+      ? draftForPublish
       : revalidateDraftReadiness({
-          ...draft,
+          ...draftForPublish,
           payload: {
-            ...draft.payload,
+            ...draftForPublish.payload,
             family_name:
-              draft.payload.family_name?.trim() ||
-              (draft.payload as { title?: string }).title?.trim() ||
-              draft.payload.family_name,
+              draftForPublish.payload.family_name?.trim() ||
+              (draftForPublish.payload as { title?: string }).title?.trim() ||
+              draftForPublish.payload.family_name,
           },
           _pronto_para_publicar: true,
         });
