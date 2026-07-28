@@ -80,6 +80,29 @@ export const GetConnectUrlResponse = zod.object({
 });
 
 /**
+ * Requires a public SP-API app with AMAZON_APPLICATION_ID, AMAZON_LWA_CLIENT_ID/SECRET,
+and AMAZON_REDIRECT_URI registered in Developer Central (e.g. https://host/api/amazon/callback).
+Draft apps should keep AMAZON_OAUTH_DRAFT=true (adds version=beta).
+
+ * @summary Get Amazon SP-API Website Authorization URL (public app OAuth)
+ */
+export const GetAmazonConnectUrlResponse = zod.object({
+  url: zod.string(),
+  state: zod.string(),
+});
+
+/**
+ * No JWT auth. Amazon redirects here after seller consent.
+ * @summary Amazon SP-API OAuth callback — exchange spapi_oauth_code for refresh token
+ */
+export const HandleAmazonConnectCallbackQueryParams = zod.object({
+  state: zod.coerce.string().optional(),
+  selling_partner_id: zod.coerce.string().optional(),
+  spapi_oauth_code: zod.coerce.string().optional(),
+  error: zod.coerce.string().optional(),
+});
+
+/**
  * Uses the shared server LWA app (AMAZON_LWA_CLIENT_ID / SECRET).
 Pass sellerId + refreshToken to connect an additional store/CNPJ.
 Omitting them falls back to AMAZON_SELLER_ID / AMAZON_REFRESH_TOKEN (legacy single-seller env).

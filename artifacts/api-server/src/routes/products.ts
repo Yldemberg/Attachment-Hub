@@ -53,6 +53,12 @@ import {
   buildListingPreparedCallbackUrl,
 } from "../lib/listing-prepare-jobs";
 import { N8nListingError, type N8nListingDraft } from "../lib/n8n-listings";
+import {
+  buildListingImagePublicUrl,
+  findListingImageFile,
+  ListingImageError,
+  saveListingImage,
+} from "../lib/listing-images";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -444,6 +450,22 @@ router.get("/products/categories/:categoryId/attributes", ...auth, async (req, r
   }
 });
 
+router.get("/products/listing-images/:imageId", async (req, res) => {
+  try {
+    const file = await findListingImageFile(String(req.params.imageId || ""));
+    if (!file) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.type(file.mimeType);
+    res.sendFile(file.absolutePath);
+  } catch (err) {
+    req.log.error({ err }, "Failed to serve listing image");
+    res.status(500).end();
+  }
+});
+
 router.post("/products/pictures", ...auth, async (req, res) => {
   try {
     const { accountId, imageBase64, mimeType } = req.body as {
@@ -459,9 +481,29 @@ router.post("/products/pictures", ...auth, async (req, res) => {
       res.status(400).json({ error: { code: "BAD_REQUEST", message: "Conta inválida" } });
       return;
     }
+
+    const db = getDb();
+    const [account] = await db
+      .select({ platform: accountsTable.platform })
+      .from(accountsTable)
+      .where(eq(accountsTable.id, accountId));
+
+    if (account?.platform === "amazon") {
+      const { id } = await saveListingImage(imageBase64, mimeType ?? "image/jpeg");
+      const url = buildListingImagePublicUrl(id, req);
+      res.json({ id, url });
+      return;
+    }
+
     const result = await uploadPicture(accountId, imageBase64, mimeType ?? "image/jpeg");
     res.json(result);
   } catch (err) {
+    if (err instanceof ListingImageError) {
+      res.status(err.statusCode).json({
+        error: { code: "BAD_REQUEST", message: err.message },
+      });
+      return;
+    }
     handleMlListingRouteError(err, res, req.log, "Failed to upload picture");
   }
 });

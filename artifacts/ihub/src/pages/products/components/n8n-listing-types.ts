@@ -92,6 +92,17 @@ export function getAmazonQuantity(draft: N8nAmazonListingDraft): number {
 /** Capa + até 8 adicionais (SP-API other_product_image_locator_1..8). */
 export const AMAZON_MAX_IMAGES = 9;
 
+export function isValidAmazonMediaUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith("data:")) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function getAmazonImageUrls(draft: N8nAmazonListingDraft): string[] {
   const urls: string[] = [];
   const main = draft.payload.attributes?.main_product_image_locator;
@@ -1116,6 +1127,12 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
     reasons.push("Informe estoque maior que zero (mínimo 1).");
   }
   if (getAmazonImageUrls(draft).length === 0) reasons.push("É necessário ao menos uma foto.");
+  const invalidImage = getAmazonImageUrls(draft).find((url) => !isValidAmazonMediaUrl(url));
+  if (invalidImage) {
+    reasons.push(
+      "As fotos precisam ser URLs públicas (https://). Remova imagens em base64 e envie novamente pelo upload.",
+    );
+  }
 
   if (!getAmazonAttrText(draft, "department").trim()) {
     reasons.push("Informe o department (ex.: beauty, handbags).");

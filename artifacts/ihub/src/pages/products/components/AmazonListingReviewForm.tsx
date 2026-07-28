@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, ImagePlus, Loader2, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useUploadProductPicture } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +25,7 @@ import {
   getAmazonScrapedAttributes,
   listAmazonExtraTextAttributes,
   AMAZON_BULLET_POINT_MAX,
+  isValidAmazonMediaUrl,
   normalizeAmazonCountryCode,
   normalizeAmazonDraftForReview,
   productTypeNeedsCompartment,
@@ -148,10 +150,12 @@ export function AmazonListingReviewForm({
   const [loadingBrowseNodes, setLoadingBrowseNodes] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const appliedNormalize = useRef(false);
   const lastTitleFetch = useRef("");
   const lastBrowseFetch = useRef("");
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const { mutateAsync: uploadPicture } = useUploadProductPicture();
 
   // Isenção GTIN + model_name ≤ 120 + product_type heurístico ao abrir
   useEffect(() => {
@@ -289,8 +293,13 @@ export function AmazonListingReviewForm({
   const addImageUrl = (url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return;
+    if (!isValidAmazonMediaUrl(trimmed)) {
+      setImageUploadError("Informe uma URL pública válida (https://…).");
+      return;
+    }
     if (images.length >= AMAZON_MAX_IMAGES) return;
     if (images.includes(trimmed)) return;
+    setImageUploadError(null);
     onDraftChange(setAmazonImageUrls(draft, [...images, trimmed]));
   };
 
@@ -301,24 +310,44 @@ export function AmazonListingReviewForm({
 
   const handleImageFiles = async (files: FileList | null) => {
     if (!files?.length || uploadingImages) return;
+    if (!accountId) {
+      setImageUploadError("Selecione uma conta Amazon antes de enviar imagens.");
+      return;
+    }
+
     const remaining = AMAZON_MAX_IMAGES - images.length;
     const toProcess = Array.from(files).slice(0, remaining);
     if (toProcess.length === 0) return;
 
     setUploadingImages(true);
+    setImageUploadError(null);
     let next = [...images];
     try {
       for (const file of toProcess) {
-        if (file.size > 10 * 1024 * 1024) continue;
+        if (file.size > 10 * 1024 * 1024) {
+          setImageUploadError(`A imagem ${file.name} excede 10 MB.`);
+          continue;
+        }
         if (!file.type.startsWith("image/") && !/\.(jpe?g|png|gif|webp)$/i.test(file.name)) {
+          setImageUploadError(`Formato não suportado: ${file.name}. Use JPG, PNG ou WEBP.`);
           continue;
         }
         const base64 = await readFileAsBase64(file);
         const mime = file.type || "image/jpeg";
-        const dataUrl = `data:${mime};base64,${base64}`;
-        if (!next.includes(dataUrl)) next = [...next, dataUrl];
+        const uploaded = await uploadPicture({
+          data: { accountId, imageBase64: base64, mimeType: mime },
+        });
+        const url = uploaded.url?.trim();
+        if (url && !next.includes(url)) next = [...next, url];
       }
       onDraftChange(setAmazonImageUrls(draft, next));
+    } catch (err) {
+      const apiErr = err as { payload?: { error?: { message?: string } }; message?: string };
+      setImageUploadError(
+        apiErr.payload?.error?.message ??
+          apiErr.message ??
+          "Não foi possível enviar a imagem. Tente novamente.",
+      );
     } finally {
       setUploadingImages(false);
       if (imageInputRef.current) imageInputRef.current.value = "";
@@ -853,7 +882,12 @@ export function AmazonListingReviewForm({
         <SectionTitle>Fotos ({images.length}/{AMAZON_MAX_IMAGES})</SectionTitle>
         <p className="text-[11px] text-muted-foreground">
           A primeira foto é a capa. Use as setas para mudar a ordem, remova ou adicione novas.
+          Imagens enviadas pelo upload são hospedadas em URL pública (exigência da Amazon).
         </p>
+
+        {imageUploadError ? (
+          <p className="text-xs text-destructive">{imageUploadError}</p>
+        ) : null}
 
         {images.length === 0 ? (
           <p className="text-xs text-destructive">Adicione ao menos uma foto antes de publicar.</p>
@@ -916,7 +950,7 @@ export function AmazonListingReviewForm({
             type="button"
             variant="outline"
             size="sm"
-            disabled={uploadingImages || images.length >= AMAZON_MAX_IMAGES}
+            disabled={uploadingImages || images.length >= AMAZON_MAX_IMAGES || !accountId}
             onClick={() => imageInputRef.current?.click()}
           >
             {uploadingImages ? (

@@ -123,6 +123,72 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /accounts/amazon/connect/url:
+    get:
+      operationId: getAmazonConnectUrl
+      tags: [accounts]
+      summary: Get Amazon SP-API Website Authorization URL (public app OAuth)
+      description: |
+        Requires a public SP-API app with AMAZON_APPLICATION_ID, AMAZON_LWA_CLIENT_ID/SECRET,
+        and AMAZON_REDIRECT_URI registered in Developer Central (e.g. https://host/api/amazon/callback).
+        Draft apps should keep AMAZON_OAUTH_DRAFT=true (adds version=beta).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Amazon Seller Central consent URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  state:
+                    type: string
+                required: [url, state]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Amazon OAuth app credentials not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /amazon/callback:
+    get:
+      operationId: handleAmazonConnectCallback
+      tags: [accounts]
+      summary: Amazon SP-API OAuth callback — exchange spapi_oauth_code for refresh token
+      description: No JWT auth. Amazon redirects here after seller consent.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: selling_partner_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: spapi_oauth_code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to /integrations with success or error query
+        "200":
+          description: Unused (redirect response)
+
   /accounts/amazon/connect:
     post:
       operationId: connectAmazonAccount

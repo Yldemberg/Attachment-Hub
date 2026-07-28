@@ -1152,6 +1152,18 @@ export type GetConnectUrl200 = {
   state: string;
 };
 
+export type GetAmazonConnectUrl200 = {
+  url: string;
+  state: string;
+};
+
+export type HandleAmazonConnectCallbackParams = {
+  state?: string;
+  selling_partner_id?: string;
+  spapi_oauth_code?: string;
+  error?: string;
+};
+
 export type ConnectAmazonAccountBody = {
   /** Amazon Selling Partner ID for this store */
   sellerId?: string;

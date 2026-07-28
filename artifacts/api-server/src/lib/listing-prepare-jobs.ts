@@ -27,6 +27,7 @@ import {
   productTypeNeedsCompartment,
   AMAZON_MIN_QUANTITY,
 } from "./amazon-listings";
+import { isValidAmazonMediaUrl } from "./listing-images";
 
 export type ListingPrepareJobStatus = ListingPrepareJob["status"];
 
@@ -554,6 +555,13 @@ export async function publishDraftOnAmazon(
     if (Array.isArray(other) && other[0]?.media_location) {
       imageUrls.push(other[0].media_location);
     }
+  }
+  const invalidImage = imageUrls.find((url) => !isValidAmazonMediaUrl(url));
+  if (invalidImage) {
+    throw new N8nListingError(
+      "URL de imagem inválida para Amazon. Reenvie as fotos pelo upload (URLs https:// públicas).",
+      400,
+    );
   }
 
   const asin =

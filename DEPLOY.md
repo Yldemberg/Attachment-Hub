@@ -19,10 +19,13 @@ backend).
 | `ML_CLIENT_SECRET` | `AbCd1234…` | both | OAuth 2.0 client secret from Mercado Livre Developer Console. |
 | `ML_REDIRECT_URI` | `https://ihub.example.com/api/mercadolivre/callback` | both | Must match the redirect URI registered in Mercado Livre Developer Console. |
 | `ML_WEBHOOK_SECRET` | `your-ml-webhook-secret` | both | Used to verify the HMAC signature on incoming Mercado Livre webhook notifications. |
-| `AMAZON_LWA_CLIENT_ID` | `amzn1.application-oa2-client.…` | both* | LWA Client ID from Amazon SP-API private app (shared by all seller stores). |
-| `AMAZON_LWA_CLIENT_SECRET` | `…` | both* | LWA Client Secret from Amazon SP-API private app. |
-| `AMAZON_REFRESH_TOKEN` | `Atzr|…` | both* | Optional default refresh token for the first store. Additional CNPJs connect in Integrações with their own token (stored per `accounts` row). |
-| `AMAZON_SELLER_ID` | `AXXXXXXXXXXXX` | both* | Optional default Selling Partner ID for the first store. |
+| `AMAZON_LWA_CLIENT_ID` | `amzn1.application-oa2-client.…` | both* | LWA Client ID (shared by all seller stores). For browser OAuth use a **public** SP-API app. |
+| `AMAZON_LWA_CLIENT_SECRET` | `…` | both* | LWA Client Secret. |
+| `AMAZON_APPLICATION_ID` | `amzn1.sp.solution.…` | both* | SP-API Application ID used in Seller Central consent URL. Required for OAuth “Conectar Amazon”. |
+| `AMAZON_REDIRECT_URI` | `https://ihub.example.com/api/amazon/callback` | both* | Must match the Redirect URI registered on the Amazon app. |
+| `AMAZON_OAUTH_DRAFT` | `true` | both | When `true` (default), consent URL includes `version=beta` for draft apps. Set `false` after publication. |
+| `AMAZON_REFRESH_TOKEN` | `Atzr|…` | both* | Optional legacy/private-app fallback for the first store (manual connect). |
+| `AMAZON_SELLER_ID` | `AXXXXXXXXXXXX` | both* | Optional legacy default Selling Partner ID for manual connect. |
 | `AMAZON_MARKETPLACE_ID` | `A2Q3Y263D00KWC` | both | Amazon Brazil marketplace id (default `A2Q3Y263D00KWC`). |
 | `STRIPE_SECRET_KEY` | `sk_live_…` | both | Found in Stripe Dashboard › Developers › API Keys. Use `sk_test_…` in dev. |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | both | Stripe webhook endpoint signing secret from Stripe Dashboard › Webhooks. |

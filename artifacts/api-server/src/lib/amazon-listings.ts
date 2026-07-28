@@ -17,6 +17,7 @@ import {
   type AmazonListingsSubmissionResponse,
 } from "./amazon";
 import { logger } from "./logger";
+import { isValidAmazonMediaUrl } from "./listing-images";
 
 export class AmazonListingError extends Error {
   constructor(
@@ -831,6 +832,18 @@ function buildOfferAttributes(
   return attrs;
 }
 
+function assertValidAmazonImageUrls(urls: string[] | undefined): void {
+  if (!urls?.length) return;
+  for (const url of urls) {
+    if (!isValidAmazonMediaUrl(url)) {
+      throw new AmazonListingError(
+        "URL de imagem inválida para Amazon. Use URLs https:// públicas (não envie base64/data URI).",
+        "VALIDATION_ERROR",
+      );
+    }
+  }
+}
+
 function buildCreateAttributes(
   input: CreateAmazonListingInput,
   marketplaceId: string,
@@ -1083,6 +1096,25 @@ export async function createAmazonListing(
   }
   if (typeof input.price !== "number" || input.price <= 0) {
     throw new AmazonListingError("Preço inválido", "VALIDATION_ERROR");
+  }
+
+  assertValidAmazonImageUrls(input.imageUrls);
+  if (input.attributes) {
+    const imageUrlsFromAttrs: string[] = [];
+    const attrs = input.attributes as Record<string, unknown>;
+    const main = attrs.main_product_image_locator as Array<{ media_location?: string }> | undefined;
+    if (Array.isArray(main) && main[0]?.media_location) {
+      imageUrlsFromAttrs.push(main[0].media_location);
+    }
+    for (let i = 1; i <= 8; i++) {
+      const other = attrs[`other_product_image_locator_${i}`] as
+        | Array<{ media_location?: string }>
+        | undefined;
+      if (Array.isArray(other) && other[0]?.media_location) {
+        imageUrlsFromAttrs.push(other[0].media_location);
+      }
+    }
+    assertValidAmazonImageUrls(imageUrlsFromAttrs);
   }
 
   // Estoque 0 deixa a oferta inativa ("Oferta não encontrada") — força mínimo 1

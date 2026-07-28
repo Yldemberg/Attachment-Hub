@@ -34,6 +34,7 @@ import type {
   DuplicateProductRequest,
   DuplicateProductResponse,
   ErrorResponse,
+  GetAmazonConnectUrl200,
   GetConnectUrl200,
   GetDashboardSummaryParams,
   GetListingTemplate200,
@@ -47,6 +48,7 @@ import type {
   GetPromotionsSummaryParams,
   GetSalesChartParams,
   GetSalesReportParams,
+  HandleAmazonConnectCallbackParams,
   HandleConnectCallbackParams,
   HandleMercadoLivreWebhook200,
   HandleN8nListingPrepared200,
@@ -413,6 +415,191 @@ export function useGetConnectUrl<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetConnectUrlQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Requires a public SP-API app with AMAZON_APPLICATION_ID, AMAZON_LWA_CLIENT_ID/SECRET,
+and AMAZON_REDIRECT_URI registered in Developer Central (e.g. https://host/api/amazon/callback).
+Draft apps should keep AMAZON_OAUTH_DRAFT=true (adds version=beta).
+
+ * @summary Get Amazon SP-API Website Authorization URL (public app OAuth)
+ */
+export const getGetAmazonConnectUrlUrl = () => {
+  return `/api/accounts/amazon/connect/url`;
+};
+
+export const getAmazonConnectUrl = async (
+  options?: RequestInit,
+): Promise<GetAmazonConnectUrl200> => {
+  return customFetch<GetAmazonConnectUrl200>(getGetAmazonConnectUrlUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAmazonConnectUrlQueryKey = () => {
+  return [`/api/accounts/amazon/connect/url`] as const;
+};
+
+export const getGetAmazonConnectUrlQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAmazonConnectUrl>>,
+  TError = ErrorType<UnauthorizedResponse | ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAmazonConnectUrl>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAmazonConnectUrlQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAmazonConnectUrl>>
+  > = ({ signal }) => getAmazonConnectUrl({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAmazonConnectUrl>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAmazonConnectUrlQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAmazonConnectUrl>>
+>;
+export type GetAmazonConnectUrlQueryError = ErrorType<
+  UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Get Amazon SP-API Website Authorization URL (public app OAuth)
+ */
+
+export function useGetAmazonConnectUrl<
+  TData = Awaited<ReturnType<typeof getAmazonConnectUrl>>,
+  TError = ErrorType<UnauthorizedResponse | ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAmazonConnectUrl>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAmazonConnectUrlQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * No JWT auth. Amazon redirects here after seller consent.
+ * @summary Amazon SP-API OAuth callback — exchange spapi_oauth_code for refresh token
+ */
+export const getHandleAmazonConnectCallbackUrl = (
+  params?: HandleAmazonConnectCallbackParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/amazon/callback?${stringifiedParams}`
+    : `/api/amazon/callback`;
+};
+
+export const handleAmazonConnectCallback = async (
+  params?: HandleAmazonConnectCallbackParams,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getHandleAmazonConnectCallbackUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getHandleAmazonConnectCallbackQueryKey = (
+  params?: HandleAmazonConnectCallbackParams,
+) => {
+  return [`/api/amazon/callback`, ...(params ? [params] : [])] as const;
+};
+
+export const getHandleAmazonConnectCallbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof handleAmazonConnectCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: HandleAmazonConnectCallbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof handleAmazonConnectCallback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getHandleAmazonConnectCallbackQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof handleAmazonConnectCallback>>
+  > = ({ signal }) =>
+    handleAmazonConnectCallback(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof handleAmazonConnectCallback>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type HandleAmazonConnectCallbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof handleAmazonConnectCallback>>
+>;
+export type HandleAmazonConnectCallbackQueryError = ErrorType<void>;
+
+/**
+ * @summary Amazon SP-API OAuth callback — exchange spapi_oauth_code for refresh token
+ */
+
+export function useHandleAmazonConnectCallback<
+  TData = Awaited<ReturnType<typeof handleAmazonConnectCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: HandleAmazonConnectCallbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof handleAmazonConnectCallback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getHandleAmazonConnectCallbackQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

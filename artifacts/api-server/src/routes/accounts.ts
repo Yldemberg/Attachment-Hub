@@ -6,11 +6,14 @@ import { accountsTable } from "@workspace/db/schema";
 import { eq, and, or, isNull } from "drizzle-orm";
 import { getMlAuthUrl, exchangeCodeForTokens, ml, MlUser } from "../lib/mercadolivre";
 import {
+  exchangeAmazonAuthorizationCode,
   exchangeRefreshTokenForAccess,
   fetchMarketplaceParticipationsWithToken,
+  getAmazonAuthUrl,
   getAmazonEnvCredentials,
   getAmazonLwaAppCredentials,
   getAmazonMarketplaceId,
+  resolveAmazonOAuthRedirectUri,
 } from "../lib/amazon";
 import { syncAccount } from "../lib/sync";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state";
@@ -22,6 +25,13 @@ function buildRedirectUri(req: import("express").Request): string {
   const host = (forwardedHost ? forwardedHost.split(",")[0].trim() : req.headers["host"]) ?? "";
   const proto = (req.headers["x-forwarded-proto"] as string | undefined ?? (req.secure ? "https" : "http")).split(",")[0].trim();
   return `${proto}://${host}/api/callback`;
+}
+
+function buildAmazonRedirectUri(req: import("express").Request): string {
+  const forwardedHost = req.headers["x-forwarded-host"] as string | undefined;
+  const host = (forwardedHost ? forwardedHost.split(",")[0].trim() : req.headers["host"]) ?? "";
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined ?? (req.secure ? "https" : "http")).split(",")[0].trim();
+  return `${proto}://${host}/api/amazon/callback`;
 }
 
 function maskField(value: string | null | undefined): string | null {
@@ -77,6 +87,120 @@ router.get("/accounts/connect/url", ...auth, async (req, res) => {
   }
 });
 
+router.get("/accounts/amazon/connect/url", ...auth, async (req, res) => {
+  try {
+    const state = await createOAuthState(req.user!.id);
+    const redirectUri = resolveAmazonOAuthRedirectUri(buildAmazonRedirectUri(req));
+    const url = getAmazonAuthUrl(state, redirectUri);
+    res.json({ url, state });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Falha ao gerar URL Amazon OAuth";
+    req.log.error({ err }, "Failed to get Amazon connect URL");
+    if (message.includes("AMAZON_") || message.includes("Amazon OAuth")) {
+      res.status(503).json({ error: { code: "AMAZON_NOT_CONFIGURED", message } });
+      return;
+    }
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message } });
+  }
+});
+
+async function upsertAmazonSellerAccount(opts: {
+  userId: string;
+  sellerId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  marketplaceIdHint?: string;
+  storeNameHint?: string;
+}): Promise<typeof accountsTable.$inferSelect> {
+  const participations = await fetchMarketplaceParticipationsWithToken(opts.accessToken);
+  const marketplaceId = opts.marketplaceIdHint || getAmazonMarketplaceId();
+  const br = participations.find((p) => p.marketplace.id === marketplaceId) ?? participations[0];
+
+  if (!br?.participation?.isParticipating) {
+    const err = new Error("Conta Amazon sem participação ativa no marketplace configurado");
+    (err as Error & { code?: string }).code = "AMAZON_NOT_PARTICIPATING";
+    throw err;
+  }
+
+  const expiresAt = new Date(Date.now() + opts.expiresIn * 1000);
+  const db = getDb();
+  const storeName = opts.storeNameHint || br.storeName || "Amazon";
+
+  const [linkedElsewhere] = await db
+    .select({ id: accountsTable.id, userId: accountsTable.userId })
+    .from(accountsTable)
+    .where(
+      and(eq(accountsTable.platform, "amazon"), eq(accountsTable.amazonSellerId, opts.sellerId)),
+    );
+
+  if (linkedElsewhere && linkedElsewhere.userId !== opts.userId) {
+    const err = new Error("Este Seller ID Amazon já está vinculado a outra conta iHub.");
+    (err as Error & { code?: string }).code = "ACCOUNT_ALREADY_LINKED";
+    throw err;
+  }
+
+  const [existingBySeller] = await db
+    .select()
+    .from(accountsTable)
+    .where(
+      and(
+        eq(accountsTable.userId, opts.userId),
+        eq(accountsTable.platform, "amazon"),
+        eq(accountsTable.amazonSellerId, opts.sellerId),
+      ),
+    );
+
+  let existing = existingBySeller;
+  if (!existing) {
+    const [orphan] = await db
+      .select()
+      .from(accountsTable)
+      .where(
+        and(
+          eq(accountsTable.userId, opts.userId),
+          eq(accountsTable.platform, "amazon"),
+          or(isNull(accountsTable.amazonSellerId), eq(accountsTable.amazonSellerId, "")),
+        ),
+      );
+    existing = orphan;
+  }
+
+  if (existing) {
+    const [updated] = await db
+      .update(accountsTable)
+      .set({
+        amazonSellerId: opts.sellerId,
+        amazonMarketplaceId: br.marketplace.id,
+        amazonStoreName: storeName,
+        accessToken: opts.accessToken,
+        refreshToken: opts.refreshToken,
+        tokenExpiresAt: expiresAt,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(accountsTable.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  const [inserted] = await db
+    .insert(accountsTable)
+    .values({
+      userId: opts.userId,
+      platform: "amazon",
+      amazonSellerId: opts.sellerId,
+      amazonMarketplaceId: br.marketplace.id,
+      amazonStoreName: storeName,
+      accessToken: opts.accessToken,
+      refreshToken: opts.refreshToken,
+      tokenExpiresAt: expiresAt,
+      isActive: true,
+    })
+    .returning();
+  return inserted;
+}
+
 router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
   try {
     const lwa = getAmazonLwaAppCredentials();
@@ -131,106 +255,16 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
       lwa.clientId,
       lwa.clientSecret,
     );
-    const participations = await fetchMarketplaceParticipationsWithToken(tokenData.access_token);
-    const marketplaceId = bodyMarketplaceId || getAmazonMarketplaceId();
-    const br = participations.find((p) => p.marketplace.id === marketplaceId) ?? participations[0];
-
-    if (!br?.participation?.isParticipating) {
-      res.status(400).json({
-        error: {
-          code: "AMAZON_NOT_PARTICIPATING",
-          message: "Conta Amazon sem participação ativa no marketplace configurado",
-        },
-      });
-      return;
-    }
-
-    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
-    const db = getDb();
     const userId = req.user!.id;
-    const storedRefresh = tokenData.refresh_token ?? refreshToken;
-    const storeName = bodyStoreName || br.storeName || "Amazon";
-
-    // Mesmo Seller ID não pode pertencer a outro usuário iHub
-    const [linkedElsewhere] = await db
-      .select({ id: accountsTable.id, userId: accountsTable.userId })
-      .from(accountsTable)
-      .where(
-        and(eq(accountsTable.platform, "amazon"), eq(accountsTable.amazonSellerId, sellerId)),
-      );
-
-    if (linkedElsewhere && linkedElsewhere.userId !== userId) {
-      res.status(409).json({
-        error: {
-          code: "ACCOUNT_ALREADY_LINKED",
-          message: "Este Seller ID Amazon já está vinculado a outra conta iHub.",
-        },
-      });
-      return;
-    }
-
-    // Upsert por seller (permite várias lojas/CNPJs no mesmo usuário, mesmo app LWA)
-    const [existingBySeller] = await db
-      .select()
-      .from(accountsTable)
-      .where(
-        and(
-          eq(accountsTable.userId, userId),
-          eq(accountsTable.platform, "amazon"),
-          eq(accountsTable.amazonSellerId, sellerId),
-        ),
-      );
-
-    // Legado: uma linha amazon sem seller id — atualiza em vez de duplicar
-    let existing = existingBySeller;
-    if (!existing) {
-      const [orphan] = await db
-        .select()
-        .from(accountsTable)
-        .where(
-          and(
-            eq(accountsTable.userId, userId),
-            eq(accountsTable.platform, "amazon"),
-            or(isNull(accountsTable.amazonSellerId), eq(accountsTable.amazonSellerId, "")),
-          ),
-        );
-      existing = orphan;
-    }
-
-    let account: typeof accountsTable.$inferSelect;
-    if (existing) {
-      const [updated] = await db
-        .update(accountsTable)
-        .set({
-          amazonSellerId: sellerId,
-          amazonMarketplaceId: br.marketplace.id,
-          amazonStoreName: storeName,
-          accessToken: tokenData.access_token,
-          refreshToken: storedRefresh,
-          tokenExpiresAt: expiresAt,
-          isActive: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(accountsTable.id, existing.id))
-        .returning();
-      account = updated;
-    } else {
-      const [inserted] = await db
-        .insert(accountsTable)
-        .values({
-          userId,
-          platform: "amazon",
-          amazonSellerId: sellerId,
-          amazonMarketplaceId: br.marketplace.id,
-          amazonStoreName: storeName,
-          accessToken: tokenData.access_token,
-          refreshToken: storedRefresh,
-          tokenExpiresAt: expiresAt,
-          isActive: true,
-        })
-        .returning();
-      account = inserted;
-    }
+    const account = await upsertAmazonSellerAccount({
+      userId,
+      sellerId,
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token ?? refreshToken,
+      expiresIn: tokenData.expires_in,
+      marketplaceIdHint: bodyMarketplaceId || undefined,
+      storeNameHint: bodyStoreName || undefined,
+    });
 
     setImmediate(() => {
       syncAccount(account.id, userId).catch((err) => {
@@ -241,7 +275,16 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
     res.status(201).json(serializeAccount(account));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Falha ao conectar Amazon";
+    const code = (err as Error & { code?: string }).code;
     req.log.error({ err }, "Amazon connect failed");
+    if (code === "ACCOUNT_ALREADY_LINKED") {
+      res.status(409).json({ error: { code, message } });
+      return;
+    }
+    if (code === "AMAZON_NOT_PARTICIPATING") {
+      res.status(400).json({ error: { code, message } });
+      return;
+    }
     if (message.includes("não configurada") || message.includes("AMAZON_")) {
       res.status(503).json({ error: { code: "AMAZON_NOT_CONFIGURED", message } });
       return;
@@ -249,6 +292,67 @@ router.post("/accounts/amazon/connect", ...auth, async (req, res) => {
     res.status(502).json({ error: { code: "AMAZON_API_ERROR", message } });
   }
 });
+
+async function handleAmazonOAuthCallback(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
+  const {
+    state,
+    selling_partner_id: sellingPartnerId,
+    spapi_oauth_code: spapiOauthCode,
+    error: oauthError,
+  } = req.query as {
+    state?: string;
+    selling_partner_id?: string;
+    spapi_oauth_code?: string;
+    error?: string;
+  };
+
+  if (oauthError) {
+    res.redirect(`/integrations?error=amazon_denied&detail=${encodeURIComponent(String(oauthError))}`);
+    return;
+  }
+
+  if (!state || !sellingPartnerId || !spapiOauthCode) {
+    res.redirect("/integrations?error=amazon_missing_params");
+    return;
+  }
+
+  const userId = await consumeOAuthState(state);
+  if (!userId) {
+    res.redirect("/integrations?error=invalid_state");
+    return;
+  }
+
+  try {
+    const redirectUri = resolveAmazonOAuthRedirectUri(buildAmazonRedirectUri(req));
+    const tokens = await exchangeAmazonAuthorizationCode(spapiOauthCode, redirectUri);
+    const account = await upsertAmazonSellerAccount({
+      userId,
+      sellerId: sellingPartnerId.trim(),
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+    });
+
+    setImmediate(() => {
+      syncAccount(account.id, userId).catch((err) => {
+        console.error({ err, accountId: account.id }, "Background Amazon sync failed");
+      });
+    });
+
+    res.redirect("/integrations?success=amazon");
+  } catch (err) {
+    const code = (err as Error & { code?: string }).code;
+    req.log.error({ err }, "Amazon OAuth callback failed");
+    if (code === "ACCOUNT_ALREADY_LINKED") {
+      res.redirect("/integrations?error=account_already_linked");
+      return;
+    }
+    res.redirect("/integrations?error=amazon_oauth_failed");
+  }
+}
 
 async function handleOAuthCallback(
   req: import("express").Request,
@@ -334,6 +438,8 @@ async function handleOAuthCallback(
 
 router.get("/callback", handleOAuthCallback);
 router.get("/accounts/connect/callback", handleOAuthCallback);
+router.get("/amazon/callback", handleAmazonOAuthCallback);
+router.get("/accounts/amazon/connect/callback", handleAmazonOAuthCallback);
 
 router.get("/accounts/:id", ...auth, async (req, res) => {
   try {

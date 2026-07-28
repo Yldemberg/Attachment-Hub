@@ -59,6 +59,97 @@ export function getAmazonEnvCredentials(): {
   };
 }
 
+/** Seller Central BR — Website Authorization Workflow (app público). */
+export const AMAZON_BR_SELLER_CENTRAL_ORIGIN = "https://sellercentral.amazon.com.br";
+
+/**
+ * Application ID do app SP-API (ex.: amzn1.sp.solution.…).
+ * Obrigatório para OAuth estilo “Conectar → autorizar no browser”.
+ */
+export function getAmazonApplicationId(): string {
+  const id = process.env.AMAZON_APPLICATION_ID?.trim() ?? "";
+  if (!id) {
+    throw new Error(
+      "Amazon OAuth: defina AMAZON_APPLICATION_ID (Application ID do app público no Developer Central)",
+    );
+  }
+  return id;
+}
+
+/**
+ * Redirect URI registrado no app Amazon.
+ * Prefira AMAZON_REDIRECT_URI em produção para bater exatamente com o cadastro.
+ */
+export function resolveAmazonOAuthRedirectUri(requestBuiltUri?: string): string {
+  const fromEnv = process.env.AMAZON_REDIRECT_URI?.trim() ?? "";
+  if (fromEnv) return fromEnv;
+  if (requestBuiltUri?.trim()) return requestBuiltUri.trim();
+  throw new Error(
+    "Amazon OAuth: defina AMAZON_REDIRECT_URI (ex.: https://seu-dominio/api/amazon/callback)",
+  );
+}
+
+/** draft/beta enquanto o app público não está publicado. */
+export function isAmazonOAuthDraftMode(): boolean {
+  const raw = (process.env.AMAZON_OAUTH_DRAFT ?? "true").trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "no";
+}
+
+/**
+ * URL de consentimento no Seller Central (Website Authorization Workflow).
+ * @see https://developer-docs.amazon.com/sp-api/docs/website-authorization-workflow
+ */
+export function getAmazonAuthUrl(state: string, redirectUri?: string): string {
+  const applicationId = getAmazonApplicationId();
+  // redirectUri validado para falhar cedo se o env estiver incompleto (Amazon usa o cadastrado no app)
+  resolveAmazonOAuthRedirectUri(redirectUri);
+
+  const params = new URLSearchParams({
+    application_id: applicationId,
+    state,
+  });
+  if (isAmazonOAuthDraftMode()) {
+    params.set("version", "beta");
+  }
+  return `${AMAZON_BR_SELLER_CENTRAL_ORIGIN}/apps/authorize/consent?${params.toString()}`;
+}
+
+/**
+ * Troca spapi_oauth_code → access + refresh token (LWA authorization_code).
+ */
+export async function exchangeAmazonAuthorizationCode(
+  code: string,
+  redirectUri: string,
+): Promise<LwaTokenResponse & { refresh_token: string }> {
+  const { clientId, clientSecret } = getAmazonLwaAppCredentials();
+  const resolvedRedirect = resolveAmazonOAuthRedirectUri(redirectUri);
+
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: resolvedRedirect,
+    client_id: clientId,
+    client_secret: clientSecret,
+  });
+
+  const res = await fetch(LWA_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amazon LWA authorization_code exchange failed: ${res.status} ${text}`);
+  }
+
+  const data = (await res.json()) as LwaTokenResponse;
+  if (!data.refresh_token) {
+    throw new Error("Amazon LWA não retornou refresh_token no authorization_code exchange");
+  }
+  return data as LwaTokenResponse & { refresh_token: string };
+}
+
 export type AmazonMarketplaceParticipation = {
   marketplace: {
     id: string;

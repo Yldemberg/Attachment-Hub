@@ -139,6 +139,7 @@ function ConnectComingSoonButton({ marketplace }: { marketplace: "Shopee" }) {
 
 function ConnectAmazonButton() {
   const [open, setOpen] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sellerId, setSellerId] = useState("");
   const [refreshToken, setRefreshToken] = useState("");
@@ -146,6 +147,7 @@ function ConnectAmazonButton() {
   const [showToken, setShowToken] = useState(false);
   const [useServerEnv, setUseServerEnv] = useState(false);
   const { toast } = useToast();
+  const { signOut } = useAuth();
   const queryClient = useQueryClient();
 
   const resetForm = () => {
@@ -156,7 +158,43 @@ function ConnectAmazonButton() {
     setUseServerEnv(false);
   };
 
-  const handleConnect = async () => {
+  const handleOAuthConnect = async () => {
+    setOauthLoading(true);
+    try {
+      const { getAmazonConnectUrl } = await import("@workspace/api-client-react");
+      const data = await getAmazonConnectUrl();
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error("URL não retornada");
+      window.location.href = url;
+    } catch (err) {
+      let description =
+        "Não foi possível iniciar o OAuth Amazon. Verifique AMAZON_APPLICATION_ID e AMAZON_REDIRECT_URI.";
+      let forceRelogin = false;
+      if (err instanceof ApiError) {
+        if (err.status === 503) {
+          const body = err.data as { error?: { message?: string } } | undefined;
+          description =
+            body?.error?.message ??
+            "OAuth Amazon não configurado (app público: AMAZON_APPLICATION_ID, LWA e redirect URI).";
+        } else if (err.status === 401) {
+          description = "Sessão expirada. Você será redirecionado para o login.";
+          forceRelogin = true;
+        } else if (err.status === 402 || err.status === 403) {
+          description = "Seu plano não permite conectar contas no momento.";
+        }
+      }
+      toast({ variant: "destructive", title: "Erro ao conectar Amazon", description });
+      if (forceRelogin) {
+        setTimeout(async () => {
+          await signOut();
+        }, 2000);
+        return;
+      }
+      setOauthLoading(false);
+    }
+  };
+
+  const handleManualConnect = async () => {
     if (!useServerEnv && (!sellerId.trim() || !refreshToken.trim())) {
       toast({
         variant: "destructive",
@@ -217,10 +255,19 @@ function ConnectAmazonButton() {
         variant="outline"
         size="sm"
         className="mt-3 h-8 text-xs w-full"
-        onClick={() => setOpen(true)}
+        disabled={oauthLoading}
+        onClick={handleOAuthConnect}
       >
+        {oauthLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
         Conectar Amazon
       </Button>
+      <button
+        type="button"
+        className="mt-1.5 w-full text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+        onClick={() => setOpen(true)}
+      >
+        Ou conectar com token (app privado)
+      </button>
 
       <Dialog
         open={open}
@@ -231,10 +278,10 @@ function ConnectAmazonButton() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Conectar conta Amazon</DialogTitle>
+            <DialogTitle>Conectar com token</DialogTitle>
             <DialogDescription>
-              Use o mesmo app LWA do servidor. Cada loja/CNPJ precisa do próprio Seller ID e
-              Refresh Token (autorização no Seller Central).
+              Fallback para app privado: cole Seller ID + Refresh Token. Preferível usar
+              &quot;Conectar Amazon&quot; (OAuth) com app público.
             </DialogDescription>
           </DialogHeader>
 
@@ -304,9 +351,7 @@ function ConnectAmazonButton() {
               </>
             ) : (
               <p className="text-xs text-muted-foreground rounded-lg border border-border bg-muted/40 px-3 py-2">
-                Vai conectar a loja definida nas variáveis de ambiente do servidor. Para uma
-                segunda conta (outro CNPJ), desmarque esta opção e cole o token da nova
-                autorização.
+                Vai conectar a loja definida nas variáveis de ambiente do servidor.
               </p>
             )}
           </div>
@@ -315,7 +360,7 @@ function ConnectAmazonButton() {
             <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancelar
             </Button>
-            <Button onClick={handleConnect} disabled={loading} className="gap-2">
+            <Button onClick={handleManualConnect} disabled={loading} className="gap-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               Conectar
             </Button>
@@ -595,17 +640,30 @@ export default function Integrations() {
     const searchParams = new URLSearchParams(searchStr);
     const success = searchParams.get("success");
     const error = searchParams.get("error");
-    if (success === "true") {
-      toast({ title: "Conta conectada!", description: "Sua conta do Mercado Livre foi conectada com sucesso. A sincronização iniciará em breve." });
+    if (success === "true" || success === "amazon") {
+      toast({
+        title: "Conta conectada!",
+        description:
+          success === "amazon"
+            ? "Sua conta Amazon foi autorizada com sucesso. A sincronização iniciará em breve."
+            : "Sua conta do Mercado Livre foi conectada com sucesso. A sincronização iniciará em breve.",
+      });
       navigate("/integrations", { replace: true } as never);
     } else if (error) {
       const messages: Record<string, string> = {
         missing_params: "Parâmetros inválidos no retorno do Mercado Livre.",
+        amazon_missing_params: "Parâmetros inválidos no retorno da Amazon.",
         invalid_state: "Sessão expirada. Tente conectar novamente.",
-        account_already_linked: "Esta conta do ML já está vinculada a outro usuário.",
+        account_already_linked: "Esta conta já está vinculada a outro usuário iHub.",
         oauth_failed: "Falha na autenticação com o Mercado Livre. Tente novamente.",
+        amazon_oauth_failed: "Falha na autenticação com a Amazon. Tente novamente.",
+        amazon_denied: "Autorização Amazon cancelada ou negada.",
       };
-      toast({ variant: "destructive", title: "Erro ao conectar", description: messages[error] ?? "Erro desconhecido." });
+      toast({
+        variant: "destructive",
+        title: "Erro ao conectar",
+        description: messages[error] ?? "Erro desconhecido.",
+      });
       navigate("/integrations", { replace: true } as never);
     }
   }, []);
@@ -734,7 +792,7 @@ export default function Integrations() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                Mesmo app LWA; cada loja/CNPJ com seu Seller ID e Refresh Token.
+                OAuth no Seller Central (app público). Cada loja/CNPJ autoriza no browser.
               </p>
               <ConnectAmazonButton />
             </div>
@@ -885,9 +943,9 @@ export default function Integrations() {
           <div className="space-y-2 text-muted-foreground text-xs">
             <p>1. Mercado Livre: clique em "Conectar conta ML" e autorize no OAuth</p>
             <p>
-              2. Amazon: mantenha o mesmo app (
-              <code className="text-[10px]">AMAZON_LWA_*</code>) e conecte cada loja com Seller
-              ID + Refresh Token
+              2. Amazon: clique em "Conectar Amazon" (app público +{" "}
+              <code className="text-[10px]">AMAZON_APPLICATION_ID</code> / redirect URI). Token
+              manual fica como fallback
             </p>
             <p>3. A sincronização inicia automaticamente após conectar</p>
             <p>4. Use "Sincronizar" para atualizar catálogo e estoque</p>

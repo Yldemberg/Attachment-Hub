@@ -47,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Temporarily hosted listing images (Amazon SP-API)
+data/listing-images/

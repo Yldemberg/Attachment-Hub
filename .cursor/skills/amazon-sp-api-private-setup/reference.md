@@ -2,10 +2,20 @@
 
 ## Fase 2 iHub (implementada)
 
-- Connect: `POST /accounts/amazon/connect` (credenciais no env do servidor)
+- OAuth (app público): `GET /accounts/amazon/connect/url` → consent Seller Central → `GET /api/amazon/callback`
+- Connect manual/privado: `POST /accounts/amazon/connect` (credenciais no body ou env)
 - Client: `artifacts/api-server/src/lib/amazon.ts`
 - Sync / listings: `amazon-sync.ts`, `amazon-listings.ts`
-- UI: Integrações → Conectar Amazon
+- UI: Integrações → Conectar Amazon (OAuth) + fallback token
+
+## Conta dona do app — checklist OAuth
+
+- [ ] App **público** no Developer Central / SPP
+- [ ] Redirect URI = `AMAZON_REDIRECT_URI` (`…/api/amazon/callback`)
+- [ ] `AMAZON_APPLICATION_ID` = Application ID do app
+- [ ] LWA Client ID/Secret no env
+- [ ] `AMAZON_OAUTH_DRAFT=true` enquanto draft (`version=beta`); `false` após publicado
+- [ ] Roles: Product Listing, Inventory, Pricing
 
 ## Marketplace e região
 
