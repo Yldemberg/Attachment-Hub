@@ -493,6 +493,10 @@ export function ActivatePromotionDialog({
                         feeSubsidyAmount={merged.feeSubsidyAmount}
                         taxPercent={merged.taxPercent}
                         purchasePrice={merged.purchasePrice}
+                        promoPrice={
+                          resolveSuggestedDealPrice(merged) ??
+                          merged.suggestedDiscountedPrice
+                        }
                         prominent
                       />
                     </div>

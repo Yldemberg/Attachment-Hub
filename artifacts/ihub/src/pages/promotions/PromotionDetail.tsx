@@ -133,6 +133,7 @@ function ItemCard({
           feeSubsidyAmount={item.feeSubsidyAmount}
           taxPercent={item.taxPercent}
           purchasePrice={item.purchasePrice}
+          promoPrice={item.suggestedDiscountedPrice}
         />
       </div>
 

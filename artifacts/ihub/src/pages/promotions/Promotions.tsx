@@ -224,6 +224,7 @@ function CandidateCard({
           feeSubsidyAmount={entry.feeSubsidyAmount}
           taxPercent={entry.taxPercent}
           purchasePrice={entry.purchasePrice}
+          promoPrice={entry.suggestedDiscountedPrice}
         />
       </div>
 
