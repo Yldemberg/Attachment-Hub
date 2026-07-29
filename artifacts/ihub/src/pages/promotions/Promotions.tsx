@@ -40,6 +40,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
+import { PromotionEarningsBlock } from "./components/PromotionEarningsBlock";
 import {
   bulkActivateToastContent,
   buildBulkActivatePayloadItems,
@@ -116,6 +117,8 @@ function promotionItemToInboxEntry(
     deadlineDate: campaign.deadlineDate,
     availableQuantity: item.availableQuantity,
     offerId: item.offerId,
+    netProceeds: item.netProceeds,
+    feeSubsidyAmount: item.feeSubsidyAmount,
   };
 }
 
@@ -213,6 +216,11 @@ function CandidateCard({
             <span className="text-muted-foreground ml-auto truncate">{entry.accountNickname}</span>
           )}
         </div>
+        <PromotionEarningsBlock
+          className="mt-1.5"
+          netProceedsAmount={entry.netProceeds?.amount}
+          feeSubsidyAmount={entry.feeSubsidyAmount}
+        />
       </div>
 
       <div className="flex flex-col gap-1 flex-shrink-0">

@@ -143,6 +143,7 @@ export * from "./productListResponse";
 export * from "./promotion";
 export * from "./promotionBenefits";
 export * from "./promotionInboxEntry";
+export * from "./promotionInboxEntryNetProceeds";
 export * from "./promotionInboxListResponse";
 export * from "./promotionItem";
 export * from "./promotionItemListResponse";

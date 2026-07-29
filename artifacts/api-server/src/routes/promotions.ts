@@ -20,6 +20,7 @@ import {
   mapMlPromotionError,
   parsePromotionStockBounds,
   resolveMlSuggestedPrice,
+  resolveFeeSubsidyAmount,
   resolveOfferIdFromMlItem,
   findPromotionItemContext,
   matchesPromotionStatusFilter,
@@ -114,6 +115,7 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
           currency: item.net_proceeds.currency ?? null,
         }
       : null,
+    feeSubsidyAmount: resolveFeeSubsidyAmount(item),
     productId: item.productId ?? null,
     title: item.title ?? null,
     sku: item.sku ?? null,

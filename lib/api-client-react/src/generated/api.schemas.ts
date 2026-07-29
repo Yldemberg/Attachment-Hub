@@ -834,6 +834,7 @@ export interface PromotionItem {
   stockMin?: number | null;
   stockMax?: number | null;
   netProceeds?: PromotionItemNetProceeds;
+  feeSubsidyAmount?: number | null;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;
@@ -848,6 +849,11 @@ export interface PromotionItemListResponse {
   pagination: Pagination;
   promotion?: Promotion;
 }
+
+export type PromotionInboxEntryNetProceeds = {
+  amount?: number;
+  currency?: string | null;
+} | null;
 
 export interface PromotionInboxEntry {
   itemId: string;
@@ -876,6 +882,8 @@ export interface PromotionInboxEntry {
   permalink?: string | null;
   availableQuantity?: number | null;
   offerId?: string | null;
+  netProceeds?: PromotionInboxEntryNetProceeds;
+  feeSubsidyAmount?: number | null;
 }
 
 export interface PromotionInboxListResponse {

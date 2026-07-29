@@ -27,6 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
+import { PromotionEarningsBlock } from "./components/PromotionEarningsBlock";
 import {
   bulkActivateToastContent,
   buildBulkActivatePayloadItems,
@@ -126,6 +127,11 @@ function ItemCard({
             </span>
           )}
         </div>
+        <PromotionEarningsBlock
+          className="mt-1.5"
+          netProceedsAmount={item.netProceeds?.amount}
+          feeSubsidyAmount={item.feeSubsidyAmount}
+        />
       </div>
 
       <div className="flex flex-col gap-1 flex-shrink-0">

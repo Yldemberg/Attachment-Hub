@@ -25,6 +25,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Package } from "lucide-react";
 import { PromotionTypeBadge } from "./PromotionTypeBadge";
+import { PromotionEarningsBlock } from "./PromotionEarningsBlock";
 import {
   calcDiscountAmount,
   calcDiscountPercent,
@@ -481,12 +482,17 @@ export function ActivatePromotionDialog({
                   </button>
                 )}
 
-                {merged.netProceeds?.amount != null && (
+                {(merged.netProceeds?.amount != null ||
+                  (merged.feeSubsidyAmount != null && merged.feeSubsidyAmount > 0)) && (
                   <div className="pt-1">
                     <Label className="text-sm text-muted-foreground">Você recebe</Label>
-                    <p className="text-lg font-semibold text-foreground mt-0.5">
-                      {formatCurrency(merged.netProceeds.amount)}
-                    </p>
+                    <div className="mt-0.5">
+                      <PromotionEarningsBlock
+                        netProceedsAmount={merged.netProceeds?.amount}
+                        feeSubsidyAmount={merged.feeSubsidyAmount}
+                        prominent
+                      />
+                    </div>
                   </div>
                 )}
               </div>

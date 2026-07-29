@@ -1967,6 +1967,13 @@ export const ListPromotionInboxResponse = zod.object({
       permalink: zod.string().nullish(),
       availableQuantity: zod.number().nullish(),
       offerId: zod.string().nullish(),
+      netProceeds: zod
+        .object({
+          amount: zod.number().optional(),
+          currency: zod.string().nullish(),
+        })
+        .nullish(),
+      feeSubsidyAmount: zod.number().nullish(),
     }),
   ),
   pagination: zod.object({
@@ -2126,6 +2133,7 @@ export const ListPromotionItemsResponse = zod.object({
           currency: zod.string().nullish(),
         })
         .nullish(),
+      feeSubsidyAmount: zod.number().nullish(),
       productId: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),

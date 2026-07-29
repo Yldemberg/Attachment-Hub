@@ -23,6 +23,7 @@ export interface PromotionItem {
   stockMin?: number | null;
   stockMax?: number | null;
   netProceeds?: PromotionItemNetProceeds;
+  feeSubsidyAmount?: number | null;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;

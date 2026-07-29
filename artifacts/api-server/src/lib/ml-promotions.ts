@@ -121,6 +121,10 @@ export type MlPromotionItem = {
   stock?: MlPromotionItemStock;
   net_proceeds?: MlNetProceeds | null;
   offer_id?: string | null;
+  boosted_offer?: boolean | null;
+  discount_meli_boosted_percentage?: number | null;
+  discount_meli_boost_amount?: number | null;
+  total_price_for_boosted_offer?: number | null;
 };
 
 /** Contexto de promoção retornado por GET /seller-promotions/items/{itemId}. */
@@ -138,7 +142,21 @@ export type MlItemPromotionContext = {
   start_date?: string | null;
   end_date?: string | null;
   ref_id?: string | null;
+  boosted_offer?: boolean | null;
+  discount_meli_boosted_percentage?: number | null;
+  discount_meli_boost_amount?: number | null;
+  total_price_for_boosted_offer?: number | null;
 };
+
+/** Valor absoluto de redução de tarifas por venda (boost ML), quando presente. */
+export function resolveFeeSubsidyAmount(
+  item: Pick<MlPromotionItem, "discount_meli_boost_amount" | "boosted_offer">,
+): number | null {
+  const amount = item.discount_meli_boost_amount;
+  if (amount == null || amount <= 0) return null;
+  if (item.boosted_offer === false) return null;
+  return amount;
+}
 
 /**
  * Preço sugerido pelo ML para candidatos.
@@ -206,6 +224,13 @@ export function mergePromotionItemWithContext(
     end_date: context.end_date ?? item.end_date,
     price: item.price ?? context.price,
     offer_id: item.offer_id ?? context.ref_id ?? null,
+    boosted_offer: context.boosted_offer ?? item.boosted_offer,
+    discount_meli_boosted_percentage:
+      context.discount_meli_boosted_percentage ?? item.discount_meli_boosted_percentage,
+    discount_meli_boost_amount:
+      context.discount_meli_boost_amount ?? item.discount_meli_boost_amount,
+    total_price_for_boosted_offer:
+      context.total_price_for_boosted_offer ?? item.total_price_for_boosted_offer,
   };
 }
 
@@ -380,6 +405,8 @@ export type InboxEntry = {
   availableQuantity?: number | null;
   discountPercent?: number | null;
   offerId?: string | null;
+  netProceeds?: { amount: number; currency?: string | null } | null;
+  feeSubsidyAmount?: number | null;
 };
 
 export type PromotionSummary = {
@@ -719,6 +746,14 @@ export async function aggregateInboxForAccount(
               availableQuantity: item.availableQuantity,
               discountPercent: calcDiscountPercent(original, suggested),
               offerId: resolveOfferIdFromMlItem(item) ?? null,
+              netProceeds:
+                item.net_proceeds?.amount != null
+                  ? {
+                      amount: item.net_proceeds.amount,
+                      currency: item.net_proceeds.currency ?? null,
+                    }
+                  : null,
+              feeSubsidyAmount: resolveFeeSubsidyAmount(item),
             });
           }
         } catch {

@@ -3722,6 +3722,9 @@ components:
             currency:
               type: string
               nullable: true
+        feeSubsidyAmount:
+          type: number
+          nullable: true
         productId:
           type: string
           nullable: true
@@ -3833,6 +3836,18 @@ components:
           nullable: true
         offerId:
           type: string
+          nullable: true
+        netProceeds:
+          type: object
+          nullable: true
+          properties:
+            amount:
+              type: number
+            currency:
+              type: string
+              nullable: true
+        feeSubsidyAmount:
+          type: number
           nullable: true
       required: [itemId, promotionId, promotionType, itemStatus, accountId]
 

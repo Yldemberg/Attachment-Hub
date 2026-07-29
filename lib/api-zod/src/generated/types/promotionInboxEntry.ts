@@ -5,6 +5,7 @@
  * iHub - Marketplace Management Hub API
  * OpenAPI spec version: 1.0.0
  */
+import type { PromotionInboxEntryNetProceeds } from "./promotionInboxEntryNetProceeds";
 
 export interface PromotionInboxEntry {
   itemId: string;
@@ -33,4 +34,6 @@ export interface PromotionInboxEntry {
   permalink?: string | null;
   availableQuantity?: number | null;
   offerId?: string | null;
+  netProceeds?: PromotionInboxEntryNetProceeds;
+  feeSubsidyAmount?: number | null;
 }

@@ -191,6 +191,7 @@ export function buildBulkActivatePayloadItems(
         discountPercentage: null,
         status: "candidate",
         netProceeds: null,
+        feeSubsidyAmount: null,
         startDate: null,
         endDate: null,
       },
