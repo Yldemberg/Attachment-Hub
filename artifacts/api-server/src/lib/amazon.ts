@@ -436,6 +436,7 @@ export type AmazonListingsIssue = {
   message?: string;
   severity?: "ERROR" | "WARNING" | "INFO" | string;
   attributeNames?: string[];
+  categories?: string[];
 };
 
 export type AmazonListingsSubmissionResponse = {

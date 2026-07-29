@@ -24,7 +24,9 @@ import {
 import {
   createAmazonListing,
   ensurePositiveAmazonQuantity,
+  extractNumberOfCompartmentsFromTexts,
   productTypeNeedsCompartment,
+  productTypeNeedsNumberOfCompartments,
   AMAZON_MIN_QUANTITY,
 } from "./amazon-listings";
 import { isValidAmazonMediaUrl } from "./listing-images";
@@ -603,7 +605,7 @@ export async function publishDraftOnAmazon(
     },
   ];
 
-  // compartment só para DUFFEL_BAG (schema BR). Em BACKPACK a Amazon ignora/rejeita.
+  // compartment (descrição) só DUFFEL; number_of_compartments também em BACKPACK (obrigatório na Amazon BR).
   {
     const marketplaceId =
       (typeof draft._marketplace_id === "string" && draft._marketplace_id) ||
@@ -634,11 +636,30 @@ export async function publishDraftOnAmazon(
           marketplace_id: marketplaceId,
         },
       ];
-      if (!Array.isArray(attrsClean.number_of_compartments) || !attrsClean.number_of_compartments[0]) {
-        attrsClean.number_of_compartments = [{ value: 1, marketplace_id: marketplaceId }];
-      }
     } else {
       delete attrsClean.compartment;
+    }
+
+    if (productTypeNeedsNumberOfCompartments(p.productType || "")) {
+      let count = 0;
+      const raw = attrsClean.number_of_compartments;
+      if (Array.isArray(raw) && raw[0]) {
+        const v = (raw[0] as { value?: unknown }).value;
+        if (typeof v === "number" && v > 0) count = Math.floor(v);
+        else if (typeof v === "string" && Number(v) > 0) count = Math.floor(Number(v));
+      }
+      if (count <= 0 && Array.isArray(draft._scraped_attributes)) {
+        const scrapeTexts = draft._scraped_attributes.flatMap((a) => {
+          const key = String(a.key || "");
+          const value = String(a.value ?? "");
+          return [`${key}: ${value}`, value];
+        });
+        count = extractNumberOfCompartmentsFromTexts(scrapeTexts);
+      }
+      attrsClean.number_of_compartments = [
+        { value: count > 0 ? count : 1, marketplace_id: marketplaceId },
+      ];
+    } else {
       delete attrsClean.number_of_compartments;
     }
   }
@@ -665,6 +686,12 @@ export async function publishDraftOnAmazon(
     matchCatalogAsin,
     requirements,
     attributes: attrsClean,
+    scrapedAttributes: Array.isArray(draft._scraped_attributes)
+      ? draft._scraped_attributes.map((a) => ({
+          key: String(a.key || ""),
+          value: String(a.value ?? ""),
+        }))
+      : undefined,
   });
   return { productId, sku };
 }

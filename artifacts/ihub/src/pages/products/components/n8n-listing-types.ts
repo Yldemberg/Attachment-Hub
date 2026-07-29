@@ -216,6 +216,17 @@ export function updateAmazonDraftBasics(
     } else if (!productTypeNeedsCompartment(patch.productType)) {
       const attrs = { ...next.payload.attributes };
       delete attrs.compartment;
+      next = { ...next, payload: { ...next.payload, attributes: attrs } };
+    }
+    if (productTypeNeedsNumberOfCompartments(patch.productType)) {
+      if (getAmazonNumberOfCompartments(next) <= 0) {
+        next = updateAmazonNumberOfCompartments(
+          next,
+          findScrapedNumberOfCompartments(next) || 1,
+        );
+      }
+    } else {
+      const attrs = { ...next.payload.attributes };
       delete attrs.number_of_compartments;
       next = { ...next, payload: { ...next.payload, attributes: attrs } };
     }
@@ -425,18 +436,66 @@ export function updateAmazonScrapedAttribute(
     model: "model_name",
     "nome do modelo": "model_name",
     "model name": "model_name",
+    "numero do modelo": "model_number",
+    "model number": "model_number",
+    "numero da peca": "part_number",
+    "part number": "part_number",
     cor: "color",
     color: "color",
+    colour: "color",
     tamanho: "size",
     size: "size",
     material: "material",
+    "tipo de material": "material",
     estilo: "style",
     style: "style",
+    padrao: "pattern",
+    pattern: "pattern",
+    estampa: "pattern",
+    "pais de origem": "country_of_origin",
+    "country of origin": "country_of_origin",
+    genero: "target_gender",
+    "target gender": "target_gender",
+    "faixa etaria": "age_range_description",
+    "descricao da faixa etaria": "age_range_description",
+    "age range description": "age_range_description",
+    "tipo de alca": "strap_type",
+    "strap type": "strap_type",
+    "nivel de resistencia a agua": "water_resistance_level",
+    "water resistance level": "water_resistance_level",
+    "descricao do forro": "lining_description",
+    "lining description": "lining_description",
+    "instrucoes de cuidados com o produto": "care_instructions",
+    "care instructions": "care_instructions",
+    tema: "theme",
+    theme: "theme",
+    "tipo de esporte": "sport_type",
+    "sport type": "sport_type",
   };
   const spKey = scrapeToSpApi[keyNorm];
   if (spKey && list[index].value.trim()) {
-    next = withAmazonAttrText(next, spKey, list[index].value.trim());
-    next = { ...next, _scraped_attributes: list };
+    const value = list[index].value.trim();
+    // Não sobrescrever marca da loja com "Genérico" do scrape de terceiros
+    if (
+      spKey === "brand" &&
+      /^(gen[eé]rico|generic|sem\s*marca|unbranded)$/i.test(value)
+    ) {
+      /* skip */
+    } else {
+      next = withAmazonAttrText(next, spKey, value);
+      next = { ...next, _scraped_attributes: list };
+    }
+  } else if (
+    (keyNorm === "numero de compartimentos" ||
+      keyNorm === "number of compartments" ||
+      keyNorm.includes("compartimentos")) &&
+    list[index].value.trim()
+  ) {
+    const match = list[index].value.match(/(\d+)/);
+    if (match) {
+      next = updateAmazonNumberOfCompartments(next, Number(match[1]));
+      next = { ...next, _scraped_attributes: list };
+    }
   }
 
   const reasons = getAmazonPublishBlockReasons(next);
@@ -515,6 +574,107 @@ function findScrapedModelName(draft: N8nAmazonListingDraft): string {
   return "";
 }
 
+function findScrapedNumberOfCompartments(draft: N8nAmazonListingDraft): number {
+  for (const attr of getAmazonScrapedAttributes(draft)) {
+    const key = normalizeScrapeKey(attr.key);
+    if (
+      key === "numero de compartimentos" ||
+      key === "number of compartments" ||
+      key === "contagem de compartimentos" ||
+      key.includes("compartimentos")
+    ) {
+      const match = String(attr.value || "").match(/(\d+)/);
+      if (match) {
+        const n = Number(match[1]);
+        if (Number.isFinite(n) && n > 0) return Math.floor(n);
+      }
+    }
+  }
+  return 0;
+}
+
+/** Espelha todos os atributos do scrape conhecidos no payload SP-API (sem sobrescrever). */
+function mapAllScrapedAttributesIntoDraft(
+  draft: N8nAmazonListingDraft,
+): N8nAmazonListingDraft {
+  const list = getAmazonScrapedAttributes(draft);
+  if (!list.length) return draft;
+
+  const marketplaceId = marketplaceIdOf(draft);
+  let attrs: Record<string, unknown> = { ...draft.payload.attributes };
+  let changed = false;
+
+  const scrapeToSpApi: Record<string, string> = {
+    fabricante: "manufacturer",
+    manufacturer: "manufacturer",
+    "numero do modelo": "model_number",
+    "model number": "model_number",
+    cor: "color",
+    color: "color",
+    colour: "color",
+    tamanho: "size",
+    size: "size",
+    material: "material",
+    "tipo de material": "material",
+    estilo: "style",
+    style: "style",
+    padrao: "pattern",
+    pattern: "pattern",
+    estampa: "pattern",
+    "tipo de alca": "strap_type",
+    "strap type": "strap_type",
+    "descricao do forro": "lining_description",
+    "lining description": "lining_description",
+    "faixa etaria": "age_range_description",
+    "descricao da faixa etaria": "age_range_description",
+    "instrucoes de cuidados com o produto": "care_instructions",
+    tema: "theme",
+    "tipo de esporte": "sport_type",
+  };
+
+  for (const item of list) {
+    const keyNorm = normalizeScrapeKey(item.key);
+    const value = item.value?.trim();
+    if (!value) continue;
+
+    const spKey = scrapeToSpApi[keyNorm];
+    if (spKey) {
+      const existing = attrs[spKey];
+      const hasExisting =
+        Array.isArray(existing) &&
+        existing[0] &&
+        typeof (existing[0] as { value?: unknown }).value === "string" &&
+        String((existing[0] as { value: string }).value).trim();
+      if (!hasExisting) {
+        attrs[spKey] = [{ value, language_tag: "pt_BR", marketplace_id: marketplaceId }];
+        changed = true;
+      }
+      continue;
+    }
+
+    if (
+      (keyNorm === "numero de compartimentos" ||
+        keyNorm === "number of compartments" ||
+        (keyNorm.includes("compartimentos") && !keyNorm.includes("ziper"))) &&
+      !attrs.number_of_compartments
+    ) {
+      const match = value.match(/(\d+)/);
+      if (match) {
+        attrs.number_of_compartments = [
+          { value: Math.floor(Number(match[1])), marketplace_id: marketplaceId },
+        ];
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) return draft;
+  return {
+    ...draft,
+    payload: { ...draft.payload, attributes: attrs },
+  };
+}
+
 /**
  * Normaliza draft Amazon ao abrir a revisão: isenção GTIN, model_name ≤ 120,
  * estoque > 0 e product_type heurístico quando ainda for PRODUCT/vazio.
@@ -523,6 +683,7 @@ export function normalizeAmazonDraftForReview(
   draft: N8nAmazonListingDraft,
 ): N8nAmazonListingDraft {
   let next = applyAmazonGtinExemption(draft);
+  next = mapAllScrapedAttributesIntoDraft(next);
 
   let model = getAmazonModelName(next).trim();
   if (!model || model.length > AMAZON_MODEL_NAME_MAX) {
@@ -562,8 +723,25 @@ export function normalizeAmazonDraftForReview(
     );
   } else if (!productTypeNeedsCompartment(resolvedType)) {
     const attrs = { ...next.payload.attributes };
-    if (attrs.compartment || attrs.number_of_compartments) {
+    if (attrs.compartment) {
       delete attrs.compartment;
+      next = {
+        ...next,
+        payload: { ...next.payload, attributes: attrs },
+      };
+    }
+  }
+
+  if (productTypeNeedsNumberOfCompartments(resolvedType)) {
+    if (getAmazonNumberOfCompartments(next) <= 0) {
+      next = updateAmazonNumberOfCompartments(
+        next,
+        findScrapedNumberOfCompartments(next) || 1,
+      );
+    }
+  } else {
+    const attrs = { ...next.payload.attributes };
+    if (attrs.number_of_compartments) {
       delete attrs.number_of_compartments;
       next = {
         ...next,
@@ -608,13 +786,15 @@ export function ensureAmazonBagSoftAttributes(
   const isBag = type === "BAG";
   const isSuitcase = type === "SUITCASE";
   const isCosmetic = type === "COSMETIC_CASE";
+  const isLuggage = type === "LUGGAGE";
   if (
     !isBackpack &&
     !isDuffel &&
     !isHandbagFamily &&
     !isBag &&
     !isSuitcase &&
-    !isCosmetic
+    !isCosmetic &&
+    !isLuggage
   ) {
     return draft;
   }
@@ -646,7 +826,7 @@ export function ensureAmazonBagSoftAttributes(
   }
   if (
     !nestedVal(attrs.closure, "type") &&
-    (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic)
+    (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic || isLuggage)
   ) {
     attrs.closure = [
       {
@@ -667,7 +847,7 @@ export function ensureAmazonBagSoftAttributes(
     Array.isArray(attrs.storage_volume) &&
     attrs.storage_volume[0] &&
     typeof (attrs.storage_volume[0] as { value?: unknown }).value === "number";
-  if (!hasVolume && (isBackpack || isSuitcase)) {
+  if (!hasVolume && (isBackpack || isSuitcase || isLuggage)) {
     const litersMatch = `${title} ${getAmazonScrapedAttributes(draft)
       .map((a) => a.value)
       .join(" ")}`.match(/(\d+[.,]?\d*)\s*(?:l|litros?)\b/i);
@@ -683,7 +863,13 @@ export function ensureAmazonBagSoftAttributes(
   }
   if (
     !localeVal(attrs.water_resistance_level) &&
-    (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+    (isBackpack ||
+      isDuffel ||
+      isHandbagFamily ||
+      isBag ||
+      isSuitcase ||
+      isCosmetic ||
+      isLuggage)
   ) {
     attrs.water_resistance_level = [
       { value: "water_repellent", marketplace_id: marketplaceId },
@@ -692,7 +878,13 @@ export function ensureAmazonBagSoftAttributes(
   }
   if (
     !nestedVal(attrs.outer, "material") &&
-    (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+    (isBackpack ||
+      isDuffel ||
+      isHandbagFamily ||
+      isBag ||
+      isSuitcase ||
+      isCosmetic ||
+      isLuggage)
   ) {
     const blob = `${localeVal(attrs.material)} ${title}`.toLowerCase();
     let material = "Nylon";
@@ -992,12 +1184,26 @@ export function suggestAmazonProductType(title: string): string | null {
 }
 
 /**
- * Só product types cujo schema BR realmente tem `compartment`.
+ * Só product types cujo schema BR realmente tem `compartment` (descrição).
  * NÃO usar /BAG/ genérico — casa com BACKPACK e a Amazon ignora o atributo.
  */
 export function productTypeNeedsCompartment(productType: string): boolean {
   const type = (productType || "").toUpperCase();
   return type === "DUFFEL_BAG" || type.includes("DUFFEL");
+}
+
+/**
+ * BACKPACK (e DUFFEL) exigem `number_of_compartments` na Amazon BR.
+ * Independente da descrição `compartment`.
+ */
+export function productTypeNeedsNumberOfCompartments(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return (
+    type === "BACKPACK" ||
+    type.endsWith("_BACKPACK") ||
+    type === "DUFFEL_BAG" ||
+    type.includes("DUFFEL")
+  );
 }
 
 /** BACKPACK usa P×L×A (`item_depth_width_height`), não C×L×A. */
@@ -1108,6 +1314,42 @@ export function updateAmazonCompartment(
   return { ...next, _pronto_para_publicar: reasons.length === 0 };
 }
 
+export function getAmazonNumberOfCompartments(draft: N8nAmazonListingDraft): number {
+  const raw = draft.payload.attributes?.number_of_compartments;
+  if (!Array.isArray(raw) || !raw[0]) return 0;
+  const value = (raw[0] as { value?: unknown }).value;
+  if (typeof value === "number" && value > 0) return Math.floor(value);
+  if (typeof value === "string" && Number(value) > 0) return Math.floor(Number(value));
+  return 0;
+}
+
+export function updateAmazonNumberOfCompartments(
+  draft: N8nAmazonListingDraft,
+  count: number,
+): N8nAmazonListingDraft {
+  const marketplaceId = marketplaceIdOf(draft);
+  const next: N8nAmazonListingDraft = {
+    ...draft,
+    payload: {
+      ...draft.payload,
+      attributes: { ...draft.payload.attributes },
+    },
+  };
+  const value =
+    typeof count === "number" && Number.isFinite(count) && count > 0
+      ? Math.floor(count)
+      : 0;
+  if (value <= 0) {
+    delete next.payload.attributes.number_of_compartments;
+  } else {
+    next.payload.attributes.number_of_compartments = [
+      { value, marketplace_id: marketplaceId },
+    ];
+  }
+  const reasons = getAmazonPublishBlockReasons(next);
+  return { ...next, _pronto_para_publicar: reasons.length === 0 };
+}
+
 export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): string[] {
   const reasons: string[] = [];
   if (!draft.payload.sellerSku?.trim()) reasons.push("Informe o Seller SKU.");
@@ -1143,6 +1385,12 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
   ) {
     reasons.push("Informe a descrição do compartimento (compartment).");
   }
+  if (
+    productTypeNeedsNumberOfCompartments(draft.payload.productType || "") &&
+    getAmazonNumberOfCompartments(draft) <= 0
+  ) {
+    reasons.push("Informe o número de compartimentos (number_of_compartments).");
+  }
   const country = getAmazonAttrText(draft, "country_of_origin").trim();
   if (!country) {
     reasons.push("Informe o country_of_origin (código ISO, ex.: BR).");
@@ -1153,7 +1401,16 @@ export function getAmazonPublishBlockReasons(draft: N8nAmazonListingDraft): stri
     reasons.push("Informe a regulamentação de produto perigoso (ex.: not_applicable).");
   }
   const dims = getAmazonItemDimensions(draft);
-  if (!dims || dims.length <= 0 || dims.width <= 0 || dims.height <= 0) {
+  const productType = (draft.payload.productType || "").toUpperCase();
+  const dimsOptional =
+    productType.includes("SHOE") ||
+    productType === "SHIRT" ||
+    productType.includes("APPAREL") ||
+    productType.includes("CLOTHING");
+  if (
+    !dimsOptional &&
+    (!dims || dims.length <= 0 || dims.width <= 0 || dims.height <= 0)
+  ) {
     const dimLabel = productTypeUsesDepthDimensions(draft.payload.productType || "")
       ? "P × L × A"
       : "C × L × A";

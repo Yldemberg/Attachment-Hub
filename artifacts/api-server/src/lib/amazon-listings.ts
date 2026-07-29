@@ -14,6 +14,7 @@ import {
   resolveAmazonSellerId,
   suggestAmazonBrowseNode,
   type AmazonListingsItem,
+  type AmazonListingsIssue,
   type AmazonListingsSubmissionResponse,
 } from "./amazon";
 import { logger } from "./logger";
@@ -90,7 +91,483 @@ export type CreateAmazonListingInput = {
   requirements?: string;
   /** Extra SP-API attributes merged into the payload */
   attributes?: Record<string, unknown>;
+  /** Atributos chave/valor do scrape Amazon — usados para mapear e preencher faltantes. */
+  scrapedAttributes?: Array<{ key: string; value: string }>;
 };
+
+function normalizeAmazonScrapeKey(str: string): string {
+  return String(str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Mapeamento scrape PT/EN → atributo SP-API de texto simples.
+ * Expandido para cobrir categorias diversas sem hardcode por product type.
+ */
+const SCRAPE_KEY_TO_SPAPI_ATTR: Record<string, string> = {
+  marca: "brand",
+  brand: "brand",
+  fabricante: "manufacturer",
+  manufacturer: "manufacturer",
+  modelo: "model_name",
+  model: "model_name",
+  "nome do modelo": "model_name",
+  "model name": "model_name",
+  "numero do modelo": "model_number",
+  "model number": "model_number",
+  "numero da peca": "part_number",
+  "part number": "part_number",
+  cor: "color",
+  color: "color",
+  colour: "color",
+  tamanho: "size",
+  size: "size",
+  material: "material",
+  "tipo de material": "material",
+  estilo: "style",
+  style: "style",
+  padrao: "pattern",
+  pattern: "pattern",
+  estampa: "pattern",
+  "pais de origem": "country_of_origin",
+  "country of origin": "country_of_origin",
+  genero: "target_gender",
+  "target gender": "target_gender",
+  "faixa etaria": "age_range_description",
+  "age range description": "age_range_description",
+  "descricao da faixa etaria": "age_range_description",
+  "tipo de alca": "strap_type",
+  "strap type": "strap_type",
+  "nivel de resistencia a agua": "water_resistance_level",
+  "water resistance level": "water_resistance_level",
+  "descricao do forro": "lining_description",
+  "lining description": "lining_description",
+  "instrucoes de cuidados com o produto": "care_instructions",
+  "care instructions": "care_instructions",
+  tema: "theme",
+  theme: "theme",
+  "tipo de esporte": "sport_type",
+  "sport type": "sport_type",
+  assunto: "subject_character",
+};
+
+const ATTRS_NEVER_AUTO_FILL = new Set([
+  "brand",
+  "item_name",
+  "purchasable_offer",
+  "list_price",
+  "fulfillment_availability",
+  "main_product_image_locator",
+  "merchant_suggested_asin",
+  "externally_assigned_product_identifier",
+  "recommended_browse_nodes",
+]);
+
+function scrapedAttributeMap(
+  scraped: Array<{ key: string; value: string }> | undefined,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const item of scraped || []) {
+    const key = normalizeAmazonScrapeKey(item.key);
+    const value = String(item.value ?? "").trim();
+    if (key && value) map.set(key, value);
+  }
+  return map;
+}
+
+function scrapedTextsFromAttributes(
+  scraped: Array<{ key: string; value: string }> | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const item of scraped || []) {
+    const key = String(item.key || "").trim();
+    const value = String(item.value ?? "").trim();
+    if (!value) continue;
+    if (key) out.push(`${key}: ${value}`);
+    out.push(value);
+  }
+  return out;
+}
+
+function findScrapedValue(
+  scrapeMap: Map<string, string>,
+  ...keys: string[]
+): string {
+  for (const key of keys) {
+    const hit = scrapeMap.get(normalizeAmazonScrapeKey(key));
+    if (hit) return hit;
+  }
+  for (const [k, v] of scrapeMap) {
+    if (keys.some((want) => k.includes(normalizeAmazonScrapeKey(want)))) return v;
+  }
+  return "";
+}
+
+/** Espelha scrape → attributes SP-API sem sobrescrever o que o usuário já preencheu. */
+export function applyScrapedAttributesToListingAttrs(
+  attrs: Record<string, unknown>,
+  scraped: Array<{ key: string; value: string }> | undefined,
+  marketplaceId: string,
+): Record<string, unknown> {
+  const next = { ...attrs };
+  const scrapeMap = scrapedAttributeMap(scraped);
+
+  for (const [scrapeKey, spKey] of Object.entries(SCRAPE_KEY_TO_SPAPI_ATTR)) {
+    if (next[spKey]) continue;
+    const value = scrapeMap.get(scrapeKey);
+    if (!value) continue;
+    if (
+      spKey === "brand" &&
+      /^(gen[eé]rico|generic|sem\s*marca|unbranded)$/i.test(value)
+    ) {
+      continue;
+    }
+    if (spKey === "country_of_origin") {
+      next[spKey] = attrLocaleValue(normalizeAmazonCountryOfOrigin(value), marketplaceId);
+    } else if (spKey === "target_gender") {
+      const g = value.toLowerCase();
+      const mapped = /feminin|woman|women|girl/.test(g)
+        ? "female"
+        : /masculin|man|men|boy/.test(g)
+          ? "male"
+          : "unisex";
+      next[spKey] = attrLocaleValue(mapped, marketplaceId);
+    } else if (spKey === "water_resistance_level") {
+      const w = value.toLowerCase();
+      const mapped = /a prova|waterproof|imperme/.test(w)
+        ? "waterproof"
+        : /repel|resist/.test(w)
+          ? "water_repellent"
+          : "water_resistant";
+      next[spKey] = attrLocaleValue(mapped, marketplaceId);
+    } else {
+      next[spKey] = attrLocalizedText(value.slice(0, 500), marketplaceId);
+    }
+  }
+
+  // number_of_compartments a partir do scrape (quando ainda ausente)
+  if (!next.number_of_compartments) {
+    const count = extractNumberOfCompartmentsFromTexts(scrapedTextsFromAttributes(scraped));
+    if (count > 0) {
+      next.number_of_compartments = attrLocaleValue(count, marketplaceId);
+    }
+  }
+
+  // unit_count / number_of_items
+  if (!next.unit_count) {
+    const unitRaw = findScrapedValue(
+      scrapeMap,
+      "quantidade de itens",
+      "quantidade de unidades",
+      "unit count",
+      "number of items",
+    );
+    const n = unitRaw ? Number(String(unitRaw).replace(",", ".").match(/[\d.]+/)?.[0]) : NaN;
+    if (Number.isFinite(n) && n > 0) {
+      next.unit_count = [
+        { value: Math.floor(n), type: { value: "unit", marketplace_id: marketplaceId }, marketplace_id: marketplaceId },
+      ];
+    }
+  }
+
+  // outer.material
+  if (!extractNestedAttrValue(next.outer, "material")) {
+    const outer = findScrapedValue(scrapeMap, "material externo", "outer material", "material");
+    if (outer) next.outer = attrOuterMaterial(outer.split(",")[0]!.trim(), marketplaceId);
+  }
+
+  // closure.type
+  if (!extractNestedAttrValue(next.closure, "type")) {
+    const closure = findScrapedValue(scrapeMap, "tipo de fechamento", "closure", "closure type");
+    if (closure) next.closure = attrClosureType(closure, marketplaceId);
+  }
+
+  // storage_volume
+  const hasVolume =
+    Array.isArray(next.storage_volume) &&
+    next.storage_volume[0] &&
+    typeof (next.storage_volume[0] as { value?: unknown }).value === "number";
+  if (!hasVolume) {
+    const liters = parseStorageVolumeLiters(scrapedTextsFromAttributes(scraped));
+    if (liters) {
+      next.storage_volume = [{ value: liters, unit: "liters", marketplace_id: marketplaceId }];
+    }
+  }
+
+  return next;
+}
+
+function hasAttributeValue(attrs: Record<string, unknown>, key: string): boolean {
+  const raw = attrs[key];
+  if (raw == null) return false;
+  if (!Array.isArray(raw) || !raw[0]) return false;
+  const first = raw[0] as Record<string, unknown>;
+  if (typeof first.value === "string") return first.value.trim().length > 0;
+  if (typeof first.value === "number") return Number.isFinite(first.value);
+  if (typeof first.value === "boolean") return true;
+  // nested shapes (closure, outer, compartment, unit_count…)
+  return Object.keys(first).some((k) => k !== "marketplace_id" && first[k] != null);
+}
+
+function collectMissingAttributeNames(
+  issues: AmazonListingsIssue[] | undefined,
+): string[] {
+  const names = new Set<string>();
+  for (const issue of issues || []) {
+    const sev = (issue.severity || "ERROR").toUpperCase();
+    if (sev !== "ERROR") continue;
+    const categories = (issue.categories || []).map((c) => c.toUpperCase());
+    const blob = `${issue.code || ""} ${issue.message || ""}`;
+    const isMissing =
+      categories.includes("MISSING_ATTRIBUTE") ||
+      /90220|MISSING_ATTRIBUTE|obrigat[oó]rio|is required|n[aã]o foi inserido|not (provided|supplied)/i.test(
+        blob,
+      );
+    if (!isMissing) continue;
+    for (const name of issue.attributeNames || []) {
+      if (name?.trim()) names.add(name.trim());
+    }
+  }
+  return [...names];
+}
+
+/**
+ * Preenche atributo faltante com scrape/heurística segura.
+ * Retorna true se preencheu algo novo.
+ */
+export function fillMissingAmazonAttribute(
+  attrs: Record<string, unknown>,
+  attrName: string,
+  ctx: {
+    marketplaceId: string;
+    productType: string;
+    title: string;
+    brand?: string;
+    scrapedAttributes?: Array<{ key: string; value: string }>;
+  },
+): boolean {
+  if (ATTRS_NEVER_AUTO_FILL.has(attrName)) return false;
+  if (hasAttributeValue(attrs, attrName)) return false;
+  if (/^other_product_image_locator_/.test(attrName)) return false;
+
+  const marketplaceId = ctx.marketplaceId;
+  const scrapeMap = scrapedAttributeMap(ctx.scrapedAttributes);
+  const scrapeTexts = scrapedTextsFromAttributes(ctx.scrapedAttributes);
+
+  switch (attrName) {
+    case "number_of_compartments": {
+      const count = extractNumberOfCompartmentsFromTexts([...scrapeTexts, ctx.title]) || 1;
+      attrs[attrName] = attrLocaleValue(count, marketplaceId);
+      return true;
+    }
+    case "compartment": {
+      if (!productTypeNeedsCompartment(ctx.productType)) return false;
+      attrs[attrName] = attrCompartmentDescription(
+        suggestAmazonCompartment(ctx.productType, ctx.title),
+        marketplaceId,
+      );
+      return true;
+    }
+    case "country_of_origin": {
+      const fromScrape = findScrapedValue(scrapeMap, "pais de origem", "country of origin");
+      attrs[attrName] = attrLocaleValue(
+        normalizeAmazonCountryOfOrigin(fromScrape || "BR"),
+        marketplaceId,
+      );
+      return true;
+    }
+    case "supplier_declared_dg_hz_regulation":
+      attrs[attrName] = attrLocaleValue("not_applicable", marketplaceId);
+      return true;
+    case "department":
+      attrs[attrName] = attrLocaleValue(
+        suggestAmazonDepartment(ctx.productType, ctx.title),
+        marketplaceId,
+      );
+      return true;
+    case "supplier_declared_has_product_identifier_exemption":
+      applyGtinExemptionToAttributes(attrs, marketplaceId);
+      return true;
+    case "color": {
+      const v = findScrapedValue(scrapeMap, "cor", "color", "colour") || "Multicolorido";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "size": {
+      const v = findScrapedValue(scrapeMap, "tamanho", "size") || "Único";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "material": {
+      const v = findScrapedValue(scrapeMap, "material", "tipo de material") || "Nylon";
+      attrs[attrName] = attrLocalizedText(v.split(",")[0]!.trim(), marketplaceId);
+      return true;
+    }
+    case "style": {
+      const v = findScrapedValue(scrapeMap, "estilo", "style") || "Casual";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "pattern": {
+      const v = findScrapedValue(scrapeMap, "padrao", "pattern", "estampa") || "Liso";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "model_name": {
+      const v =
+        findScrapedValue(scrapeMap, "nome do modelo", "modelo", "model name", "model") ||
+        ctx.title.slice(0, 40);
+      attrs[attrName] = attrLocalizedText(v.slice(0, 120), marketplaceId);
+      return true;
+    }
+    case "model_number": {
+      const v =
+        findScrapedValue(scrapeMap, "numero do modelo", "model number", "numero da peca") ||
+        "1";
+      attrs[attrName] = attrLocalizedText(v.slice(0, 40), marketplaceId);
+      return true;
+    }
+    case "manufacturer": {
+      const v =
+        findScrapedValue(scrapeMap, "fabricante", "manufacturer") ||
+        ctx.brand ||
+        "Importado";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "target_gender":
+      attrs[attrName] = attrLocaleValue("unisex", marketplaceId);
+      return true;
+    case "age_range_description": {
+      const v =
+        findScrapedValue(scrapeMap, "faixa etaria", "age range", "descricao da faixa etaria") ||
+        "Adulto";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "strap_type": {
+      const v =
+        findScrapedValue(scrapeMap, "tipo de alca", "strap type") ||
+        (ctx.productType.toUpperCase().includes("BACKPACK") ? "Alças traseiras" : "Ajustável");
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "closure": {
+      const v = findScrapedValue(scrapeMap, "tipo de fechamento", "closure") || "Zíper";
+      attrs[attrName] = attrClosureType(v, marketplaceId);
+      return true;
+    }
+    case "outer": {
+      const v =
+        findScrapedValue(scrapeMap, "material externo", "outer material", "material") || "Nylon";
+      attrs[attrName] = attrOuterMaterial(v.split(",")[0]!.trim(), marketplaceId);
+      return true;
+    }
+    case "lining_description": {
+      const v =
+        findScrapedValue(scrapeMap, "descricao do forro", "lining") || "Poliéster";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "water_resistance_level":
+      attrs[attrName] = attrLocaleValue("water_repellent", marketplaceId);
+      return true;
+    case "storage_volume": {
+      const liters = parseStorageVolumeLiters([...scrapeTexts, ctx.title]) || 20;
+      attrs[attrName] = [{ value: liters, unit: "liters", marketplace_id: marketplaceId }];
+      return true;
+    }
+    case "unit_count":
+      attrs[attrName] = [
+        {
+          value: 1,
+          type: { value: "unit", marketplace_id: marketplaceId },
+          marketplace_id: marketplaceId,
+        },
+      ];
+      return true;
+    case "number_of_items":
+      attrs[attrName] = attrLocaleValue(1, marketplaceId);
+      return true;
+    case "care_instructions": {
+      const v =
+        findScrapedValue(scrapeMap, "instrucoes de cuidados", "care instructions") ||
+        "Limpar com pano úmido";
+      attrs[attrName] = attrLocalizedText(v, marketplaceId);
+      return true;
+    }
+    case "included_components":
+      attrs[attrName] = attrLocalizedText("1 produto", marketplaceId);
+      return true;
+    case "item_length_width_height":
+    case "item_depth_width_height": {
+      const dims = extractDimensionTriple(attrs, [...scrapeTexts, ctx.title]);
+      if (!dims) return false;
+      if (productTypeUsesDepthDimensions(ctx.productType) || attrName === "item_depth_width_height") {
+        attrs.item_depth_width_height = [
+          {
+            depth: { value: dims.a, unit: "centimeters" },
+            width: { value: dims.b, unit: "centimeters" },
+            height: { value: dims.c, unit: "centimeters" },
+            marketplace_id: marketplaceId,
+          },
+        ];
+        delete attrs.item_length_width_height;
+      } else {
+        attrs.item_length_width_height = [
+          {
+            length: { value: dims.a, unit: dims.unit },
+            width: { value: dims.b, unit: dims.unit },
+            height: { value: dims.c, unit: dims.unit },
+            marketplace_id: marketplaceId,
+          },
+        ];
+        delete attrs.item_depth_width_height;
+      }
+      return true;
+    }
+    default: {
+      // Tentativa genérica: se o scrape tem chave homônima, usa texto localizado
+      const fromScrape = findScrapedValue(scrapeMap, attrName.replace(/_/g, " "), attrName);
+      if (fromScrape) {
+        attrs[attrName] = attrLocalizedText(fromScrape.slice(0, 500), marketplaceId);
+        return true;
+      }
+      return false;
+    }
+  }
+}
+
+function fillMissingAttributesFromIssues(
+  attrs: Record<string, unknown>,
+  issues: AmazonListingsIssue[] | undefined,
+  ctx: {
+    marketplaceId: string;
+    productType: string;
+    title: string;
+    brand?: string;
+    scrapedAttributes?: Array<{ key: string; value: string }>;
+  },
+): string[] {
+  const filled: string[] = [];
+  for (const name of collectMissingAttributeNames(issues)) {
+    if (fillMissingAmazonAttribute(attrs, name, ctx)) filled.push(name);
+  }
+  return filled;
+}
+
+function submissionIsRetryableInvalid(
+  response: AmazonListingsSubmissionResponse | undefined,
+): boolean {
+  const status = response?.status?.toUpperCase();
+  if (status !== "INVALID" && status) return false;
+  return collectMissingAttributeNames(response?.issues).length > 0;
+}
 
 function attrLocaleValue(value: string | number | boolean, marketplaceId: string) {
   return [{ value, marketplace_id: marketplaceId }];
@@ -104,6 +581,183 @@ function attrLocalizedText(value: string | number, marketplaceId: string) {
       marketplace_id: marketplaceId,
     },
   ];
+}
+
+/** Atributo SP-API: "Este produto não tem uma ID do produto" na Seller Central. */
+function gtinExemptionAttribute(marketplaceId: string) {
+  return [{ value: true, marketplace_id: marketplaceId }];
+}
+
+function applyGtinExemptionToAttributes(
+  attrs: Record<string, unknown>,
+  marketplaceId: string,
+): void {
+  delete attrs.externally_assigned_product_identifier;
+  attrs.supplier_declared_has_product_identifier_exemption =
+    gtinExemptionAttribute(marketplaceId);
+}
+
+function readGtinExemptionFromAttributes(
+  attributes: Record<string, unknown> | undefined,
+  marketplaceId: string,
+): boolean {
+  const raw = attributes?.supplier_declared_has_product_identifier_exemption;
+  if (!Array.isArray(raw) || !raw[0]) return false;
+  const entry = raw[0] as { value?: unknown; marketplace_id?: string };
+  if (entry.marketplace_id && entry.marketplace_id !== marketplaceId) return false;
+  const value = entry.value;
+  return value === true || value === 1 || value === "true" || value === "1";
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function patchGtinExemptionOnListing(input: {
+  accountId: string;
+  sellerId: string;
+  sellerSku: string;
+  marketplaceId: string;
+  productType: string;
+  removeExternalProductId: boolean;
+}): Promise<AmazonListingsSubmissionResponse | undefined> {
+  const patches: Array<{ op: "add" | "delete"; path: string; value?: unknown }> = [
+    {
+      op: "add",
+      path: "/attributes/supplier_declared_has_product_identifier_exemption",
+      value: gtinExemptionAttribute(input.marketplaceId),
+    },
+  ];
+  if (input.removeExternalProductId) {
+    patches.push({
+      op: "delete",
+      path: "/attributes/externally_assigned_product_identifier",
+    });
+  }
+
+  return amazon.patch<AmazonListingsSubmissionResponse>(
+    input.accountId,
+    listingsItemPath(input.sellerId, input.sellerSku, input.marketplaceId),
+    {
+      productType: input.productType,
+      patches,
+    },
+  );
+}
+
+/**
+ * A Seller Central nem sempre persiste a isenção só no putListingsItem inicial.
+ * Verifica o listing e reaplica patch até a Amazon gravar o checkbox.
+ */
+async function ensureGtinExemptionPersistedOnListing(input: {
+  accountId: string;
+  sellerId: string;
+  sellerSku: string;
+  marketplaceId: string;
+  productType: string;
+}): Promise<void> {
+  const retryDelaysMs = [0, 2000, 5000, 8000];
+  let lastPatch: AmazonListingsSubmissionResponse | undefined;
+
+  for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+    if (retryDelaysMs[attempt]! > 0) {
+      await sleepMs(retryDelaysMs[attempt]!);
+    }
+
+    let item: AmazonListingsItem | null = null;
+    try {
+      item = await getListingsItem(
+        input.accountId,
+        input.sellerId,
+        input.sellerSku,
+        input.marketplaceId,
+      );
+    } catch (err) {
+      logger.debug(
+        {
+          sellerSku: input.sellerSku,
+          attempt,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "getListingsItem before GTIN exemption patch",
+      );
+    }
+
+    const hasExemption = readGtinExemptionFromAttributes(item?.attributes, input.marketplaceId);
+    const hasExternalId = Array.isArray(item?.attributes?.externally_assigned_product_identifier);
+    if (hasExemption && !hasExternalId) {
+      logger.info(
+        { sellerSku: input.sellerSku, attempt },
+        "Amazon GTIN exemption confirmed on listing",
+      );
+      return;
+    }
+
+    try {
+      lastPatch = await patchGtinExemptionOnListing({
+        ...input,
+        removeExternalProductId: hasExternalId,
+      });
+      logger.info(
+        {
+          sellerSku: input.sellerSku,
+          attempt,
+          status: lastPatch?.status,
+          issues: lastPatch?.issues,
+        },
+        "Amazon GTIN exemption patch submitted",
+      );
+    } catch (err) {
+      logger.warn(
+        {
+          sellerSku: input.sellerSku,
+          attempt,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Amazon GTIN exemption patch request failed",
+      );
+    }
+  }
+
+  try {
+    const item = await getListingsItem(
+      input.accountId,
+      input.sellerId,
+      input.sellerSku,
+      input.marketplaceId,
+    );
+    if (readGtinExemptionFromAttributes(item?.attributes, input.marketplaceId)) {
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const issuesText = formatAmazonListingsIssues(lastPatch?.issues);
+  logger.warn(
+    {
+      sellerSku: input.sellerSku,
+      issuesText,
+      issues: lastPatch?.issues,
+    },
+    "Amazon GTIN exemption not persisted after retries — Seller Central may show ID externa unchecked",
+  );
+}
+
+function formatGtinExemptionHintFromIssues(issues: AmazonListingsIssue[] | undefined): string | null {
+  const blob = formatAmazonListingsIssues(issues);
+  if (
+    !/externally_assigned_product_identifier|product id|product identifier|gtin|upc|ean|isbn|jan|id do produto|id externa/i.test(
+      blob,
+    )
+  ) {
+    return null;
+  }
+  return [
+    "A Amazon não marcou a isenção de ID externa do produto.",
+    "Confirme na Seller Central se a isenção GTIN/EAN está aprovada para a marca e categoria deste anúncio.",
+    "Seller Central → Catálogo → Adicionar produtos → solicitar isenção de código de barras.",
+  ].join(" ");
 }
 
 /**
@@ -271,12 +925,26 @@ export function suggestAmazonDepartment(productType: string, title = ""): string
 }
 
 /**
- * Só product types cujo schema BR realmente tem `compartment`.
+ * Só product types cujo schema BR realmente tem `compartment` (descrição).
  * NÃO usar /BAG/ genérico — casa com BACKPACK e a Amazon ignora/rejeita o atributo.
  */
 export function productTypeNeedsCompartment(productType: string): boolean {
   const type = (productType || "").toUpperCase();
   return type === "DUFFEL_BAG" || type.includes("DUFFEL");
+}
+
+/**
+ * Product types que exigem `number_of_compartments` no BR (ex.: BACKPACK).
+ * Independente de `compartment` (descrição) — BACKPACK exige o número, não a descrição.
+ */
+export function productTypeNeedsNumberOfCompartments(productType: string): boolean {
+  const type = (productType || "").toUpperCase();
+  return (
+    type === "BACKPACK" ||
+    type.endsWith("_BACKPACK") ||
+    type === "DUFFEL_BAG" ||
+    type.includes("DUFFEL")
+  );
 }
 
 /** BACKPACK (e similares) usam P×L×A (`item_depth_width_height`), não C×L×A. */
@@ -319,6 +987,31 @@ export function suggestAmazonCompartment(productType: string, title = ""): strin
     return "Compartimento principal amplo";
   }
   return "Compartimento principal";
+}
+
+/** Extrai número de compartimentos de textos do scrape (ex.: "Número de compartimentos: 8"). */
+export function extractNumberOfCompartmentsFromTexts(texts: string[]): number {
+  for (const text of texts) {
+    const raw = String(text || "");
+    const labeled = raw.match(
+      /n[uú]mero\s+de\s+compartimentos?\s*[:\-]?\s*(\d+)/i,
+    );
+    if (labeled?.[1]) {
+      const n = Number(labeled[1]);
+      if (Number.isFinite(n) && n > 0) return Math.floor(n);
+    }
+    const en = raw.match(/number\s+of\s+compartments?\s*[:\-]?\s*(\d+)/i);
+    if (en?.[1]) {
+      const n = Number(en[1]);
+      if (Number.isFinite(n) && n > 0) return Math.floor(n);
+    }
+    // Valor puro "8" quando o texto vem só do valor do atributo scrape
+    if (/^\d{1,2}$/.test(raw.trim())) {
+      const n = Number(raw.trim());
+      if (n > 0 && n <= 50) return n;
+    }
+  }
+  return 0;
 }
 
 function hasAmazonLocaleTextValue(raw: unknown): string {
@@ -613,23 +1306,34 @@ export function ensureRequiredAmazonListingAttributes(
     );
   }
 
-  // compartment — só DUFFEL_BAG (schema aninhado). Em BACKPACK a Amazon ignora/rejeita.
+  // compartment (descrição) — só DUFFEL_BAG. Em BACKPACK a Amazon rejeita esse atributo.
   if (productTypeNeedsCompartment(opts.productType)) {
     const existing = extractCompartmentDescription(attrs.compartment);
     attrs.compartment = attrCompartmentDescription(
       existing || suggestAmazonCompartment(opts.productType, opts.title || ""),
       marketplaceId,
     );
+  } else {
+    delete attrs.compartment;
+  }
+
+  // number_of_compartments — BACKPACK exige (erro 90220 se ausente); DUFFEL também.
+  if (productTypeNeedsNumberOfCompartments(opts.productType)) {
     const rawCount = attrs.number_of_compartments;
-    let count = 1;
+    let count = 0;
     if (Array.isArray(rawCount) && rawCount[0]) {
       const v = (rawCount[0] as { value?: unknown }).value;
       if (typeof v === "number" && v > 0) count = Math.floor(v);
       else if (typeof v === "string" && Number(v) > 0) count = Math.floor(Number(v));
     }
-    attrs.number_of_compartments = attrLocaleValue(count, marketplaceId);
+    if (count <= 0) {
+      count = extractNumberOfCompartmentsFromTexts([
+        ...(opts.scrapedTexts || []),
+        opts.title || "",
+      ]);
+    }
+    attrs.number_of_compartments = attrLocaleValue(count > 0 ? count : 1, marketplaceId);
   } else {
-    delete attrs.compartment;
     delete attrs.number_of_compartments;
   }
 
@@ -660,6 +1364,7 @@ export function ensureRequiredAmazonListingAttributes(
     const isBag = type === "BAG";
     const isSuitcase = type === "SUITCASE";
     const isCosmetic = type === "COSMETIC_CASE";
+    const isLuggage = type === "LUGGAGE";
 
     if (
       !hasAmazonLocaleTextValue(attrs.strap_type) &&
@@ -673,7 +1378,7 @@ export function ensureRequiredAmazonListingAttributes(
 
     if (
       !extractNestedAttrValue(attrs.closure, "type") &&
-      (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic)
+      (isBackpack || isDuffel || isHandbagFamily || isBag || isCosmetic || isLuggage)
     ) {
       attrs.closure = attrClosureType("Zíper", marketplaceId);
     }
@@ -690,7 +1395,7 @@ export function ensureRequiredAmazonListingAttributes(
       attrs.storage_volume[0] &&
       typeof (attrs.storage_volume[0] as { value?: unknown }).value === "number" &&
       typeof (attrs.storage_volume[0] as { unit?: unknown }).unit === "string";
-    if (!hasVolume && (isBackpack || isSuitcase)) {
+    if (!hasVolume && (isBackpack || isSuitcase || isLuggage)) {
       const liters =
         parseStorageVolumeLiters([
           title,
@@ -704,14 +1409,26 @@ export function ensureRequiredAmazonListingAttributes(
 
     if (
       !hasAmazonLocaleTextValue(attrs.water_resistance_level) &&
-      (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+      (isBackpack ||
+        isDuffel ||
+        isHandbagFamily ||
+        isBag ||
+        isSuitcase ||
+        isCosmetic ||
+        isLuggage)
     ) {
       attrs.water_resistance_level = attrLocaleValue("water_repellent", marketplaceId);
     }
 
     if (
       !extractNestedAttrValue(attrs.outer, "material") &&
-      (isBackpack || isDuffel || isHandbagFamily || isSuitcase || isCosmetic)
+      (isBackpack ||
+        isDuffel ||
+        isHandbagFamily ||
+        isBag ||
+        isSuitcase ||
+        isCosmetic ||
+        isLuggage)
     ) {
       attrs.outer = attrOuterMaterial(suggestOuterMaterial(attrs, title), marketplaceId);
     }
@@ -747,10 +1464,7 @@ export function ensureRequiredAmazonListingAttributes(
 
   // Produto novo: sempre isento de GTIN/EAN (Amazon mostra "não possui GTIN/EAN")
   if (opts.createNewCatalogProduct) {
-    delete attrs.externally_assigned_product_identifier;
-    attrs.supplier_declared_has_product_identifier_exemption = [
-      { value: true, marketplace_id: marketplaceId },
-    ];
+    applyGtinExemptionToAttributes(attrs, marketplaceId);
   }
 
   // model_name: limite prático no iHub (schema Amazon costuma aceitar bem mais que 12)
@@ -915,6 +1629,7 @@ function buildCreateAttributes(
     productType: input.productType,
     title: titleFromAttr,
     price: input.price,
+    createNewCatalogProduct: true,
   });
 }
 
@@ -942,11 +1657,16 @@ function assertSubmissionAccepted(
 
   // HTTP 200 + INVALID = rejeitado (antes tratávamos como sucesso e só gravávamos no iHub).
   if (status === "INVALID" || (!status && errorIssues.length > 0)) {
+    const missing = collectMissingAttributeNames(issues);
+    const missingHint =
+      missing.length > 0
+        ? ` Atributos faltando: ${missing.join(", ")}. Complete na revisão ou ajuste o product type.`
+        : "";
     throw new AmazonListingError(
       brandGateHint ||
         (issuesText
-          ? `Amazon rejeitou o anúncio: ${issuesText}`
-          : "Amazon rejeitou o anúncio (status INVALID). Verifique product type e atributos obrigatórios."),
+          ? `Amazon rejeitou o anúncio: ${issuesText}${missingHint}`
+          : `Amazon rejeitou o anúncio (status INVALID). Verifique product type e atributos obrigatórios.${missingHint}`),
       "AMAZON_API_ERROR",
     );
   }
@@ -1171,7 +1891,19 @@ export async function createAmazonListing(
   const attributesRaw =
     matchCatalog && requirements === "LISTING_OFFER_ONLY" && asin
       ? buildOfferAttributes(input, marketplaceId, asin)
-      : buildCreateAttributes(input, marketplaceId);
+      : buildCreateAttributes(
+          {
+            ...input,
+            attributes: applyScrapedAttributesToListingAttrs(
+              input.attributes || {},
+              input.scrapedAttributes,
+              marketplaceId,
+            ),
+          },
+          marketplaceId,
+        );
+
+  const scrapedTexts = scrapedTextsFromAttributes(input.scrapedAttributes);
 
   let attributes =
     matchCatalog && requirements === "LISTING_OFFER_ONLY"
@@ -1181,6 +1913,7 @@ export async function createAmazonListing(
           productType,
           title: input.title,
           price: input.price,
+          scrapedTexts,
           createNewCatalogProduct: !matchCatalog,
         });
 
@@ -1188,24 +1921,29 @@ export async function createAmazonListing(
     delete attributes.merchant_suggested_asin;
   }
 
-  // Garantia final: bags sempre levam compartment no formato aninhado do schema
+  // Garantia final: descrição compartment só DUFFEL; número de compartimentos também em BACKPACK
   if (productTypeNeedsCompartment(productType)) {
     const existing = extractCompartmentDescription(attributes.compartment);
     attributes.compartment = attrCompartmentDescription(
       existing || suggestAmazonCompartment(productType, input.title),
       marketplaceId,
     );
+  } else {
+    delete attributes.compartment;
+  }
+  if (productTypeNeedsNumberOfCompartments(productType)) {
     if (!Array.isArray(attributes.number_of_compartments) || !attributes.number_of_compartments[0]) {
-      attributes.number_of_compartments = attrLocaleValue(1, marketplaceId);
+      const count =
+        extractNumberOfCompartmentsFromTexts([...scrapedTexts, input.title]) || 1;
+      attributes.number_of_compartments = attrLocaleValue(count, marketplaceId);
     }
+  } else {
+    delete attributes.number_of_compartments;
   }
 
   // Produto novo: isenção GTIN/EAN (Seller Central: "Este produto não tem uma ID do produto")
   if (!matchCatalog) {
-    delete attributes.externally_assigned_product_identifier;
-    attributes.supplier_declared_has_product_identifier_exemption = [
-      { value: true, marketplace_id: marketplaceId },
-    ];
+    applyGtinExemptionToAttributes(attributes, marketplaceId);
   }
 
   // Caminhos de Navegação (recommended_browse_nodes) — enum do schema do product type
@@ -1245,92 +1983,117 @@ export async function createAmazonListing(
     }
   }
 
-  const body = {
+  const fillCtx = {
+    marketplaceId,
     productType,
-    requirements,
-    attributes,
+    title: input.title,
+    brand: brand || undefined,
+    scrapedAttributes: input.scrapedAttributes,
   };
 
-  logger.info(
-    {
-      accountId,
-      sellerSku,
+  let submission: AmazonListingsSubmissionResponse | undefined;
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const body = {
       productType,
       requirements,
-      matchCatalog,
-      sourceAsin: asin,
-      hasMerchantSuggestedAsin: !!attributes.merchant_suggested_asin,
-      hasCompartment: !!extractCompartmentDescription(attributes.compartment),
-      compartmentPreview: extractCompartmentDescription(attributes.compartment).slice(0, 80),
-      compartmentShape: Array.isArray(attributes.compartment)
-        ? Object.keys((attributes.compartment[0] as object) || {})
-        : [],
-      hasNumberOfCompartments: Array.isArray(attributes.number_of_compartments),
-      hasGtinExemption:
-        Array.isArray(attributes.supplier_declared_has_product_identifier_exemption) &&
-        (attributes.supplier_declared_has_product_identifier_exemption[0] as { value?: boolean })
-          ?.value === true,
-      hasExternalProductId: Array.isArray(attributes.externally_assigned_product_identifier),
-      browseNodeId:
-        Array.isArray(attributes.recommended_browse_nodes) &&
-        (attributes.recommended_browse_nodes[0] as { value?: string } | undefined)?.value
-          ? String((attributes.recommended_browse_nodes[0] as { value: string }).value)
-          : null,
-    },
-    "Amazon putListingsItem request",
-  );
+      attributes,
+    };
 
-  let submission: AmazonListingsSubmissionResponse | undefined;
-  try {
-    submission = await amazon.put<AmazonListingsSubmissionResponse>(
-      accountId,
-      listingsItemPath(sellerId, sellerSku, marketplaceId),
-      body,
+    logger.info(
+      {
+        accountId,
+        sellerSku,
+        productType,
+        requirements,
+        matchCatalog,
+        sourceAsin: asin,
+        attempt,
+        hasMerchantSuggestedAsin: !!attributes.merchant_suggested_asin,
+        hasCompartment: !!extractCompartmentDescription(attributes.compartment),
+        hasNumberOfCompartments: Array.isArray(attributes.number_of_compartments),
+        hasGtinExemption:
+          Array.isArray(attributes.supplier_declared_has_product_identifier_exemption) &&
+          (attributes.supplier_declared_has_product_identifier_exemption[0] as { value?: boolean })
+            ?.value === true,
+        hasExternalProductId: Array.isArray(attributes.externally_assigned_product_identifier),
+        attributeKeys: Object.keys(attributes).sort(),
+      },
+      "Amazon putListingsItem request",
     );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn({ accountId, sellerSku, message, requirements }, "Amazon putListingsItem failed");
-    throw new AmazonListingError(message, "AMAZON_API_ERROR");
+
+    try {
+      submission = await amazon.put<AmazonListingsSubmissionResponse>(
+        accountId,
+        listingsItemPath(sellerId, sellerSku, marketplaceId),
+        body,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        { accountId, sellerSku, message, requirements, attempt },
+        "Amazon putListingsItem failed",
+      );
+      throw new AmazonListingError(message, "AMAZON_API_ERROR");
+    }
+
+    if (!submissionIsRetryableInvalid(submission) || attempt === maxAttempts) {
+      break;
+    }
+
+    const filled = fillMissingAttributesFromIssues(attributes, submission.issues, fillCtx);
+    if (filled.length === 0) {
+      logger.warn(
+        {
+          sellerSku,
+          attempt,
+          missing: collectMissingAttributeNames(submission.issues),
+          issues: submission.issues,
+        },
+        "Amazon INVALID with missing attrs but none could be auto-filled",
+      );
+      break;
+    }
+
+    logger.info(
+      { sellerSku, attempt, filled, remainingIssues: submission.issues },
+      "Auto-filled missing Amazon attributes; retrying putListingsItem",
+    );
   }
 
   assertSubmissionAccepted(submission, sellerSku);
 
-  // Reforça isenção GTIN após o put (Seller Central às vezes não marca o check só com o LISTING inicial)
+  // Reforça isenção GTIN após o put — Seller Central só marca o checkbox quando o atributo persiste.
   if (!matchCatalog) {
+    await ensureGtinExemptionPersistedOnListing({
+      accountId,
+      sellerId,
+      sellerSku,
+      marketplaceId,
+      productType,
+    });
+
     try {
-      const exemptionPatch = await amazon.patch<AmazonListingsSubmissionResponse>(
-        accountId,
-        listingsItemPath(sellerId, sellerSku, marketplaceId),
-        {
-          productType,
-          patches: [
-            {
-              op: "replace",
-              path: "/attributes/supplier_declared_has_product_identifier_exemption",
-              value: [{ value: true, marketplace_id: marketplaceId }],
-            },
-            {
-              op: "delete",
-              path: "/attributes/externally_assigned_product_identifier",
-            },
-          ],
-        },
-      );
-      logger.info(
-        {
-          sellerSku,
-          status: exemptionPatch?.status,
-          issues: exemptionPatch?.issues,
-        },
-        "Amazon GTIN exemption patch after create",
-      );
+      const verified = await getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
+      if (!readGtinExemptionFromAttributes(verified.attributes, marketplaceId)) {
+        logger.warn(
+          {
+            sellerSku,
+            hint:
+              formatGtinExemptionHintFromIssues(submission?.issues) ??
+              'Isenção de ID externa não persistiu na Amazon — marque manualmente "Este produto não tem uma ID do produto" ou confirme isenção GTIN/EAN aprovada.',
+          },
+          "Amazon GTIN exemption missing after create retries",
+        );
+      }
     } catch (err) {
+      if (err instanceof AmazonListingError) throw err;
       logger.warn(
         {
           sellerSku,
           err: err instanceof Error ? err.message : String(err),
         },
-        "Amazon GTIN exemption patch failed (listing may still need manual checkbox)",
+        "Could not verify GTIN exemption after create",
       );
     }
   }

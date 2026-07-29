@@ -22,6 +22,7 @@ import {
   getAmazonPrice,
   getAmazonPublishBlockReasons,
   getAmazonQuantity,
+  getAmazonNumberOfCompartments,
   getAmazonScrapedAttributes,
   hasAmazonGtinExemption,
   listAmazonExtraTextAttributes,
@@ -30,6 +31,7 @@ import {
   normalizeAmazonCountryCode,
   normalizeAmazonDraftForReview,
   productTypeNeedsCompartment,
+  productTypeNeedsNumberOfCompartments,
   productTypeUsesDepthDimensions,
   setAmazonImageUrls,
   suggestAmazonCompartment,
@@ -37,6 +39,7 @@ import {
   updateAmazonBrowseNode,
   updateAmazonBulletPoints,
   updateAmazonCompartment,
+  updateAmazonNumberOfCompartments,
   updateAmazonCondition,
   updateAmazonDraftBasics,
   updateAmazonExtraTextAttribute,
@@ -135,7 +138,11 @@ export function AmazonListingReviewForm({
   const listPrice = getAmazonListPrice(draft) || price;
   const modelName = getAmazonModelName(draft);
   const compartment = getAmazonCompartment(draft);
+  const numberOfCompartments = getAmazonNumberOfCompartments(draft);
   const needsCompartment = productTypeNeedsCompartment(draft.payload.productType || "");
+  const needsNumberOfCompartments = productTypeNeedsNumberOfCompartments(
+    draft.payload.productType || "",
+  );
   const usesDepthDims = productTypeUsesDepthDimensions(draft.payload.productType || "");
   const browseNodeId = getAmazonBrowseNodeId(draft);
   const dims = getAmazonItemDimensions(draft) || {
@@ -703,6 +710,34 @@ export function AmazonListingReviewForm({
             </p>
           </div>
         </div>
+
+        {needsNumberOfCompartments ? (
+          <div className="space-y-1.5">
+            <Label>
+              Número de compartimentos <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={numberOfCompartments || ""}
+              onChange={(e) =>
+                onDraftChange(
+                  updateAmazonNumberOfCompartments(
+                    draft,
+                    e.target.value === "" ? 0 : Number(e.target.value),
+                  ),
+                )
+              }
+              placeholder="Ex.: 8"
+              className="h-9"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Atributo <code className="text-[10px]">number_of_compartments</code>{" "}
+              obrigatório para {draft.payload.productType || "este product type"}.
+            </p>
+          </div>
+        ) : null}
 
         {needsCompartment ? (
           <div className="space-y-1.5">
