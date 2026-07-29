@@ -119,8 +119,10 @@ export type MlPromotionItem = {
   sub_type?: string | null;
   currency?: string | null;
   stock?: MlPromotionItemStock;
-  net_proceeds?: MlNetProceeds | null;
+  net_proceeds?: MlNetProceeds | number | null;
   offer_id?: string | null;
+  meli_percentage?: number | null;
+  seller_percentage?: number | null;
   boosted_offer?: boolean | null;
   discount_meli_boosted_percentage?: number | null;
   discount_meli_boost_amount?: number | null;
@@ -137,25 +139,57 @@ export type MlItemPromotionContext = {
   min_discounted_price?: number | null;
   max_discounted_price?: number | null;
   suggested_discounted_price?: number | null;
-  net_proceeds?: MlNetProceeds | null;
+  net_proceeds?: MlNetProceeds | number | null;
   stock?: MlPromotionItemStock;
   start_date?: string | null;
   end_date?: string | null;
   ref_id?: string | null;
+  meli_percentage?: number | null;
+  seller_percentage?: number | null;
   boosted_offer?: boolean | null;
   discount_meli_boosted_percentage?: number | null;
   discount_meli_boost_amount?: number | null;
   total_price_for_boosted_offer?: number | null;
 };
 
-/** Valor absoluto de redução de tarifas por venda (boost ML), quando presente. */
+export function normalizeNetProceeds(
+  value: MlNetProceeds | number | null | undefined,
+): { amount: number; currency: string | null } | null {
+  if (value == null) return null;
+  if (typeof value === "number") {
+    return value > 0 || value === 0 ? { amount: value, currency: null } : null;
+  }
+  if (value.amount != null) {
+    return { amount: value.amount, currency: value.currency ?? null };
+  }
+  return null;
+}
+
+/**
+ * Subsídio de tarifas por venda.
+ * 1) `discount_meli_boost_amount` quando boost ativo
+ * 2) senão contribuição ML: original_price × meli_percentage / 100
+ *    (co-funding SMART/PRICE_MATCHING/MARKETPLACE_CAMPAIGN)
+ */
 export function resolveFeeSubsidyAmount(
-  item: Pick<MlPromotionItem, "discount_meli_boost_amount" | "boosted_offer">,
+  item: Pick<
+    MlPromotionItem,
+    | "discount_meli_boost_amount"
+    | "boosted_offer"
+    | "meli_percentage"
+    | "original_price"
+  >,
 ): number | null {
-  const amount = item.discount_meli_boost_amount;
-  if (amount == null || amount <= 0) return null;
-  if (item.boosted_offer === false) return null;
-  return amount;
+  const boost = item.discount_meli_boost_amount;
+  if (boost != null && boost > 0 && item.boosted_offer !== false) {
+    return boost;
+  }
+  const meliPct = item.meli_percentage;
+  const original = item.original_price;
+  if (meliPct != null && meliPct > 0 && original != null && original > 0) {
+    return Math.round(original * meliPct) / 100;
+  }
+  return null;
 }
 
 /**
@@ -224,6 +258,8 @@ export function mergePromotionItemWithContext(
     end_date: context.end_date ?? item.end_date,
     price: item.price ?? context.price,
     offer_id: item.offer_id ?? context.ref_id ?? null,
+    meli_percentage: context.meli_percentage ?? item.meli_percentage,
+    seller_percentage: context.seller_percentage ?? item.seller_percentage,
     boosted_offer: context.boosted_offer ?? item.boosted_offer,
     discount_meli_boosted_percentage:
       context.discount_meli_boosted_percentage ?? item.discount_meli_boosted_percentage,
@@ -377,6 +413,8 @@ export type EnrichedPromotionItem = MlPromotionItem & {
   thumbnail?: string | null;
   permalink?: string | null;
   availableQuantity?: number | null;
+  mlCategoryId?: string | null;
+  listingType?: string | null;
 };
 
 export type InboxEntry = {
@@ -673,6 +711,8 @@ export async function enrichItemsWithProducts(
       thumbnail: productsTable.thumbnail,
       permalink: productsTable.permalink,
       availableQuantity: productsTable.availableQuantity,
+      mlCategoryId: productsTable.mlCategoryId,
+      listingType: productsTable.listingType,
     })
     .from(productsTable)
     .where(and(eq(productsTable.accountId, accountId), inArray(productsTable.mlItemId, itemIds)));
@@ -689,6 +729,8 @@ export async function enrichItemsWithProducts(
       thumbnail: p?.thumbnail ?? null,
       permalink: p?.permalink ?? null,
       availableQuantity: p?.availableQuantity ?? null,
+      mlCategoryId: p?.mlCategoryId ?? null,
+      listingType: p?.listingType ?? null,
     };
   });
 }
@@ -746,13 +788,7 @@ export async function aggregateInboxForAccount(
               availableQuantity: item.availableQuantity,
               discountPercent: calcDiscountPercent(original, suggested),
               offerId: resolveOfferIdFromMlItem(item) ?? null,
-              netProceeds:
-                item.net_proceeds?.amount != null
-                  ? {
-                      amount: item.net_proceeds.amount,
-                      currency: item.net_proceeds.currency ?? null,
-                    }
-                  : null,
+              netProceeds: normalizeNetProceeds(item.net_proceeds),
               feeSubsidyAmount: resolveFeeSubsidyAmount(item),
             });
           }
@@ -764,6 +800,219 @@ export async function aggregateInboxForAccount(
   }
 
   return inbox;
+}
+
+/** Estima "você recebe" via tarifa de listagem ML quando a API de promoções não envia net_proceeds. */
+export async function estimateNetProceedsFromListingPrice(
+  accountId: string,
+  params: {
+    price: number;
+    categoryId?: string | null;
+    listingType?: string | null;
+    feeSubsidyAmount?: number | null;
+    siteId?: string;
+  },
+): Promise<number | null> {
+  const { price, categoryId, listingType, feeSubsidyAmount, siteId = "MLB" } = params;
+  if (!categoryId || !(price > 0)) return null;
+
+  try {
+    const qs = new URLSearchParams({
+      price: String(price),
+      category_id: categoryId,
+    });
+    if (listingType) qs.set("listing_type_id", listingType);
+
+    const res = await ml.get<
+      { sale_fee_amount?: number } | Array<{ sale_fee_amount?: number }>
+    >(accountId, `/sites/${siteId}/listing_prices?${qs.toString()}`);
+
+    const row = Array.isArray(res) ? res[0] : res;
+    const fee = row?.sale_fee_amount;
+    if (fee == null || !Number.isFinite(fee)) return null;
+
+    const subsidy = feeSubsidyAmount != null && feeSubsidyAmount > 0 ? feeSubsidyAmount : 0;
+    return Math.round((price - fee + subsidy) * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enriquece entradas da página atual com GET /seller-promotions/items/{id}
+ * (net_proceeds e campos de boost costumam vir só nesse endpoint para candidatos).
+ */
+export async function enrichInboxEntriesWithItemContext(
+  entries: InboxEntry[],
+  options?: { chunkSize?: number },
+): Promise<InboxEntry[]> {
+  if (entries.length === 0) return entries;
+  const chunkSize = options?.chunkSize ?? 5;
+  const result = [...entries];
+
+  const byAccountItems = new Map<string, string[]>();
+  for (const e of result) {
+    const list = byAccountItems.get(e.accountId) ?? [];
+    list.push(e.itemId);
+    byAccountItems.set(e.accountId, list);
+  }
+  const productMeta = new Map<
+    string,
+    { mlCategoryId: string | null; listingType: string | null }
+  >();
+  try {
+    const db = getDb();
+    for (const [accountId, itemIds] of byAccountItems) {
+      const unique = [...new Set(itemIds)];
+      const prods = await db
+        .select({
+          mlItemId: productsTable.mlItemId,
+          mlCategoryId: productsTable.mlCategoryId,
+          listingType: productsTable.listingType,
+        })
+        .from(productsTable)
+        .where(
+          and(eq(productsTable.accountId, accountId), inArray(productsTable.mlItemId, unique)),
+        );
+      for (const p of prods) {
+        productMeta.set(`${accountId}:${p.mlItemId}`, {
+          mlCategoryId: p.mlCategoryId,
+          listingType: p.listingType,
+        });
+      }
+    }
+  } catch {
+    // meta opcional
+  }
+
+  for (let i = 0; i < result.length; i += chunkSize) {
+    const chunk = result.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (entry, idx) => {
+        let next: InboxEntry = { ...entry };
+
+        const needsNet = next.netProceeds?.amount == null;
+        const needsSubsidy = next.feeSubsidyAmount == null || next.feeSubsidyAmount <= 0;
+        if (needsNet || needsSubsidy || !next.offerId) {
+          try {
+            const contexts = await fetchMlItemPromotions(entry.accountId, entry.itemId);
+            const ctx = findPromotionItemContext(contexts, entry.promotionId, entry.promotionType);
+            if (ctx) {
+              const merged = mergePromotionItemWithContext(
+                {
+                  id: entry.itemId,
+                  status: entry.itemStatus,
+                  original_price: entry.originalPrice,
+                  suggested_discounted_price: entry.suggestedDiscountedPrice,
+                  offer_id: entry.offerId,
+                  net_proceeds: entry.netProceeds
+                    ? { amount: entry.netProceeds.amount, currency: entry.netProceeds.currency }
+                    : null,
+                },
+                ctx,
+              );
+
+              next = {
+                ...next,
+                netProceeds: normalizeNetProceeds(merged.net_proceeds) ?? next.netProceeds ?? null,
+                feeSubsidyAmount:
+                  resolveFeeSubsidyAmount(merged) ?? next.feeSubsidyAmount ?? null,
+                offerId: resolveOfferIdFromMlItem(merged) ?? next.offerId ?? null,
+                originalPrice: merged.original_price ?? next.originalPrice,
+                suggestedDiscountedPrice:
+                  resolveMlSuggestedPrice(merged) ?? next.suggestedDiscountedPrice,
+              };
+            }
+          } catch {
+            // enriquecimento opcional
+          }
+        }
+
+        if (next.netProceeds?.amount == null) {
+          const meta = productMeta.get(`${entry.accountId}:${entry.itemId}`);
+          const price = next.suggestedDiscountedPrice;
+          if (price != null && meta?.mlCategoryId) {
+            const estimated = await estimateNetProceedsFromListingPrice(entry.accountId, {
+              price,
+              categoryId: meta.mlCategoryId,
+              listingType: meta.listingType,
+              feeSubsidyAmount: next.feeSubsidyAmount,
+            });
+            if (estimated != null) {
+              next = {
+                ...next,
+                netProceeds: { amount: estimated, currency: "BRL" },
+              };
+            }
+          }
+        }
+
+        result[i + idx] = next;
+      }),
+    );
+  }
+
+  return result;
+}
+
+/** Enriquece itens da página com contexto por anúncio (net_proceeds / boost / %). */
+export async function enrichPromotionItemsWithItemContext(
+  accountId: string,
+  promotionId: string,
+  promotionType: string,
+  items: EnrichedPromotionItem[],
+  options?: { chunkSize?: number },
+): Promise<EnrichedPromotionItem[]> {
+  if (items.length === 0) return items;
+  const chunkSize = options?.chunkSize ?? 5;
+  const result = [...items];
+
+  for (let i = 0; i < result.length; i += chunkSize) {
+    const chunk = result.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (item, idx) => {
+        let next: EnrichedPromotionItem = { ...item };
+        const net = normalizeNetProceeds(next.net_proceeds);
+        const subsidy = resolveFeeSubsidyAmount(next);
+        if (!(net && subsidy != null && subsidy > 0 && resolveOfferIdFromMlItem(next))) {
+          try {
+            const contexts = await fetchMlItemPromotions(accountId, item.id);
+            const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
+            if (ctx) {
+              next = { ...next, ...mergePromotionItemWithContext(next, ctx) };
+            }
+          } catch {
+            // enriquecimento opcional
+          }
+        }
+
+        if (normalizeNetProceeds(next.net_proceeds) == null) {
+          const price =
+            resolveMlSuggestedPrice(next) ??
+            (next.price != null && next.price > 0 ? next.price : null);
+          const feeSubsidy = resolveFeeSubsidyAmount(next);
+          if (price != null && next.mlCategoryId) {
+            const estimated = await estimateNetProceedsFromListingPrice(accountId, {
+              price,
+              categoryId: next.mlCategoryId,
+              listingType: next.listingType,
+              feeSubsidyAmount: feeSubsidy,
+            });
+            if (estimated != null) {
+              next = {
+                ...next,
+                net_proceeds: { amount: estimated, currency: "BRL" },
+              };
+            }
+          }
+        }
+
+        result[i + idx] = next;
+      }),
+    );
+  }
+
+  return result;
 }
 
 export async function buildPromotionSummary(

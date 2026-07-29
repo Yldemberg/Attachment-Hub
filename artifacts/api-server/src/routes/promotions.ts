@@ -21,10 +21,13 @@ import {
   parsePromotionStockBounds,
   resolveMlSuggestedPrice,
   resolveFeeSubsidyAmount,
+  normalizeNetProceeds,
   resolveOfferIdFromMlItem,
   findPromotionItemContext,
   matchesPromotionStatusFilter,
   isPromotionItemCandidate,
+  enrichInboxEntriesWithItemContext,
+  enrichPromotionItemsWithItemContext,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -109,12 +112,7 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     endDate: item.end_date ?? null,
     stockMin: stockBounds.stockMin,
     stockMax: stockBounds.stockMax,
-    netProceeds: item.net_proceeds?.amount != null
-      ? {
-          amount: item.net_proceeds.amount,
-          currency: item.net_proceeds.currency ?? null,
-        }
-      : null,
+    netProceeds: normalizeNetProceeds(item.net_proceeds),
     feeSubsidyAmount: resolveFeeSubsidyAmount(item),
     productId: item.productId ?? null,
     title: item.title ?? null,
@@ -207,7 +205,18 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
       promotionTypeLabel: PROMOTION_TYPE_LABELS[e.promotionType] ?? e.promotionType,
     }));
 
-    res.json(paginate(mapped, pageNum, limitNum));
+    const pageResult = paginate(mapped, pageNum, limitNum);
+    const enrichedPage = await enrichInboxEntriesWithItemContext(pageResult.data);
+    res.json({
+      data: enrichedPage.map((e) => ({
+        ...e,
+        promotionTypeLabel:
+          ("promotionTypeLabel" in e && e.promotionTypeLabel) ||
+          PROMOTION_TYPE_LABELS[e.promotionType] ||
+          e.promotionType,
+      })),
+      pagination: pageResult.pagination,
+    });
   } catch (err) {
     res.status(500).json({ error: mapMlPromotionError(err) });
   }
@@ -384,11 +393,18 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
       enriched = enriched.filter((e) => isPromotionItemCandidate(e.status));
     }
 
-    const mapped = enriched.map(mapPromotionItem);
-    const pageResult = paginate(mapped, pageNum, limitNum);
+    const pageResult = paginate(enriched, pageNum, limitNum);
+    pageResult.data = await enrichPromotionItemsWithItemContext(
+      acc.id,
+      promotionId,
+      promotion_type,
+      pageResult.data,
+    );
+    const mapped = pageResult.data.map(mapPromotionItem);
 
     res.json({
-      ...pageResult,
+      data: mapped,
+      pagination: pageResult.pagination,
       ...(promo ? { promotion: mapPromotion(promo, acc.id, acc.mlNickname) } : {}),
     });
   } catch (err) {
