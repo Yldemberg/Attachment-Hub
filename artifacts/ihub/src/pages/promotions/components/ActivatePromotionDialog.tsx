@@ -483,13 +483,16 @@ export function ActivatePromotionDialog({
                 )}
 
                 {(merged.netProceeds?.amount != null ||
-                  (merged.feeSubsidyAmount != null && merged.feeSubsidyAmount > 0)) && (
+                  (merged.feeSubsidyAmount != null && merged.feeSubsidyAmount > 0) ||
+                  merged.taxPercent != null ||
+                  merged.purchasePrice != null) && (
                   <div className="pt-1">
-                    <Label className="text-sm text-muted-foreground">Você recebe</Label>
                     <div className="mt-0.5">
                       <PromotionEarningsBlock
                         netProceedsAmount={merged.netProceeds?.amount}
                         feeSubsidyAmount={merged.feeSubsidyAmount}
+                        taxPercent={merged.taxPercent}
+                        purchasePrice={merged.purchasePrice}
                         prominent
                       />
                     </div>

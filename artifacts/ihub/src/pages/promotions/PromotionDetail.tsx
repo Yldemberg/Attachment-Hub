@@ -131,6 +131,8 @@ function ItemCard({
           className="mt-1.5"
           netProceedsAmount={item.netProceeds?.amount}
           feeSubsidyAmount={item.feeSubsidyAmount}
+          taxPercent={item.taxPercent}
+          purchasePrice={item.purchasePrice}
         />
       </div>
 

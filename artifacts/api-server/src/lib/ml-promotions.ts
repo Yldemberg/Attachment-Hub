@@ -1,6 +1,6 @@
 import { ml } from "./mercadolivre";
 import { getDb } from "./db";
-import { productsTable } from "@workspace/db/schema";
+import { productsTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
 const CACHE_TTL_MS = 3 * 60 * 1000;
@@ -415,7 +415,72 @@ export type EnrichedPromotionItem = MlPromotionItem & {
   availableQuantity?: number | null;
   mlCategoryId?: string | null;
   listingType?: string | null;
+  /** Inventário geral / Custos (relatórios) — por SKU do usuário */
+  taxPercent?: number | null;
+  purchasePrice?: number | null;
 };
+
+export type SkuFinancials = {
+  taxPercent: number | null;
+  purchasePrice: number | null;
+};
+
+/** Imposto (%) e preço de compra salvos em Inventário Geral / Custos (relatórios). */
+export async function loadInventorySkuFinancialsMap(
+  userId: string,
+  skus: string[],
+): Promise<Map<string, SkuFinancials>> {
+  const unique = [...new Set(skus.map((s) => s.trim()).filter(Boolean))];
+  const map = new Map<string, SkuFinancials>();
+  if (unique.length === 0) return map;
+
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({
+        sku: inventorySkuFinancialsTable.sku,
+        taxPercent: inventorySkuFinancialsTable.taxPercent,
+        purchasePrice: inventorySkuFinancialsTable.purchasePrice,
+      })
+      .from(inventorySkuFinancialsTable)
+      .where(
+        and(
+          eq(inventorySkuFinancialsTable.userId, userId),
+          inArray(inventorySkuFinancialsTable.sku, unique),
+        ),
+      );
+
+    for (const row of rows) {
+      map.set(row.sku, {
+        taxPercent: row.taxPercent != null ? Number(row.taxPercent) : null,
+        purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : null,
+      });
+    }
+  } catch {
+    // migração ausente ou tabela indisponível — não quebra promoções
+  }
+
+  return map;
+}
+
+export async function attachInventorySkuFinancials<T extends { sku?: string | null }>(
+  userId: string,
+  rows: T[],
+): Promise<(T & SkuFinancials)[]> {
+  const map = await loadInventorySkuFinancialsMap(
+    userId,
+    rows.map((r) => r.sku ?? "").filter(Boolean),
+  );
+  return rows.map((row) => {
+    const fin = row.sku ? map.get(row.sku) : undefined;
+    return {
+      ...row,
+      taxPercent: fin?.taxPercent ?? null,
+      purchasePrice: fin?.purchasePrice ?? null,
+    };
+  });
+}
+
 
 export type InboxEntry = {
   itemId: string;
@@ -445,6 +510,8 @@ export type InboxEntry = {
   offerId?: string | null;
   netProceeds?: { amount: number; currency?: string | null } | null;
   feeSubsidyAmount?: number | null;
+  taxPercent?: number | null;
+  purchasePrice?: number | null;
 };
 
 export type PromotionSummary = {

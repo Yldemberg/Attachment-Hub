@@ -835,6 +835,10 @@ export interface PromotionItem {
   stockMax?: number | null;
   netProceeds?: PromotionItemNetProceeds;
   feeSubsidyAmount?: number | null;
+  /** Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU */
+  taxPercent?: number | null;
+  /** Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU */
+  purchasePrice?: number | null;
   productId?: string | null;
   title?: string | null;
   sku?: string | null;
@@ -884,6 +888,10 @@ export interface PromotionInboxEntry {
   offerId?: string | null;
   netProceeds?: PromotionInboxEntryNetProceeds;
   feeSubsidyAmount?: number | null;
+  /** Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU */
+  taxPercent?: number | null;
+  /** Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU */
+  purchasePrice?: number | null;
 }
 
 export interface PromotionInboxListResponse {

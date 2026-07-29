@@ -1974,6 +1974,18 @@ export const ListPromotionInboxResponse = zod.object({
         })
         .nullish(),
       feeSubsidyAmount: zod.number().nullish(),
+      taxPercent: zod
+        .number()
+        .nullish()
+        .describe(
+          "Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU",
+        ),
+      purchasePrice: zod
+        .number()
+        .nullish()
+        .describe(
+          "Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU",
+        ),
     }),
   ),
   pagination: zod.object({
@@ -2134,6 +2146,18 @@ export const ListPromotionItemsResponse = zod.object({
         })
         .nullish(),
       feeSubsidyAmount: zod.number().nullish(),
+      taxPercent: zod
+        .number()
+        .nullish()
+        .describe(
+          "Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU",
+        ),
+      purchasePrice: zod
+        .number()
+        .nullish()
+        .describe(
+          "Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU",
+        ),
       productId: zod.string().nullish(),
       title: zod.string().nullish(),
       sku: zod.string().nullish(),

@@ -28,6 +28,7 @@ import {
   isPromotionItemCandidate,
   enrichInboxEntriesWithItemContext,
   enrichPromotionItemsWithItemContext,
+  attachInventorySkuFinancials,
   PROMOTION_TYPE_LABELS,
   type MlPromotion,
   type EnrichedPromotionItem,
@@ -114,6 +115,8 @@ function mapPromotionItem(item: EnrichedPromotionItem) {
     stockMax: stockBounds.stockMax,
     netProceeds: normalizeNetProceeds(item.net_proceeds),
     feeSubsidyAmount: resolveFeeSubsidyAmount(item),
+    taxPercent: item.taxPercent ?? null,
+    purchasePrice: item.purchasePrice ?? null,
     productId: item.productId ?? null,
     title: item.title ?? null,
     sku: item.sku ?? null,
@@ -207,8 +210,9 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
 
     const pageResult = paginate(mapped, pageNum, limitNum);
     const enrichedPage = await enrichInboxEntriesWithItemContext(pageResult.data);
+    const withFinancials = await attachInventorySkuFinancials(req.user!.id, enrichedPage);
     res.json({
-      data: enrichedPage.map((e) => ({
+      data: withFinancials.map((e) => ({
         ...e,
         promotionTypeLabel:
           ("promotionTypeLabel" in e && e.promotionTypeLabel) ||
@@ -400,7 +404,10 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
       promotion_type,
       pageResult.data,
     );
-    const mapped = pageResult.data.map(mapPromotionItem);
+    const mapped = await attachInventorySkuFinancials(
+      req.user!.id,
+      pageResult.data.map(mapPromotionItem),
+    );
 
     res.json({
       data: mapped,

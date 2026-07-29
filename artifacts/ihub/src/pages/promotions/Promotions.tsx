@@ -119,6 +119,8 @@ function promotionItemToInboxEntry(
     offerId: item.offerId,
     netProceeds: item.netProceeds,
     feeSubsidyAmount: item.feeSubsidyAmount,
+    taxPercent: item.taxPercent,
+    purchasePrice: item.purchasePrice,
   };
 }
 
@@ -220,6 +222,8 @@ function CandidateCard({
           className="mt-1.5"
           netProceedsAmount={entry.netProceeds?.amount}
           feeSubsidyAmount={entry.feeSubsidyAmount}
+          taxPercent={entry.taxPercent}
+          purchasePrice={entry.purchasePrice}
         />
       </div>
 

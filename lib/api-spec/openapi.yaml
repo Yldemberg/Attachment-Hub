@@ -3725,6 +3725,14 @@ components:
         feeSubsidyAmount:
           type: number
           nullable: true
+        taxPercent:
+          type: number
+          nullable: true
+          description: Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU
+        purchasePrice:
+          type: number
+          nullable: true
+          description: Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU
         productId:
           type: string
           nullable: true
@@ -3849,6 +3857,14 @@ components:
         feeSubsidyAmount:
           type: number
           nullable: true
+        taxPercent:
+          type: number
+          nullable: true
+          description: Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU
+        purchasePrice:
+          type: number
+          nullable: true
+          description: Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU
       required: [itemId, promotionId, promotionType, itemStatus, accountId]
 
     PromotionInboxListResponse:

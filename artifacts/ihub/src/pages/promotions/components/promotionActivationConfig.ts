@@ -17,6 +17,8 @@ export type PromotionItemFields = Pick<
   | "status"
   | "netProceeds"
   | "feeSubsidyAmount"
+  | "taxPercent"
+  | "purchasePrice"
   | "offerId"
 >;
 
@@ -228,6 +230,8 @@ export function mergeItemFields(
     suggestedDiscountedPrice: fresh?.suggestedDiscountedPrice ?? src.suggestedDiscountedPrice ?? null,
     netProceeds: fresh?.netProceeds ?? src.netProceeds ?? null,
     feeSubsidyAmount: fresh?.feeSubsidyAmount ?? src.feeSubsidyAmount ?? null,
+    taxPercent: fresh?.taxPercent ?? src.taxPercent ?? null,
+    purchasePrice: fresh?.purchasePrice ?? src.purchasePrice ?? null,
     stockMin: fresh?.stockMin ?? inbox?.stockMin ?? null,
     stockMax: fresh?.stockMax ?? inbox?.stockMax ?? null,
     availableQuantity: src.availableQuantity ?? fresh?.availableQuantity ?? null,

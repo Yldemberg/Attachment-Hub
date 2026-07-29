@@ -36,4 +36,8 @@ export interface PromotionInboxEntry {
   offerId?: string | null;
   netProceeds?: PromotionInboxEntryNetProceeds;
   feeSubsidyAmount?: number | null;
+  /** Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU */
+  taxPercent?: number | null;
+  /** Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU */
+  purchasePrice?: number | null;
 }
