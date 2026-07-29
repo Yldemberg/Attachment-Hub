@@ -656,8 +656,8 @@ export function mapMlPromotionError(err: unknown): string {
   }
   const stockFromRaw = translateMlStockMessage(msg) ?? translateMlStockMessage(mlBody);
   if (stockFromRaw) return stockFromRaw;
-  if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE")) {
-    return "O preço com desconto não é considerado credível pelo Mercado Livre.";
+  if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE") || /discounted price is not credible/i.test(msg)) {
+    return "O preço com desconto não é considerado credível pelo Mercado Livre. Use o preço sugerido ou um valor dentro da faixa permitida (desconto mínimo/máximo da campanha) e tente novamente.";
   }
   if (msg.includes("403")) {
     return "Acesso negado. Verifique reputação verde e permissões da conta.";
@@ -1145,14 +1145,28 @@ export async function activatePromotionItem(
   itemId: string,
   body: ActivatePromotionItemBody,
 ): Promise<unknown> {
+  const noPriceTypes = new Set([
+    "VOLUME",
+    "MARKETPLACE_CAMPAIGN",
+    "SMART",
+    "PRICE_MATCHING",
+    "PRE_NEGOTIATED",
+    "SELLER_COUPON_CAMPAIGN",
+  ]);
   const needsStockResolution =
     PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType) || body.promotionType === "DOD";
 
   let offerId = body.offerId;
-  let dealPrice = body.dealPrice;
+  let dealPrice = noPriceTypes.has(body.promotionType) ? undefined : body.dealPrice;
   let stock = body.stock;
 
-  if (needsStockResolution || !offerId) {
+  // Evita round-trips extras ao ML quando já temos offer_id e preço (e estoque não é necessário).
+  const needsMlContext =
+    needsStockResolution ||
+    !offerId ||
+    (dealPrice == null && !noPriceTypes.has(body.promotionType));
+
+  if (needsMlContext) {
     const ctx = await loadItemStockContext(
       accountId,
       itemId,
@@ -1160,7 +1174,9 @@ export async function activatePromotionItem(
       body.promotionType,
     );
     if (!offerId) offerId = ctx.offerId;
-    if (dealPrice == null && ctx.suggestedPrice != null) dealPrice = ctx.suggestedPrice;
+    if (dealPrice == null && ctx.suggestedPrice != null && !noPriceTypes.has(body.promotionType)) {
+      dealPrice = ctx.suggestedPrice;
+    }
 
     if (PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType)) {
       const resolved = resolveActivationStock({
@@ -1199,7 +1215,9 @@ export async function activatePromotionItem(
     promotion_type: body.promotionType,
   };
   if (offerId) payload.offer_id = offerId;
-  if (dealPrice != null) payload.deal_price = dealPrice;
+  if (dealPrice != null && !noPriceTypes.has(body.promotionType)) {
+    payload.deal_price = dealPrice;
+  }
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
   if (stock != null) payload.stock = stock;
 

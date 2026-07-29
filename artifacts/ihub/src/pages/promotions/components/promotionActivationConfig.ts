@@ -132,6 +132,17 @@ export function getPriceBounds(
   return { min, max };
 }
 
+/** Ajusta deal_price para a faixa credível do ML (evita ERROR_CREDIBILITY_DISCOUNTED_PRICE). */
+export function clampDealPriceToBounds(
+  price: number,
+  bounds: { min: number | null; max: number | null },
+): number {
+  let next = Math.round(price * 100) / 100;
+  if (bounds.max != null && next > bounds.max) next = bounds.max;
+  if (bounds.min != null && next < bounds.min) next = bounds.min;
+  return Math.round(next * 100) / 100;
+}
+
 export function calcDiscountPercent(original: number, finalPrice: number): number {
   if (original <= 0) return 0;
   return Math.round(((original - finalPrice) / original) * 100);

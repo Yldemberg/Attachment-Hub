@@ -30,6 +30,7 @@ import {
   calcDiscountAmount,
   calcDiscountPercent,
   calcFinalFromDiscount,
+  clampDealPriceToBounds,
   defaultStockValue,
   formatPriceInput,
   formatPromotionValidity,
@@ -290,7 +291,8 @@ export function ActivatePromotionDialog({
       data: {
         accountId,
         promotionType,
-        dealPrice: parsedPrice,
+        dealPrice:
+          parsedPrice != null ? clampDealPriceToBounds(parsedPrice, priceBounds) : undefined,
         topDealPrice: config.needsTopDealPrice ? parsedTop : undefined,
         stock: config.needsStock || (config.stockOptional && parsedStock != null)
           ? parsedStock

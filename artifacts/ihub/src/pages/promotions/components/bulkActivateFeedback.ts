@@ -1,7 +1,9 @@
 import { activatePromotionItem } from "@workspace/api-client-react";
 import type { BulkActivatePromotionItemResult } from "@workspace/api-client-react";
 import {
+  clampDealPriceToBounds,
   defaultStockValue,
+  getPriceBounds,
   getPromotionActivationConfig,
 } from "./promotionActivationConfig";
 
@@ -47,6 +49,9 @@ export function bulkActivateToastContent(results: BulkActivatePromotionItemResul
 type BulkItemSource = {
   itemId: string;
   suggestedDiscountedPrice?: number | null;
+  originalPrice?: number | null;
+  minDiscountedPrice?: number | null;
+  maxDiscountedPrice?: number | null;
   availableQuantity?: number | null;
   stockMin?: number | null;
   stockMax?: number | null;
@@ -124,13 +129,20 @@ function validateBulkStock(
   return undefined;
 }
 
-/** Traduz mensagens conhecidas do ML (estoque, offer_id, etc.). */
+/** Traduz mensagens conhecidas do ML (estoque, offer_id, credibilidade, etc.). */
 export function translateMlPromotionMessage(message: string): string {
   const trimmed = message.trim();
   if (!trimmed) return trimmed;
 
   if (trimmed.includes("Offer id is required") || trimmed === "OFFER_ID_REQUIRED") {
     return "Esta campanha exige o identificador da oferta. Atualize a página e tente novamente.";
+  }
+
+  if (
+    trimmed.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE") ||
+    /discounted price is not credible/i.test(trimmed)
+  ) {
+    return "O preço com desconto não é considerado credível pelo Mercado Livre. Use o preço sugerido ou um valor dentro da faixa permitida (desconto mínimo/máximo da campanha) e tente novamente.";
   }
 
   const stockGreaterLess = trimmed.match(
@@ -169,9 +181,40 @@ export function buildBulkActivatePayloadItems(
   return entries.map((entry) => {
     const base: BulkActivatePreparedItem = {
       itemId: entry.itemId,
-      dealPrice: entry.suggestedDiscountedPrice ?? undefined,
       offerId: entry.offerId ?? undefined,
     };
+
+    // Campanhas confirm-only (SMART, etc.): não enviar deal_price — o ML rejeita preço fora da oferta.
+    if (config.needsPrice) {
+      let dealPrice = entry.suggestedDiscountedPrice ?? undefined;
+      if (dealPrice != null) {
+        const bounds = getPriceBounds(promotionType, {
+          originalPrice: entry.originalPrice ?? null,
+          maxOriginalPrice: null,
+          minDiscountedPrice: entry.minDiscountedPrice ?? null,
+          maxDiscountedPrice: entry.maxDiscountedPrice ?? null,
+          suggestedDiscountedPrice: entry.suggestedDiscountedPrice ?? null,
+          stockMin: entry.stockMin ?? null,
+          stockMax: entry.stockMax ?? null,
+          availableQuantity: entry.availableQuantity ?? null,
+          startDate: null,
+          endDate: null,
+          price: null,
+          discountPercentage: null,
+          status: "candidate",
+          netProceeds: null,
+          feeSubsidyAmount: null,
+          taxPercent: null,
+          purchasePrice: null,
+          offerId: entry.offerId ?? null,
+        });
+        dealPrice = clampDealPriceToBounds(dealPrice, bounds);
+      }
+      base.dealPrice = dealPrice;
+      if (dealPrice == null) {
+        base.validationError = "Preço promocional não disponível para este anúncio.";
+      }
+    }
 
     if (!(config.needsStock || config.stockOptional)) {
       return base;
@@ -205,9 +248,11 @@ export function buildBulkActivatePayloadItems(
     if (Number.isNaN(stock)) {
       return {
         ...base,
-        validationError: config.needsStock
-          ? "Não foi possível definir o estoque reservado para esta promoção."
-          : undefined,
+        validationError:
+          base.validationError ??
+          (config.needsStock
+            ? "Não foi possível definir o estoque reservado para esta promoção."
+            : undefined),
       };
     }
 
@@ -252,7 +297,9 @@ export function bulkActivateErrorMessage(err: unknown): string {
   return "Não foi possível comunicar com o servidor. Tente novamente.";
 }
 
-/** Ativa um a um via endpoint individual (mesmo fluxo do botão Ativar). */
+const ACTIVATE_CONCURRENCY = 3;
+
+/** Ativa em paralelo (chunks) via endpoint individual — reduz o tempo total vs 1 a 1. */
 export async function activatePromotionItemsSequentially(params: {
   promotionId: string;
   accountId: string;
@@ -261,38 +308,44 @@ export async function activatePromotionItemsSequentially(params: {
   onProgress?: (done: number, total: number) => void;
 }): Promise<BulkActivatePromotionItemResult[]> {
   const { promotionId, accountId, promotionType, items, onProgress } = params;
-  const results: BulkActivatePromotionItemResult[] = [];
+  const results: BulkActivatePromotionItemResult[] = new Array(items.length);
+  let doneCount = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]!;
+  for (let i = 0; i < items.length; i += ACTIVATE_CONCURRENCY) {
+    const chunk = items.slice(i, i + ACTIVATE_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (item, idxInChunk) => {
+        const index = i + idxInChunk;
 
-    if (item.validationError) {
-      results.push({
-        itemId: item.itemId,
-        ok: false,
-        error: item.validationError,
-      });
-      onProgress?.(i + 1, items.length);
-      continue;
-    }
+        if (item.validationError) {
+          results[index] = {
+            itemId: item.itemId,
+            ok: false,
+            error: item.validationError,
+          };
+        } else {
+          try {
+            await activatePromotionItem(promotionId, item.itemId, {
+              accountId,
+              promotionType,
+              dealPrice: item.dealPrice,
+              stock: item.stock,
+              offerId: item.offerId,
+            });
+            results[index] = { itemId: item.itemId, ok: true };
+          } catch (err) {
+            results[index] = {
+              itemId: item.itemId,
+              ok: false,
+              error: bulkActivateErrorMessage(err),
+            };
+          }
+        }
 
-    try {
-      await activatePromotionItem(promotionId, item.itemId, {
-        accountId,
-        promotionType,
-        dealPrice: item.dealPrice,
-        stock: item.stock,
-        offerId: item.offerId,
-      });
-      results.push({ itemId: item.itemId, ok: true });
-    } catch (err) {
-      results.push({
-        itemId: item.itemId,
-        ok: false,
-        error: bulkActivateErrorMessage(err),
-      });
-    }
-    onProgress?.(i + 1, items.length);
+        doneCount += 1;
+        onProgress?.(doneCount, items.length);
+      }),
+    );
   }
 
   return results;
