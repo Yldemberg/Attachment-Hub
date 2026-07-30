@@ -356,16 +356,23 @@ async function loadItemStockContext(
   itemId: string,
   promotionId: string,
   promotionType: string,
+  options?: { skipAvailableQuantity?: boolean },
 ): Promise<{
   stockMin: number | null;
   stockMax: number | null;
   availableQuantity: number | null;
   suggestedPrice: number | null;
+  minDiscountedPrice: number | null;
+  maxDiscountedPrice: number | null;
+  originalPrice: number | null;
   offerId?: string;
 }> {
   let stockMin: number | null = null;
   let stockMax: number | null = null;
   let suggestedPrice: number | null = null;
+  let minDiscountedPrice: number | null = null;
+  let maxDiscountedPrice: number | null = null;
+  let originalPrice: number | null = null;
   let offerId: string | undefined;
 
   try {
@@ -378,32 +385,112 @@ async function loadItemStockContext(
     ]);
     const fromList = items.find((x) => x.id === itemId);
     const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
-    const merged = fromList ? mergePromotionItemWithContext(fromList, ctx) : null;
+    const merged = fromList
+      ? mergePromotionItemWithContext(fromList, ctx)
+      : ctx
+        ? mergePromotionItemWithContext(
+            {
+              id: itemId,
+              status: "candidate",
+              original_price: ctx.original_price,
+              price: ctx.price,
+              suggested_discounted_price: ctx.suggested_discounted_price,
+              min_discounted_price: ctx.min_discounted_price,
+              max_discounted_price: ctx.max_discounted_price,
+              offer_id: ctx.ref_id ?? null,
+              stock: ctx.stock,
+            },
+            ctx,
+          )
+        : null;
+
     if (merged) {
       const bounds = parsePromotionStockBounds(merged.stock);
       stockMin = bounds.stockMin;
       stockMax = bounds.stockMax;
       suggestedPrice = resolveMlSuggestedPrice(merged);
+      minDiscountedPrice = merged.min_discounted_price ?? null;
+      maxDiscountedPrice = merged.max_discounted_price ?? null;
+      originalPrice = merged.original_price ?? null;
       offerId = resolveOfferIdFromMlItem(merged);
-    } else if (ctx) {
-      const bounds = parsePromotionStockBounds(ctx.stock);
-      stockMin = bounds.stockMin;
-      stockMax = bounds.stockMax;
-      offerId = ctx.ref_id?.trim() || undefined;
     }
   } catch {
     // enriquecimento opcional
   }
 
   let availableQuantity: number | null = null;
-  try {
-    const enriched = await enrichItemsWithProducts(accountId, [{ id: itemId, status: "candidate" }]);
-    availableQuantity = enriched[0]?.availableQuantity ?? null;
-  } catch {
-    // opcional
+  if (!options?.skipAvailableQuantity) {
+    try {
+      const enriched = await enrichItemsWithProducts(accountId, [{ id: itemId, status: "candidate" }]);
+      availableQuantity = enriched[0]?.availableQuantity ?? null;
+    } catch {
+      // opcional
+    }
   }
 
-  return { stockMin, stockMax, availableQuantity, suggestedPrice, offerId };
+  return {
+    stockMin,
+    stockMax,
+    availableQuantity,
+    suggestedPrice,
+    minDiscountedPrice,
+    maxDiscountedPrice,
+    originalPrice,
+    offerId,
+  };
+}
+
+/** Mantém deal_price dentro da faixa credível do ML. */
+function clampDealPriceToCredibilityBounds(
+  price: number,
+  bounds: { min: number | null; max: number | null },
+): number {
+  let next = Math.round(price * 100) / 100;
+  if (bounds.max != null && next > bounds.max) next = bounds.max;
+  if (bounds.min != null && next < bounds.min) next = bounds.min;
+  return Math.round(next * 100) / 100;
+}
+
+/**
+ * Resolve o deal_price a enviar ao ML:
+ * 1) preço sugerido fresco quando o cliente não enviou preço (ativação em massa)
+ * 2) preço do cliente limitado à faixa fresca min/max_discounted
+ * 3) se ainda inválido, cai no sugerido fresco
+ */
+function resolveFreshDealPrice(
+  requested: number | null | undefined,
+  ctx: {
+    suggestedPrice: number | null;
+    minDiscountedPrice: number | null;
+    maxDiscountedPrice: number | null;
+    originalPrice: number | null;
+  },
+): number | null {
+  const bounds = {
+    min: ctx.minDiscountedPrice,
+    max: ctx.maxDiscountedPrice ?? ctx.originalPrice,
+  };
+
+  const suggested =
+    ctx.suggestedPrice != null && ctx.suggestedPrice > 0
+      ? clampDealPriceToCredibilityBounds(ctx.suggestedPrice, bounds)
+      : null;
+
+  // Ativação em massa / sem preço: sempre preferir sugerido fresco do ML
+  if (requested == null) {
+    return suggested;
+  }
+
+  const clamped = clampDealPriceToCredibilityBounds(requested, bounds);
+  // Se o preço do card/cliente ficou fora da faixa e há sugerido, use o sugerido
+  if (
+    suggested != null &&
+    ((bounds.max != null && requested > bounds.max) ||
+      (bounds.min != null && requested < bounds.min))
+  ) {
+    return suggested;
+  }
+  return clamped;
 }
 
 export type EnrichedPromotionItem = MlPromotionItem & {
@@ -658,6 +745,9 @@ export function mapMlPromotionError(err: unknown): string {
   if (stockFromRaw) return stockFromRaw;
   if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE") || /discounted price is not credible/i.test(msg)) {
     return "O preço com desconto não é considerado credível pelo Mercado Livre. Use o preço sugerido ou um valor dentro da faixa permitida (desconto mínimo/máximo da campanha) e tente novamente.";
+  }
+  if (msg.includes("Preço promocional credível não disponível")) {
+    return msg.replace(/^ML API \d+: /, "");
   }
   if (msg.includes("403")) {
     return "Acesso negado. Verifique reputação verde e permissões da conta.";
@@ -1153,18 +1243,17 @@ export async function activatePromotionItem(
     "PRE_NEGOTIATED",
     "SELLER_COUPON_CAMPAIGN",
   ]);
+  const needsPrice = !noPriceTypes.has(body.promotionType);
   const needsStockResolution =
     PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType) || body.promotionType === "DOD";
 
   let offerId = body.offerId;
-  let dealPrice = noPriceTypes.has(body.promotionType) ? undefined : body.dealPrice;
+  let dealPrice = needsPrice ? body.dealPrice : undefined;
   let stock = body.stock;
 
-  // Evita round-trips extras ao ML quando já temos offer_id e preço (e estoque não é necessário).
-  const needsMlContext =
-    needsStockResolution ||
-    !offerId ||
-    (dealPrice == null && !noPriceTypes.has(body.promotionType));
+  // Preço: sempre consulta o ML para obter suggested/min/max frescos (evita CREDIBILITY com preço do card).
+  // Estoque / offer_id: só quando necessário.
+  const needsMlContext = needsPrice || needsStockResolution || !offerId;
 
   if (needsMlContext) {
     const ctx = await loadItemStockContext(
@@ -1172,10 +1261,12 @@ export async function activatePromotionItem(
       itemId,
       body.promotionId,
       body.promotionType,
+      { skipAvailableQuantity: !needsStockResolution },
     );
     if (!offerId) offerId = ctx.offerId;
-    if (dealPrice == null && ctx.suggestedPrice != null && !noPriceTypes.has(body.promotionType)) {
-      dealPrice = ctx.suggestedPrice;
+
+    if (needsPrice) {
+      dealPrice = resolveFreshDealPrice(dealPrice, ctx) ?? undefined;
     }
 
     if (PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType)) {
@@ -1210,12 +1301,18 @@ export async function activatePromotionItem(
     throw new Error("OFFER_ID_REQUIRED");
   }
 
+  if (needsPrice && (dealPrice == null || !(dealPrice > 0))) {
+    throw new Error(
+      "Preço promocional credível não disponível neste anúncio. Atualize a lista e tente novamente.",
+    );
+  }
+
   const payload: Record<string, unknown> = {
     promotion_id: body.promotionId,
     promotion_type: body.promotionType,
   };
   if (offerId) payload.offer_id = offerId;
-  if (dealPrice != null && !noPriceTypes.has(body.promotionType)) {
+  if (dealPrice != null && needsPrice) {
     payload.deal_price = dealPrice;
   }
   if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
@@ -1271,99 +1368,23 @@ export async function bulkActivatePromotionItems(
 ): Promise<Array<{ itemId: string; ok: boolean; error?: string }>> {
   const results: Array<{ itemId: string; ok: boolean; error?: string }> = [];
   const chunkSize = 3;
-  const noPriceTypes = new Set([
-    "VOLUME",
-    "MARKETPLACE_CAMPAIGN",
-    "SMART",
-    "PRICE_MATCHING",
-    "PRE_NEGOTIATED",
-    "SELLER_COUPON_CAMPAIGN",
-  ]);
-  const stockRequiredTypes = new Set(["LIGHTNING", "UNHEALTHY_STOCK"]);
 
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunk = items.slice(i, i + chunkSize);
     await Promise.all(
       chunk.map(async (item) => {
         try {
-          let dealPrice = item.dealPrice;
-          let stock = item.stock;
-
-          const needsSuggestedPrice = item.useSuggested && dealPrice == null;
-          const needsStock = stock == null && stockRequiredTypes.has(promotionType);
-
-            if (needsSuggestedPrice || needsStock) {
-            const promoItems = await listPromotionItems(accountId, promotionId, promotionType, {
-              itemId: item.itemId,
-              bypassCache: true,
-            });
-            let pi = promoItems.find((x) => x.id === item.itemId);
-            if (pi) {
-              try {
-                const contexts = await fetchMlItemPromotions(accountId, item.itemId);
-                const ctx = findPromotionItemContext(contexts, promotionId, promotionType);
-                pi = mergePromotionItemWithContext(pi, ctx);
-              } catch {
-                // enriquecimento opcional
-              }
-
-              if (needsSuggestedPrice) {
-                dealPrice = resolveMlSuggestedPrice(pi) ?? undefined;
-              }
-              if (needsStock) {
-                const bounds = parsePromotionStockBounds(pi.stock);
-                const enriched = await enrichItemsWithProducts(accountId, [pi]);
-                const availableQuantity = enriched[0]?.availableQuantity ?? null;
-                const resolved = resolveActivationStock({
-                  promotionType,
-                  availableQuantity,
-                  stockMin: bounds.stockMin,
-                  stockMax: bounds.stockMax,
-                  requestedStock: stock,
-                });
-                if ("error" in resolved) {
-                  results.push({ itemId: item.itemId, ok: false, error: resolved.error });
-                  return;
-                }
-                stock = resolved.stock;
-              }
-            }
-          }
-
-          const offerId =
-            item.offerId ??
-            (await resolvePromotionOfferId(
-              accountId,
-              item.itemId,
-              promotionId,
-              promotionType,
-            ));
-
-          if (dealPrice == null && !noPriceTypes.has(promotionType)) {
-            results.push({
-              itemId: item.itemId,
-              ok: false,
-              error: "Preço promocional não disponível para este anúncio",
-            });
-            return;
-          }
-
-          if (stockRequiredTypes.has(promotionType) && (stock == null || stock < 1)) {
-            results.push({
-              itemId: item.itemId,
-              ok: false,
-              error: "Quantidade de estoque não informada",
-            });
-            return;
-          }
+          // Sem dealPrice / useSuggested → activatePromotionItem busca suggested fresco no ML
+          const dealPrice =
+            item.useSuggested || item.dealPrice == null ? undefined : item.dealPrice;
 
           await activatePromotionItem(accountId, item.itemId, {
             promotionId,
             promotionType,
             dealPrice,
             topDealPrice: item.topDealPrice,
-            stock,
-            offerId,
+            stock: item.stock,
+            offerId: item.offerId,
           });
           results.push({ itemId: item.itemId, ok: true });
         } catch (err) {

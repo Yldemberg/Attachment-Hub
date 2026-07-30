@@ -1,9 +1,7 @@
 import { activatePromotionItem } from "@workspace/api-client-react";
 import type { BulkActivatePromotionItemResult } from "@workspace/api-client-react";
 import {
-  clampDealPriceToBounds,
   defaultStockValue,
-  getPriceBounds,
   getPromotionActivationConfig,
 } from "./promotionActivationConfig";
 
@@ -145,6 +143,10 @@ export function translateMlPromotionMessage(message: string): string {
     return "O preço com desconto não é considerado credível pelo Mercado Livre. Use o preço sugerido ou um valor dentro da faixa permitida (desconto mínimo/máximo da campanha) e tente novamente.";
   }
 
+  if (/Preço promocional credível não disponível/i.test(trimmed)) {
+    return trimmed;
+  }
+
   const stockGreaterLess = trimmed.match(
     /Stock must be greater than (\d+) and less than (\d+)/i,
   );
@@ -182,39 +184,8 @@ export function buildBulkActivatePayloadItems(
     const base: BulkActivatePreparedItem = {
       itemId: entry.itemId,
       offerId: entry.offerId ?? undefined,
+      // dealPrice omitido: backend busca suggested_discounted_price fresco no ML
     };
-
-    // Campanhas confirm-only (SMART, etc.): não enviar deal_price — o ML rejeita preço fora da oferta.
-    if (config.needsPrice) {
-      let dealPrice = entry.suggestedDiscountedPrice ?? undefined;
-      if (dealPrice != null) {
-        const bounds = getPriceBounds(promotionType, {
-          originalPrice: entry.originalPrice ?? null,
-          maxOriginalPrice: null,
-          minDiscountedPrice: entry.minDiscountedPrice ?? null,
-          maxDiscountedPrice: entry.maxDiscountedPrice ?? null,
-          suggestedDiscountedPrice: entry.suggestedDiscountedPrice ?? null,
-          stockMin: entry.stockMin ?? null,
-          stockMax: entry.stockMax ?? null,
-          availableQuantity: entry.availableQuantity ?? null,
-          startDate: null,
-          endDate: null,
-          price: null,
-          discountPercentage: null,
-          status: "candidate",
-          netProceeds: null,
-          feeSubsidyAmount: null,
-          taxPercent: null,
-          purchasePrice: null,
-          offerId: entry.offerId ?? null,
-        });
-        dealPrice = clampDealPriceToBounds(dealPrice, bounds);
-      }
-      base.dealPrice = dealPrice;
-      if (dealPrice == null) {
-        base.validationError = "Preço promocional não disponível para este anúncio.";
-      }
-    }
 
     if (!(config.needsStock || config.stockOptional)) {
       return base;
