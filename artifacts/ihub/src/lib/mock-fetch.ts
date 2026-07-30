@@ -178,7 +178,15 @@ export function installMockFetch(): void {
         .filter((x) => x.ref >= dateFrom && x.ref <= dateTo)
         .map((x) => {
           const o = x.o;
-          const items = (o.itemsJson as { price: number; quantity: number; sku?: string | null }[]) ?? [];
+          const items = (o.itemsJson as {
+            price: number;
+            quantity: number;
+            sku?: string | null;
+            title?: string | null;
+            logistic_type?: string | null;
+            sale_logistic_type?: string | null;
+            listing_type?: string | null;
+          }[]) ?? [];
           const lineSubtotal = Math.round(items.reduce((s, it) => s + it.price * it.quantity, 0) * 100) / 100;
           const snap = (o as { reportFinancials?: { itemsSubtotal: number; marketplaceFeesTotal: number; shippingTotal: number } })
             .reportFinancials;
@@ -191,17 +199,43 @@ export function installMockFetch(): void {
           const netReceivedAmount =
             (snap as { netReceivedAmount?: number | null } | undefined)?.netReceivedAmount ??
             Math.round((lineSubtotal - marketplaceFeesTotal) * 0.92 * 100) / 100;
-          const profit = Math.round((netReceivedAmount - taxTotal - productPurchaseTotal) * 100) / 100;
+          const adsFee = null as number | null;
+          const profit = Math.round((netReceivedAmount - taxTotal - productPurchaseTotal - (adsFee ?? 0)) * 100) / 100;
+          const first = items[0];
+          const sku = [...new Set(items.map((it) => it.sku).filter(Boolean))].join(", ") || null;
+          let titleShort: string | null = first?.title?.trim() ? first.title.trim().slice(0, 40) : null;
+          if (titleShort && items.length > 1) titleShort = `${titleShort} (+${items.length - 1})`;
+          const listingRaw = first?.listing_type;
+          const listingTypeLabel =
+            listingRaw === "gold_pro" || listingRaw === "gold_premium"
+              ? "Premium"
+              : listingRaw === "gold_special"
+                ? "Clássico"
+                : listingRaw ?? "Clássico";
+          const logRaw = first?.sale_logistic_type ?? first?.logistic_type ?? "cross_docking";
+          const logisticLabel =
+            logRaw === "fulfillment"
+              ? "Full"
+              : logRaw === "self_service" || logRaw === "self_service_in"
+                ? "Flex"
+                : logRaw === "cross_docking"
+                  ? "Coleta"
+                  : "Padrão";
           return {
             referenceDate: x.ref,
             mlOrderId: Number(o.mlOrderId),
             accountNickname: o.account?.mlNickname ?? null,
+            listingTypeLabel,
+            sku,
+            titleShort,
+            logisticLabel,
             orderTotal: o.totalAmount as number,
             productPurchaseTotal,
             marketplaceFeesTotal,
             shippingTotal,
             taxTotal,
             netReceivedAmount,
+            adsFee,
             profit,
           };
         });
@@ -218,10 +252,10 @@ export function installMockFetch(): void {
       }
       if (format === "csv") {
         const header =
-          "Data,Número do Pedido,Conta,Total da Compra,Preço de Compra do Produto,Frete,Imposto,À Receber,Lucro";
+          "Data,Conta,Nº Pedido,Tipo,SKU,Título,Logística,Tot. Venda,P. Compra,Frete/Op.,Imposto,A Receber,Ads,$ Mg Cont";
         const lines = rows.map(
           (r) =>
-            `${r.referenceDate},${r.mlOrderId},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.orderTotal ?? ""},${r.productPurchaseTotal},${r.shippingTotal},${r.taxTotal},${r.netReceivedAmount ?? ""},${r.profit}`,
+            `${r.referenceDate},"${(r.accountNickname ?? "").replace(/"/g, '""')}",${r.mlOrderId},${r.listingTypeLabel ?? ""},${r.sku ?? ""},"${(r.titleShort ?? "").replace(/"/g, '""')}",${r.logisticLabel ?? ""},${r.orderTotal ?? ""},${r.productPurchaseTotal},${r.shippingTotal},${r.taxTotal},${r.netReceivedAmount ?? ""},${r.adsFee ?? ""},${r.profit}`,
         );
         const body = "\uFEFF" + [header, ...lines].join("\n");
         return new Response(body, {

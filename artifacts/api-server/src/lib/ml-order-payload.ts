@@ -43,6 +43,8 @@ export type StoredMlOrderItemsJsonRow = {
   price: number;
   thumbnail: string | null;
   sku: string | null;
+  /** listing_type_id do anúncio (gold_special / gold_pro). */
+  listing_type?: string | null;
   /** Modalidades do anúncio / envio cotado no item. */
   logistic_type: string | null;
   /** Modalidade concretizada na venda (`GET /shipments/:id`). */
@@ -75,6 +77,7 @@ export async function buildMlOrderStoredPayload(
         .select({
           thumbnail: productsTable.thumbnail,
           sku: productsTable.sku,
+          listingType: productsTable.listingType,
           logisticType: productsTable.logisticType,
         })
         .from(productsTable)
@@ -88,6 +91,7 @@ export async function buildMlOrderStoredPayload(
         price: oi.unit_price,
         thumbnail: product?.thumbnail ?? null,
         sku: product?.sku ?? null,
+        listing_type: product?.listingType ?? null,
         logistic_type: product?.logisticType ?? null,
         sale_logistic_type: shipDetails.saleLogisticType,
       };

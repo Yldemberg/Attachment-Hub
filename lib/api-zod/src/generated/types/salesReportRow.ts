@@ -10,18 +10,28 @@ export interface SalesReportRow {
   referenceDate: Date;
   mlOrderId?: bigint | null;
   accountNickname?: string | null;
+  /** Clássico ou Premium (listing_type do anúncio). */
+  listingTypeLabel?: string | null;
+  /** SKU(s) do pedido (múltiplos separados por vírgula). */
+  sku?: string | null;
+  /** Título curto do(s) item(ns) do pedido. */
+  titleShort?: string | null;
+  /** Logística da venda (Full, Flex, Cross-docking, Padrão, etc.). */
+  logisticLabel?: string | null;
   /** Total do pedido no ML (total_amount). */
   orderTotal?: number | null;
   /** Soma do preço de compra salvo no inventário × quantidade, por SKU. */
   productPurchaseTotal: number;
   /** Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido). */
   marketplaceFeesTotal: number;
-  /** Soma de shipping_cost nos pagamentos. */
+  /** Frete / custo operacional (shipping_cost nos pagamentos). */
   shippingTotal: number;
   /** Imposto estimado (% por SKU sobre o subtotal de cada linha). */
   taxTotal: number;
   /** Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago (GET /v1/payments/{id}). */
   netReceivedAmount?: number | null;
-  /** À receber (net_received_amount) − imposto − preço de compra dos produtos. */
+  /** Taxa de Product Ads atribuída ao pedido, quando disponível. */
+  adsFee?: number | null;
+  /** Margem de contribuição — A receber − imposto − preço de compra (− ads, se houver). */
   profit: number | null;
 }

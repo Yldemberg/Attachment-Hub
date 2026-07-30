@@ -3,6 +3,29 @@ import type { SalesReportExportRow } from "./sales-report-export";
 
 export type SkuFinancialsMap = Map<string, { taxPercent: number | null; purchasePrice: number | null }>;
 
+/** listing_type_id do produto → rótulo Clássico/Premium. */
+export type ListingTypeByItemId = Map<string, string | null>;
+
+const LISTING_TYPE_LABELS: Record<string, string> = {
+  gold_special: "Clássico",
+  gold_pro: "Premium",
+  gold_premium: "Premium",
+  free: "Grátis",
+};
+
+const LOGISTIC_LABELS: Record<string, string> = {
+  fulfillment: "Full",
+  cross_docking: "Coleta",
+  xd_drop_off: "Places",
+  drop_off: "Padrão",
+  self_service: "Flex",
+  self_service_in: "Flex",
+  turbo: "Turbo",
+  default: "Padrão",
+  custom: "Custom",
+  not_specified: "N/D",
+};
+
 export function parseReportFinancialsDb(raw: unknown): OrderReportFinancials | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -22,6 +45,37 @@ export function itemsSubtotalFromStoredItems(items: StoredMlOrderItemsJsonRow[])
   return Math.round(items.reduce((s, it) => s + it.price * it.quantity, 0) * 100) / 100;
 }
 
+export function shortTitle(title: string | null | undefined, max = 40): string {
+  if (!title) return "";
+  const t = title.trim();
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+export function labelListingType(listingTypeId: string | null | undefined): string | null {
+  if (!listingTypeId) return null;
+  const key = listingTypeId.trim();
+  return LISTING_TYPE_LABELS[key] ?? key;
+}
+
+export function labelLogisticType(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const primary = raw.split(",")[0]?.trim() ?? "";
+  if (!primary) return null;
+  return LOGISTIC_LABELS[primary] ?? primary;
+}
+
+function uniqueJoin(values: Array<string | null | undefined>): string | null {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const s = v?.trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out.length > 0 ? out.join(", ") : null;
+}
+
 export type SalesReportDbDetailRow = {
   referenceDate: string;
   accountId: string;
@@ -32,7 +86,11 @@ export type SalesReportDbDetailRow = {
   reportFinancials: unknown;
 };
 
-export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: SkuFinancialsMap): SalesReportExportRow {
+export function buildSalesReportExportRow(
+  r: SalesReportDbDetailRow,
+  finMap: SkuFinancialsMap,
+  listingTypeByItemId?: ListingTypeByItemId,
+): SalesReportExportRow {
   const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
     ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
     : [];
@@ -55,21 +113,47 @@ export function buildSalesReportExportRow(r: SalesReportDbDetailRow, finMap: Sku
   taxTotal = Math.round(taxTotal * 100) / 100;
 
   const netReceivedAmount = snap?.netReceivedAmount ?? null;
+  const adsFee: number | null = null;
   const profit =
     netReceivedAmount != null
-      ? Math.round((netReceivedAmount - taxTotal - productPurchaseTotal) * 100) / 100
+      ? Math.round((netReceivedAmount - taxTotal - productPurchaseTotal - (adsFee ?? 0)) * 100) / 100
       : null;
+
+  const first = items[0];
+  const sku = uniqueJoin(items.map((it) => it.sku));
+  let titleShort: string | null = null;
+  if (first?.title) {
+    titleShort = shortTitle(first.title, 40);
+    if (items.length > 1) titleShort = `${titleShort} (+${items.length - 1})`;
+  }
+
+  const listingTypeLabel = uniqueJoin(
+    items.map((it) => {
+      const fromMap = listingTypeByItemId?.get(it.item_id);
+      const fromItem = (it as StoredMlOrderItemsJsonRow & { listing_type?: string | null }).listing_type;
+      return labelListingType(fromMap ?? fromItem ?? null);
+    }),
+  );
+
+  const logisticLabel = uniqueJoin(
+    items.map((it) => labelLogisticType(it.sale_logistic_type ?? it.logistic_type)),
+  );
 
   return {
     referenceDate: r.referenceDate,
     mlOrderId: r.mlOrderId !== null ? String(r.mlOrderId) : "",
     accountNickname: r.accountNickname,
+    listingTypeLabel,
+    sku,
+    titleShort,
+    logisticLabel,
     orderTotal: r.totalAmount !== null ? Number(r.totalAmount) : null,
     productPurchaseTotal,
     marketplaceFeesTotal,
     shippingTotal,
     taxTotal,
     netReceivedAmount,
+    adsFee,
     profit,
   };
 }

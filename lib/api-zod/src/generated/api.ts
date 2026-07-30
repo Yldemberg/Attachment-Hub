@@ -1978,13 +1978,13 @@ export const ListPromotionInboxResponse = zod.object({
         .number()
         .nullish()
         .describe(
-          "Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU",
+          "Percentual de imposto (0–100) salvo no inventário geral \/ Custos (relatórios), por SKU",
         ),
       purchasePrice: zod
         .number()
         .nullish()
         .describe(
-          "Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU",
+          "Preço de compra (BRL) salvo no inventário geral \/ Custos (relatórios), por SKU",
         ),
     }),
   ),
@@ -2150,13 +2150,13 @@ export const ListPromotionItemsResponse = zod.object({
         .number()
         .nullish()
         .describe(
-          "Percentual de imposto (0–100) salvo no inventário geral / Custos (relatórios), por SKU",
+          "Percentual de imposto (0–100) salvo no inventário geral \/ Custos (relatórios), por SKU",
         ),
       purchasePrice: zod
         .number()
         .nullish()
         .describe(
-          "Preço de compra (BRL) salvo no inventário geral / Custos (relatórios), por SKU",
+          "Preço de compra (BRL) salvo no inventário geral \/ Custos (relatórios), por SKU",
         ),
       productId: zod.string().nullish(),
       title: zod.string().nullish(),
@@ -2527,6 +2527,24 @@ export const GetSalesReportResponse = zod.object({
       referenceDate: zod.coerce.date(),
       mlOrderId: zod.number().nullish(),
       accountNickname: zod.string().nullish(),
+      listingTypeLabel: zod
+        .string()
+        .nullish()
+        .describe("Clássico ou Premium (listing_type do anúncio)."),
+      sku: zod
+        .string()
+        .nullish()
+        .describe("SKU(s) do pedido (múltiplos separados por vírgula)."),
+      titleShort: zod
+        .string()
+        .nullish()
+        .describe("Título curto do(s) item(ns) do pedido."),
+      logisticLabel: zod
+        .string()
+        .nullish()
+        .describe(
+          "Logística da venda (Full, Flex, Cross-docking, Padrão, etc.).",
+        ),
       orderTotal: zod
         .number()
         .nullish()
@@ -2543,7 +2561,7 @@ export const GetSalesReportResponse = zod.object({
         ),
       shippingTotal: zod
         .number()
-        .describe("Soma de shipping_cost nos pagamentos."),
+        .describe("Frete \/ custo operacional (shipping_cost nos pagamentos)."),
       taxTotal: zod
         .number()
         .describe(
@@ -2555,11 +2573,17 @@ export const GetSalesReportResponse = zod.object({
         .describe(
           "Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago (GET \/v1\/payments\/{id}).",
         ),
+      adsFee: zod
+        .number()
+        .nullish()
+        .describe(
+          "Taxa de Product Ads atribuída ao pedido, quando disponível.",
+        ),
       profit: zod
         .number()
         .nullable()
         .describe(
-          "À receber (net_received_amount) − imposto − preço de compra dos produtos.",
+          "Margem de contribuição — A receber − imposto − preço de compra (− ads, se houver).",
         ),
     }),
   ),

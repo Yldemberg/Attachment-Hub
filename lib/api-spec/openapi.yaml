@@ -4136,6 +4136,22 @@ components:
         accountNickname:
           type: string
           nullable: true
+        listingTypeLabel:
+          type: string
+          nullable: true
+          description: Clássico ou Premium (listing_type do anúncio).
+        sku:
+          type: string
+          nullable: true
+          description: SKU(s) do pedido (múltiplos separados por vírgula).
+        titleShort:
+          type: string
+          nullable: true
+          description: Título curto do(s) item(ns) do pedido.
+        logisticLabel:
+          type: string
+          nullable: true
+          description: Logística da venda (Full, Flex, Cross-docking, Padrão, etc.).
         orderTotal:
           type: number
           nullable: true
@@ -4148,7 +4164,7 @@ components:
           description: Soma de marketplace_fee nos pagamentos (preenchido na sincronização do pedido).
         shippingTotal:
           type: number
-          description: Soma de shipping_cost nos pagamentos.
+          description: Frete / custo operacional (shipping_cost nos pagamentos).
         taxTotal:
           type: number
           description: Imposto estimado (% por SKU sobre o subtotal de cada linha).
@@ -4158,10 +4174,15 @@ components:
           description: >-
             Soma de transaction_details.net_received_amount dos pagamentos no Mercado Pago
             (GET /v1/payments/{id}).
+        adsFee:
+          type: number
+          nullable: true
+          description: Taxa de Product Ads atribuída ao pedido, quando disponível.
         profit:
           type: number
           nullable: true
-          description: À receber (net_received_amount) − imposto − preço de compra dos produtos.
+          description: >-
+            Margem de contribuição — A receber − imposto − preço de compra (− ads, se houver).
       required:
         - referenceDate
         - productPurchaseTotal

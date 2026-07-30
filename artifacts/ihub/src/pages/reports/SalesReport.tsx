@@ -264,7 +264,7 @@ export default function SalesReport() {
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="p-6 space-y-6 max-w-6xl mx-auto">
+      <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-primary/10">
             <FileSpreadsheet className="w-6 h-6 text-primary" />
@@ -272,9 +272,9 @@ export default function SalesReport() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Relatório de vendas</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Pedidos pagos e confirmados por data de referência (horário de Brasília). Colunas: totais do pedido, custos
-              cadastrados no inventário, frete do Mercado Livre (após sincronizar pedidos), valor à receber
-              do Mercado Pago (`net_received_amount`) e lucro estimado (à receber − imposto − preço de compra).
+              Pedidos pagos e confirmados por data de referência (horário de Brasília). Inclui tipo de anúncio, SKU,
+              logística, totais, frete/custo operacional, imposto, A Receber (ML), Ads (quando houver) e margem de
+              contribuição (A Receber − imposto − preço de compra − Ads).
             </p>
           </div>
         </div>
@@ -393,20 +393,25 @@ export default function SalesReport() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs whitespace-nowrap">Data</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">Nº pedido</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap min-w-[100px]">Conta</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">Total compra</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">P. compra</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">Frete</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap min-w-[88px]">Conta</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Nº Pedido</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Tipo</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">SKU</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap min-w-[120px]">Título</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Logística</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Tot. Venda</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">P. Compra</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Frete/Op.</TableHead>
                     <TableHead className="text-xs text-right whitespace-nowrap">Imposto</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">À receber</TableHead>
-                    <TableHead className="text-xs text-right whitespace-nowrap">Lucro</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">A Receber</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">Ads</TableHead>
+                    <TableHead className="text-xs text-right whitespace-nowrap">$ Mg Cont</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {report.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
                         Nenhuma venda neste período.
                       </TableCell>
                     </TableRow>
@@ -416,8 +421,16 @@ export default function SalesReport() {
                         <TableCell className="text-xs font-mono whitespace-nowrap">
                           {formatIsoDatePtBr(r.referenceDate)}
                         </TableCell>
+                        <TableCell className="text-xs max-w-[110px] truncate">{r.accountNickname ?? "—"}</TableCell>
                         <TableCell className="text-xs font-mono whitespace-nowrap">{r.mlOrderId ?? "—"}</TableCell>
-                        <TableCell className="text-xs max-w-[140px] truncate">{r.accountNickname ?? "—"}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{r.listingTypeLabel ?? "—"}</TableCell>
+                        <TableCell className="text-xs font-mono whitespace-nowrap max-w-[100px] truncate">
+                          {r.sku ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[160px] truncate" title={r.titleShort ?? undefined}>
+                          {r.titleShort ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{r.logisticLabel ?? "—"}</TableCell>
                         <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
                           {r.orderTotal != null ? formatCurrency(r.orderTotal) : "—"}
                         </TableCell>
@@ -433,6 +446,9 @@ export default function SalesReport() {
                         <TableCell className="text-xs text-right tabular-nums whitespace-nowrap text-sky-700">
                           {r.netReceivedAmount != null ? formatCurrency(r.netReceivedAmount) : "—"}
                         </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums whitespace-nowrap">
+                          {r.adsFee != null ? formatCurrency(r.adsFee) : "—"}
+                        </TableCell>
                         <TableCell
                           className={`text-xs text-right tabular-nums font-medium whitespace-nowrap ${
                             r.profit != null && r.profit < 0 ? "text-red-600" : "text-emerald-700"
@@ -447,7 +463,7 @@ export default function SalesReport() {
                 {report.rows.length > 0 && (
                   <TableFooter>
                     <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableCell colSpan={8} className="text-xs font-semibold text-right">
+                      <TableCell colSpan={13} className="text-xs font-semibold text-right">
                         Total do Período
                       </TableCell>
                       <TableCell

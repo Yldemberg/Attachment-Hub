@@ -304,12 +304,14 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
     };
 
     const allSkus = new Set<string>();
+    const itemKeys: Array<{ accountId: string; mlItemId: string }> = [];
     for (const r of detailRows) {
       const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
         ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
         : [];
       for (const it of items) {
         if (it.sku) allSkus.add(it.sku);
+        if (it.item_id) itemKeys.push({ accountId: r.accountId, mlItemId: it.item_id });
       }
     }
 
@@ -340,16 +342,48 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       }
     }
 
+    const listingTypeByItemId = new Map<string, string | null>();
+    if (itemKeys.length > 0) {
+      try {
+        const uniqueItemIds = [...new Set(itemKeys.map((k) => k.mlItemId))];
+        const uniqueAccountIds = [...new Set(itemKeys.map((k) => k.accountId))];
+        const prodRows = await db
+          .select({
+            accountId: productsTable.accountId,
+            mlItemId: productsTable.mlItemId,
+            listingType: productsTable.listingType,
+          })
+          .from(productsTable)
+          .where(
+            and(
+              inArray(productsTable.accountId, uniqueAccountIds),
+              inArray(productsTable.mlItemId, uniqueItemIds),
+            ),
+          );
+        for (const p of prodRows) {
+          if (p.mlItemId) listingTypeByItemId.set(p.mlItemId, p.listingType);
+        }
+      } catch (err) {
+        req.log.warn({ err }, "listing_type indisponível no relatório de vendas");
+      }
+    }
+
     const exportRows: SalesReportExportRow[] = await Promise.all(
       detailRows.map(async (r) => {
-        const row = buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap);
+        const row = buildSalesReportExportRow(
+          r as SalesReportDbDetailRow,
+          finMap,
+          listingTypeByItemId,
+        );
         if (row.netReceivedAmount == null && r.accountId && r.mlOrderId != null) {
           row.netReceivedAmount = await resolveOrderNetReceivedAmount(r.accountId, r.mlOrderId);
         }
         if (row.netReceivedAmount != null) {
-          row.profit = Math.round(
-            (row.netReceivedAmount - row.taxTotal - row.productPurchaseTotal) * 100,
-          ) / 100;
+          row.profit =
+            Math.round(
+              (row.netReceivedAmount - row.taxTotal - row.productPurchaseTotal - (row.adsFee ?? 0)) *
+                100,
+            ) / 100;
         }
         return row;
       }),
@@ -359,12 +393,17 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       referenceDate: e.referenceDate,
       mlOrderId: e.mlOrderId ? Number(e.mlOrderId) : null,
       accountNickname: e.accountNickname,
+      listingTypeLabel: e.listingTypeLabel,
+      sku: e.sku,
+      titleShort: e.titleShort,
+      logisticLabel: e.logisticLabel,
       orderTotal: e.orderTotal,
       productPurchaseTotal: e.productPurchaseTotal,
       marketplaceFeesTotal: e.marketplaceFeesTotal,
       shippingTotal: e.shippingTotal,
       taxTotal: e.taxTotal,
       netReceivedAmount: e.netReceivedAmount,
+      adsFee: e.adsFee,
       profit: e.profit,
     }));
 
