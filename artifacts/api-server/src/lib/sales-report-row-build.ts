@@ -38,7 +38,16 @@ export function parseReportFinancialsDb(raw: unknown): OrderReportFinancials | n
   const netRaw = o.netReceivedAmount;
   const netReceivedAmount =
     netRaw != null && Number.isFinite(Number(netRaw)) ? Number(netRaw) : null;
-  return { itemsSubtotal, marketplaceFeesTotal, shippingTotal, netReceivedAmount };
+  const src = o.shippingCostSource;
+  const shippingCostSource =
+    src === "shipment_costs" || src === "payments" ? src : null;
+  return {
+    itemsSubtotal,
+    marketplaceFeesTotal,
+    shippingTotal,
+    shippingCostSource,
+    netReceivedAmount,
+  };
 }
 
 export function itemsSubtotalFromStoredItems(items: StoredMlOrderItemsJsonRow[]): number {
@@ -84,12 +93,14 @@ export type SalesReportDbDetailRow = {
   accountNickname: string | null;
   itemsJson: unknown;
   reportFinancials: unknown;
+  shippingId?: bigint | number | null;
 };
 
 export function buildSalesReportExportRow(
   r: SalesReportDbDetailRow,
   finMap: SkuFinancialsMap,
   listingTypeByItemId?: ListingTypeByItemId,
+  options?: { adsFee?: number | null },
 ): SalesReportExportRow {
   const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
     ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
@@ -113,7 +124,8 @@ export function buildSalesReportExportRow(
   taxTotal = Math.round(taxTotal * 100) / 100;
 
   const netReceivedAmount = snap?.netReceivedAmount ?? null;
-  const adsFee: number | null = null;
+  const adsFee =
+    options?.adsFee != null && Number.isFinite(options.adsFee) ? Math.round(options.adsFee * 100) / 100 : null;
   const profit =
     netReceivedAmount != null
       ? Math.round((netReceivedAmount - taxTotal - productPurchaseTotal - (adsFee ?? 0)) * 100) / 100
@@ -156,4 +168,16 @@ export function buildSalesReportExportRow(
     adsFee,
     profit,
   };
+}
+
+/** Rateio de Product Ads do mês pela receita dos pedidos (mesma conta + mês). */
+export function allocateAdsByRevenue(
+  orderTotal: number | null,
+  monthRevenue: number,
+  monthAdsTotal: number,
+): number | null {
+  if (!(monthAdsTotal > 0) || !(monthRevenue > 0) || orderTotal == null || !(orderTotal > 0)) {
+    return monthAdsTotal > 0 ? 0 : null;
+  }
+  return Math.round(monthAdsTotal * (orderTotal / monthRevenue) * 100) / 100;
 }

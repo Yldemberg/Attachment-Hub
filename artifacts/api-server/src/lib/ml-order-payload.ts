@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { productsTable } from "@workspace/db/schema";
 import type { MlOrder } from "./mercadolivre";
-import { fetchMlShipmentOrderDetails, ml } from "./mercadolivre";
+import { fetchMlShipmentOrderDetails, fetchMlShipmentSellerCost, ml } from "./mercadolivre";
 import { resolveOrderNetReceivedAmount } from "./mercadopago";
 
 export type OrderReportFinancials = {
@@ -10,8 +10,13 @@ export type OrderReportFinancials = {
   itemsSubtotal: number;
   /** Soma de marketplace_fee dos pagamentos. */
   marketplaceFeesTotal: number;
-  /** Soma de shipping_cost dos pagamentos. */
+  /**
+   * Frete / custo operacional do vendedor.
+   * Preferência: senders[].cost de GET /shipments/{id}/costs; fallback: payments[].shipping_cost.
+   */
   shippingTotal: number;
+  /** Origem do frete — evita reconsultar API quando já resolvido por shipments/costs. */
+  shippingCostSource?: "payments" | "shipment_costs" | null;
   /** Soma de transaction_details.net_received_amount (Mercado Pago) por pagamento. */
   netReceivedAmount?: number | null;
 };
@@ -33,6 +38,7 @@ export function computeOrderReportFinancials(order: MlOrder): OrderReportFinanci
     itemsSubtotal: roundMoney(itemsSubtotal),
     marketplaceFeesTotal: roundMoney(marketplaceFeesTotal),
     shippingTotal: roundMoney(shippingTotal),
+    shippingCostSource: "payments",
   };
 }
 
@@ -109,6 +115,12 @@ export async function buildMlOrderStoredPayload(
   }
 
   const reportFinancials = computeOrderReportFinancials(orderForFinancials);
+  const sellerShippingCost = await fetchMlShipmentSellerCost(accountId, order.shipping?.id);
+  if (sellerShippingCost != null) {
+    // Custo real do vendedor (inclui frete grátis / custo operacional).
+    reportFinancials.shippingTotal = sellerShippingCost;
+    reportFinancials.shippingCostSource = "shipment_costs";
+  }
   reportFinancials.netReceivedAmount = await resolveOrderNetReceivedAmount(
     accountId,
     order.id,

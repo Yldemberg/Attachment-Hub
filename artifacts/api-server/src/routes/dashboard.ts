@@ -15,10 +15,16 @@ import {
 } from "../lib/ml-order-report";
 import { buildSalesReportCsv, buildSalesReportPdf, buildSalesReportXlsx } from "../lib/sales-report-export";
 import type { SalesReportExportRow } from "../lib/sales-report-export";
-import { buildSalesReportExportRow, type SalesReportDbDetailRow } from "../lib/sales-report-row-build";
+import {
+  allocateAdsByRevenue,
+  buildSalesReportExportRow,
+  parseReportFinancialsDb,
+  type SalesReportDbDetailRow,
+} from "../lib/sales-report-row-build";
 import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 import { resolveOrderNetReceivedAmount } from "../lib/mercadopago";
-import { fetchMlExtraCostsAggregated } from "../lib/ml-billing";
+import { fetchMlExtraCostsForAccount, fetchMlExtraCostsAggregated } from "../lib/ml-billing";
+import { fetchMlShipmentSellerCost } from "../lib/mercadolivre";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -291,6 +297,7 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
               accountNickname: accountsTable.mlNickname,
               itemsJson: ordersTable.itemsJson,
               reportFinancials: ordersTable.reportFinancials,
+              shippingId: ordersTable.shippingId,
             })
             .from(ordersTable)
             .innerJoin(accountsTable, eq(ordersTable.accountId, accountsTable.id))
@@ -302,6 +309,49 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       orderCount: summaryRow[0]?.orderCount ?? 0,
       revenue: Number(summaryRow[0]?.revenue ?? 0),
     };
+
+    // Backfill Frete/Op. com custo real do vendedor (shipments/costs) quando ainda não resolvido.
+    // Limite por request para não estourar timeout; próximas cargas completam o restante.
+    const needsShippingEnrich = detailRows
+      .filter((r) => {
+        if (r.shippingId == null) return false;
+        const snap = parseReportFinancialsDb(r.reportFinancials);
+        return snap?.shippingCostSource !== "shipment_costs";
+      })
+      .slice(0, 150);
+    if (needsShippingEnrich.length > 0) {
+      const chunkSize = 8;
+      for (let i = 0; i < needsShippingEnrich.length; i += chunkSize) {
+        const chunk = needsShippingEnrich.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (r) => {
+            try {
+              const sellerCost = await fetchMlShipmentSellerCost(r.accountId, r.shippingId);
+              if (sellerCost == null) return;
+              const prev = parseReportFinancialsDb(r.reportFinancials);
+              const nextFin = {
+                itemsSubtotal: prev?.itemsSubtotal ?? 0,
+                marketplaceFeesTotal: prev?.marketplaceFeesTotal ?? 0,
+                shippingTotal: sellerCost,
+                shippingCostSource: "shipment_costs" as const,
+                netReceivedAmount: prev?.netReceivedAmount ?? null,
+              };
+              r.reportFinancials = nextFin;
+              if (r.mlOrderId != null) {
+                await db
+                  .update(ordersTable)
+                  .set({ reportFinancials: nextFin, updatedAt: new Date() })
+                  .where(
+                    and(eq(ordersTable.accountId, r.accountId), eq(ordersTable.mlOrderId, r.mlOrderId)),
+                  );
+              }
+            } catch (err) {
+              req.log.warn({ err, mlOrderId: r.mlOrderId }, "Falha ao enriquecer frete do pedido");
+            }
+          }),
+        );
+      }
+    }
 
     const allSkus = new Set<string>();
     const itemKeys: Array<{ accountId: string; mlItemId: string }> = [];
@@ -368,13 +418,50 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       }
     }
 
+    // Product Ads por conta+mês → rateio pela receita dos pedidos do mesmo bucket.
+    const adsCache = new Map<string, number>();
+    const monthKeys = new Set<string>();
+    const accountIdsInReport = new Set<string>();
+    for (const r of detailRows) {
+      accountIdsInReport.add(r.accountId);
+      const ym = r.referenceDate.slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(ym)) monthKeys.add(`${ym}-01`);
+    }
+    await Promise.all(
+      [...accountIdsInReport].flatMap((accountId) =>
+        [...monthKeys].map(async (periodKey) => {
+          const cacheKey = `${accountId}:${periodKey}`;
+          try {
+            const extra = await fetchMlExtraCostsForAccount(accountId, periodKey);
+            adsCache.set(cacheKey, extra.available ? extra.productAds : 0);
+          } catch (err) {
+            req.log.warn({ err, accountId, periodKey }, "Ads indisponível no relatório de vendas");
+            adsCache.set(cacheKey, 0);
+          }
+        }),
+      ),
+    );
+
+    const revenueByAccountMonth = new Map<string, number>();
+    for (const r of detailRows) {
+      const periodKey = `${r.referenceDate.slice(0, 7)}-01`;
+      const key = `${r.accountId}:${periodKey}`;
+      const total = r.totalAmount != null ? Number(r.totalAmount) : 0;
+      revenueByAccountMonth.set(key, (revenueByAccountMonth.get(key) ?? 0) + (Number.isFinite(total) ? total : 0));
+    }
+
     const exportRows: SalesReportExportRow[] = await Promise.all(
       detailRows.map(async (r) => {
-        const row = buildSalesReportExportRow(
-          r as SalesReportDbDetailRow,
-          finMap,
-          listingTypeByItemId,
+        const periodKey = `${r.referenceDate.slice(0, 7)}-01`;
+        const bucketKey = `${r.accountId}:${periodKey}`;
+        const adsFee = allocateAdsByRevenue(
+          r.totalAmount != null ? Number(r.totalAmount) : null,
+          revenueByAccountMonth.get(bucketKey) ?? 0,
+          adsCache.get(bucketKey) ?? 0,
         );
+        const row = buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap, listingTypeByItemId, {
+          adsFee,
+        });
         if (row.netReceivedAmount == null && r.accountId && r.mlOrderId != null) {
           row.netReceivedAmount = await resolveOrderNetReceivedAmount(r.accountId, r.mlOrderId);
         }

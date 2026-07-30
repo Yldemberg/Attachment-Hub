@@ -468,6 +468,42 @@ export async function fetchMlShipmentOrderDetails(
   }
 }
 
+type MlShipmentCostsApi = {
+  gross_amount?: number | null;
+  receiver?: { cost?: number | null } | null;
+  senders?: Array<{ user_id?: number; cost?: number | null }> | null;
+};
+
+/**
+ * Custo de envio do vendedor (Frete/Op.) — `GET /shipments/{id}/costs` → soma de `senders[].cost`.
+ * Em frete grátis o `payments.shipping_cost` costuma ser 0; este endpoint traz o valor real cobrado do seller.
+ */
+export async function fetchMlShipmentSellerCost(
+  accountId: string,
+  shippingId: number | bigint | null | undefined,
+): Promise<number | null> {
+  if (shippingId == null) return null;
+  try {
+    const sid = typeof shippingId === "bigint" ? Number(shippingId) : shippingId;
+    const costs = await ml.getWithHeaders<MlShipmentCostsApi>(
+      accountId,
+      `/shipments/${sid}/costs`,
+      { "x-format-new": "true" },
+    );
+    const senders = costs.senders ?? [];
+    if (senders.length === 0) return 0;
+    let total = 0;
+    for (const s of senders) {
+      const c = Number(s.cost ?? 0);
+      if (Number.isFinite(c)) total += c;
+    }
+    return Math.round(total * 100) / 100;
+  } catch (err) {
+    logger.warn({ err, shippingId }, "ML fetch shipment seller cost failed");
+    return null;
+  }
+}
+
 /**
  * Modalidade de envio efetiva desta compra (shipment), em chaves compatíveis com badges de logística dos anúncios.
  */

@@ -199,8 +199,8 @@ export function installMockFetch(): void {
           const netReceivedAmount =
             (snap as { netReceivedAmount?: number | null } | undefined)?.netReceivedAmount ??
             Math.round((lineSubtotal - marketplaceFeesTotal) * 0.92 * 100) / 100;
-          const adsFee = null as number | null;
-          const profit = Math.round((netReceivedAmount - taxTotal - productPurchaseTotal - (adsFee ?? 0)) * 100) / 100;
+          const adsFee = Math.round(lineSubtotal * 0.03 * 100) / 100;
+          const profit = Math.round((netReceivedAmount - taxTotal - productPurchaseTotal - adsFee) * 100) / 100;
           const first = items[0];
           const sku = [...new Set(items.map((it) => it.sku).filter(Boolean))].join(", ") || null;
           let titleShort: string | null = first?.title?.trim() ? first.title.trim().slice(0, 40) : null;
