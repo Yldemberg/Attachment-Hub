@@ -1,7 +1,38 @@
 import { ml } from "./mercadolivre";
 import { getDb } from "./db";
-import { productsTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
+import { productsTable, inventorySkuFinancialsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+
+const ME2_LOGISTIC_TYPES = new Set([
+  "fulfillment",
+  "cross_docking",
+  "xd_drop_off",
+  "drop_off",
+  "self_service",
+  "turbo",
+]);
+
+/** Normaliza logistic_type do produto (pode vir "fulfillment,self_service_in"). */
+export function normalizePrimaryLogisticType(
+  logisticType: string | null | undefined,
+): string | null {
+  if (!logisticType) return null;
+  const primary = logisticType.split(",")[0]?.trim();
+  if (!primary) return null;
+  if (primary === "self_service_in") return "self_service";
+  return primary;
+}
+
+/** shipping_mode exigido pelo listing_prices para o fixed_fee/custo operacional correto. */
+export function resolveMlShippingMode(logisticType: string | null | undefined): string | null {
+  const primary = normalizePrimaryLogisticType(logisticType);
+  if (!primary) return null;
+  if (ME2_LOGISTIC_TYPES.has(primary)) return "me2";
+  if (primary === "default") return "me1";
+  if (primary === "custom") return "custom";
+  if (primary === "not_specified") return "not_specified";
+  return "me2";
+}
 
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
@@ -502,6 +533,7 @@ export type EnrichedPromotionItem = MlPromotionItem & {
   availableQuantity?: number | null;
   mlCategoryId?: string | null;
   listingType?: string | null;
+  logisticType?: string | null;
   /** Inventário geral / Custos (relatórios) — por SKU do usuário */
   taxPercent?: number | null;
   purchasePrice?: number | null;
@@ -870,6 +902,7 @@ export async function enrichItemsWithProducts(
       availableQuantity: productsTable.availableQuantity,
       mlCategoryId: productsTable.mlCategoryId,
       listingType: productsTable.listingType,
+      logisticType: productsTable.logisticType,
     })
     .from(productsTable)
     .where(and(eq(productsTable.accountId, accountId), inArray(productsTable.mlItemId, itemIds)));
@@ -888,6 +921,7 @@ export async function enrichItemsWithProducts(
       availableQuantity: p?.availableQuantity ?? null,
       mlCategoryId: p?.mlCategoryId ?? null,
       listingType: p?.listingType ?? null,
+      logisticType: p?.logisticType ?? null,
     };
   });
 }
@@ -959,37 +993,137 @@ export async function aggregateInboxForAccount(
   return inbox;
 }
 
-/** Estima "você recebe" via tarifa de listagem ML quando a API de promoções não envia net_proceeds. */
+type MlListingPriceRow = {
+  listing_type_id?: string;
+  sale_fee_amount?: number;
+  sale_fee_details?: { fixed_fee?: number | null } | null;
+};
+
+/**
+ * Custo de envio / operacional que o vendedor paga (aprox. nacional).
+ * Usado quando listing_prices não embute fixed_fee (ex.: ME2 não-Flex < TH no MLB).
+ */
+export async function fetchSellerShippingListCost(
+  accountId: string,
+  params: {
+    mlUserId: string;
+    itemId: string;
+    price: number;
+  },
+): Promise<number | null> {
+  const { mlUserId, itemId, price } = params;
+  if (!mlUserId || !itemId || !(price > 0)) return null;
+
+  try {
+    const qs = new URLSearchParams({
+      item_id: itemId,
+      item_price: String(price),
+      verbose: "true",
+    });
+    const res = await ml.get<{
+      coverage?: {
+        all_country?: { list_cost?: number | null } | null;
+      } | null;
+      list_cost?: number | null;
+    }>(accountId, `/users/${encodeURIComponent(mlUserId)}/shipping_options/free?${qs.toString()}`);
+
+    const fromCoverage = res.coverage?.all_country?.list_cost;
+    const cost = fromCoverage ?? res.list_cost;
+    if (cost == null || !Number.isFinite(cost) || cost < 0) return null;
+    return Math.round(cost * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
+function pickListingPriceRow(
+  res: MlListingPriceRow | MlListingPriceRow[],
+  listingType?: string | null,
+): MlListingPriceRow | null {
+  if (Array.isArray(res)) {
+    if (listingType) {
+      const match = res.find((r) => r.listing_type_id === listingType);
+      if (match) return match;
+    }
+    return res[0] ?? null;
+  }
+  return res ?? null;
+}
+
+/**
+ * Estima "você recebe" via tarifa de listagem ML (+ frete/custo operacional quando aplicável)
+ * quando a API de promoções não envia net_proceeds.
+ *
+ * Importante (MLB desde mar/2026): sem logistic_type/shipping_mode o fixed_fee/custo
+ * operacional não bate com a Central de Promoções. Para ME2 (exceto Flex) o custo
+ * operacional costuma vir do shipping_options, não do sale_fee.
+ */
 export async function estimateNetProceedsFromListingPrice(
   accountId: string,
   params: {
     price: number;
     categoryId?: string | null;
     listingType?: string | null;
+    logisticType?: string | null;
     feeSubsidyAmount?: number | null;
     siteId?: string;
+    itemId?: string | null;
+    mlUserId?: string | null;
   },
 ): Promise<number | null> {
-  const { price, categoryId, listingType, feeSubsidyAmount, siteId = "MLB" } = params;
+  const {
+    price,
+    categoryId,
+    listingType,
+    logisticType,
+    feeSubsidyAmount,
+    siteId = "MLB",
+    itemId,
+    mlUserId,
+  } = params;
   if (!categoryId || !(price > 0)) return null;
 
   try {
     const qs = new URLSearchParams({
       price: String(price),
       category_id: categoryId,
+      currency_id: siteId === "MLB" ? "BRL" : siteId === "MLA" ? "ARS" : "BRL",
     });
     if (listingType) qs.set("listing_type_id", listingType);
 
-    const res = await ml.get<
-      { sale_fee_amount?: number } | Array<{ sale_fee_amount?: number }>
-    >(accountId, `/sites/${siteId}/listing_prices?${qs.toString()}`);
+    const primaryLogistic = normalizePrimaryLogisticType(logisticType);
+    const shippingMode = resolveMlShippingMode(logisticType);
+    if (primaryLogistic) qs.set("logistic_type", primaryLogistic);
+    if (shippingMode) qs.set("shipping_mode", shippingMode);
 
-    const row = Array.isArray(res) ? res[0] : res;
+    const res = await ml.get<MlListingPriceRow | MlListingPriceRow[]>(
+      accountId,
+      `/sites/${siteId}/listing_prices?${qs.toString()}`,
+    );
+
+    const row = pickListingPriceRow(res, listingType);
     const fee = row?.sale_fee_amount;
     if (fee == null || !Number.isFinite(fee)) return null;
 
+    const fixedFee = row?.sale_fee_details?.fixed_fee;
+    const fixedEmbedded = fixedFee != null && Number.isFinite(fixedFee) && fixedFee > 0;
+
+    // Se o fixed_fee já veio na tarifa, não desconta frete de novo.
+    // Caso contrário (comum em ME2 < R$79), busca custo operacional/frete do anúncio.
+    let shippingCost = 0;
+    if (!fixedEmbedded && itemId && mlUserId) {
+      const listCost = await fetchSellerShippingListCost(accountId, {
+        mlUserId,
+        itemId,
+        price,
+      });
+      if (listCost != null && listCost > 0) {
+        shippingCost = listCost;
+      }
+    }
+
     const subsidy = feeSubsidyAmount != null && feeSubsidyAmount > 0 ? feeSubsidyAmount : 0;
-    return Math.round((price - fee + subsidy) * 100) / 100;
+    return Math.round((price - fee - shippingCost + subsidy) * 100) / 100;
   } catch {
     return null;
   }
@@ -1015,10 +1149,21 @@ export async function enrichInboxEntriesWithItemContext(
   }
   const productMeta = new Map<
     string,
-    { mlCategoryId: string | null; listingType: string | null }
+    { mlCategoryId: string | null; listingType: string | null; logisticType: string | null }
   >();
+  const accountMlUserIds = new Map<string, string | null>();
   try {
     const db = getDb();
+    const accountIds = [...byAccountItems.keys()];
+    if (accountIds.length > 0) {
+      const accounts = await db
+        .select({ id: accountsTable.id, mlUserId: accountsTable.mlUserId })
+        .from(accountsTable)
+        .where(inArray(accountsTable.id, accountIds));
+      for (const a of accounts) {
+        accountMlUserIds.set(a.id, a.mlUserId);
+      }
+    }
     for (const [accountId, itemIds] of byAccountItems) {
       const unique = [...new Set(itemIds)];
       const prods = await db
@@ -1026,6 +1171,7 @@ export async function enrichInboxEntriesWithItemContext(
           mlItemId: productsTable.mlItemId,
           mlCategoryId: productsTable.mlCategoryId,
           listingType: productsTable.listingType,
+          logisticType: productsTable.logisticType,
         })
         .from(productsTable)
         .where(
@@ -1035,6 +1181,7 @@ export async function enrichInboxEntriesWithItemContext(
         productMeta.set(`${accountId}:${p.mlItemId}`, {
           mlCategoryId: p.mlCategoryId,
           listingType: p.listingType,
+          logisticType: p.logisticType,
         });
       }
     }
@@ -1093,7 +1240,10 @@ export async function enrichInboxEntriesWithItemContext(
               price,
               categoryId: meta.mlCategoryId,
               listingType: meta.listingType,
+              logisticType: meta.logisticType,
               feeSubsidyAmount: next.feeSubsidyAmount,
+              itemId: entry.itemId,
+              mlUserId: accountMlUserIds.get(entry.accountId) ?? null,
             });
             if (estimated != null) {
               next = {
@@ -1118,11 +1268,25 @@ export async function enrichPromotionItemsWithItemContext(
   promotionId: string,
   promotionType: string,
   items: EnrichedPromotionItem[],
-  options?: { chunkSize?: number },
+  options?: { chunkSize?: number; mlUserId?: string | null },
 ): Promise<EnrichedPromotionItem[]> {
   if (items.length === 0) return items;
   const chunkSize = options?.chunkSize ?? 5;
   const result = [...items];
+  let mlUserId = options?.mlUserId ?? null;
+  if (mlUserId == null) {
+    try {
+      const db = getDb();
+      const [acc] = await db
+        .select({ mlUserId: accountsTable.mlUserId })
+        .from(accountsTable)
+        .where(eq(accountsTable.id, accountId))
+        .limit(1);
+      mlUserId = acc?.mlUserId ?? null;
+    } catch {
+      mlUserId = null;
+    }
+  }
 
   for (let i = 0; i < result.length; i += chunkSize) {
     const chunk = result.slice(i, i + chunkSize);
@@ -1153,7 +1317,10 @@ export async function enrichPromotionItemsWithItemContext(
               price,
               categoryId: next.mlCategoryId,
               listingType: next.listingType,
+              logisticType: next.logisticType,
               feeSubsidyAmount: feeSubsidy,
+              itemId: next.id,
+              mlUserId,
             });
             if (estimated != null) {
               next = {

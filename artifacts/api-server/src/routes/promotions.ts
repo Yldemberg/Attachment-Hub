@@ -403,6 +403,7 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
       promotionId,
       promotion_type,
       pageResult.data,
+      { mlUserId: acc.mlUserId },
     );
     const mapped = await attachInventorySkuFinancials(
       req.user!.id,
