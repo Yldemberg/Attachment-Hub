@@ -16,14 +16,14 @@ import {
 import { buildSalesReportCsv, buildSalesReportPdf, buildSalesReportXlsx } from "../lib/sales-report-export";
 import type { SalesReportExportRow } from "../lib/sales-report-export";
 import {
-  allocateAdsByRevenue,
+  allocateOrderAdsFromItemCosts,
   buildSalesReportExportRow,
   parseReportFinancialsDb,
   type SalesReportDbDetailRow,
 } from "../lib/sales-report-row-build";
 import type { StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 import { resolveOrderNetReceivedAmount } from "../lib/mercadopago";
-import { fetchMlExtraCostsForAccount, fetchMlExtraCostsAggregated } from "../lib/ml-billing";
+import { fetchMlExtraCostsAggregated, fetchProductAdsItemCosts } from "../lib/ml-billing";
 import { fetchMlShipmentSellerCost } from "../lib/mercadolivre";
 
 const router = Router();
@@ -418,47 +418,52 @@ router.get("/dashboard/sales-report", ...auth, async (req, res) => {
       }
     }
 
-    // Product Ads por conta+mês → rateio pela receita dos pedidos do mesmo bucket.
-    const adsCache = new Map<string, number>();
-    const monthKeys = new Set<string>();
-    const accountIdsInReport = new Set<string>();
+    // Product Ads por item no período do relatório (só itens com gasto > 0).
+    const itemAdsCostByAccount = new Map<string, Map<string, number>>();
+    const itemRevenueInPeriod = new Map<string, number>();
+    const itemsByAccount = new Map<string, string[]>();
     for (const r of detailRows) {
-      accountIdsInReport.add(r.accountId);
-      const ym = r.referenceDate.slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(ym)) monthKeys.add(`${ym}-01`);
+      const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
+        ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
+        : [];
+      const list = itemsByAccount.get(r.accountId) ?? [];
+      for (const it of items) {
+        if (!it.item_id) continue;
+        list.push(it.item_id);
+        const revKey = `${r.accountId}:${it.item_id}`;
+        itemRevenueInPeriod.set(
+          revKey,
+          (itemRevenueInPeriod.get(revKey) ?? 0) + it.price * it.quantity,
+        );
+      }
+      itemsByAccount.set(r.accountId, list);
     }
     await Promise.all(
-      [...accountIdsInReport].flatMap((accountId) =>
-        [...monthKeys].map(async (periodKey) => {
-          const cacheKey = `${accountId}:${periodKey}`;
-          try {
-            const extra = await fetchMlExtraCostsForAccount(accountId, periodKey);
-            adsCache.set(cacheKey, extra.available ? extra.productAds : 0);
-          } catch (err) {
-            req.log.warn({ err, accountId, periodKey }, "Ads indisponível no relatório de vendas");
-            adsCache.set(cacheKey, 0);
-          }
-        }),
-      ),
+      [...itemsByAccount.entries()].map(async ([accountId, ids]) => {
+        try {
+          const costs = await fetchProductAdsItemCosts(accountId, ids, date_from, date_to);
+          itemAdsCostByAccount.set(accountId, costs);
+        } catch (err) {
+          req.log.warn({ err, accountId }, "Ads por item indisponível no relatório de vendas");
+          itemAdsCostByAccount.set(accountId, new Map());
+        }
+      }),
     );
-
-    const revenueByAccountMonth = new Map<string, number>();
-    for (const r of detailRows) {
-      const periodKey = `${r.referenceDate.slice(0, 7)}-01`;
-      const key = `${r.accountId}:${periodKey}`;
-      const total = r.totalAmount != null ? Number(r.totalAmount) : 0;
-      revenueByAccountMonth.set(key, (revenueByAccountMonth.get(key) ?? 0) + (Number.isFinite(total) ? total : 0));
-    }
 
     const exportRows: SalesReportExportRow[] = await Promise.all(
       detailRows.map(async (r) => {
-        const periodKey = `${r.referenceDate.slice(0, 7)}-01`;
-        const bucketKey = `${r.accountId}:${periodKey}`;
-        const adsFee = allocateAdsByRevenue(
-          r.totalAmount != null ? Number(r.totalAmount) : null,
-          revenueByAccountMonth.get(bucketKey) ?? 0,
-          adsCache.get(bucketKey) ?? 0,
-        );
+        const items: StoredMlOrderItemsJsonRow[] = Array.isArray(r.itemsJson)
+          ? (r.itemsJson as StoredMlOrderItemsJsonRow[])
+          : [];
+        const accountItemCosts = itemAdsCostByAccount.get(r.accountId) ?? new Map();
+        const revenueForAccountItems = new Map<string, number>();
+        for (const it of items) {
+          revenueForAccountItems.set(
+            it.item_id,
+            itemRevenueInPeriod.get(`${r.accountId}:${it.item_id}`) ?? 0,
+          );
+        }
+        const adsFee = allocateOrderAdsFromItemCosts(items, accountItemCosts, revenueForAccountItems);
         const row = buildSalesReportExportRow(r as SalesReportDbDetailRow, finMap, listingTypeByItemId, {
           adsFee,
         });

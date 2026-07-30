@@ -274,7 +274,8 @@ export default function SalesReport() {
             <p className="text-muted-foreground text-sm mt-0.5">
               Pedidos pagos e confirmados por data de referência (horário de Brasília). Inclui tipo de anúncio, SKU,
               logística, totais, frete/custo operacional do vendedor (via custo do envio ML), imposto, A Receber (ML),
-              Ads rateado do mês e margem de contribuição (A Receber − imposto − preço de compra − Ads).
+              Ads rateado só em itens com Product Ads no período e margem de contribuição
+              (A Receber − imposto − preço de compra − Ads).
             </p>
           </div>
         </div>

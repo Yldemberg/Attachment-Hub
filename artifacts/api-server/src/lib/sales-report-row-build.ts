@@ -170,7 +170,7 @@ export function buildSalesReportExportRow(
   };
 }
 
-/** Rateio de Product Ads do mês pela receita dos pedidos (mesma conta + mês). */
+/** Rateio de Product Ads do mês pela receita dos pedidos (mesma conta + mês). @deprecated */
 export function allocateAdsByRevenue(
   orderTotal: number | null,
   monthRevenue: number,
@@ -180,4 +180,29 @@ export function allocateAdsByRevenue(
     return monthAdsTotal > 0 ? 0 : null;
   }
   return Math.round(monthAdsTotal * (orderTotal / monthRevenue) * 100) / 100;
+}
+
+/**
+ * Ads do pedido a partir do custo Product Ads por item no período.
+ * Só atribui quando o item teve gasto de Ads; senão retorna null (coluna vazia).
+ */
+export function allocateOrderAdsFromItemCosts(
+  items: Array<{ item_id: string; price: number; quantity: number }>,
+  itemAdsCost: Map<string, number>,
+  itemRevenueInPeriod: Map<string, number>,
+): number | null {
+  let ads = 0;
+  let hasAdsItem = false;
+  for (const it of items) {
+    const cost = itemAdsCost.get(it.item_id) ?? 0;
+    if (!(cost > 0)) continue;
+    hasAdsItem = true;
+    const lineRev = it.price * it.quantity;
+    const denom = itemRevenueInPeriod.get(it.item_id) ?? 0;
+    if (denom > 0 && lineRev > 0) {
+      ads += cost * (lineRev / denom);
+    }
+  }
+  if (!hasAdsItem) return null;
+  return Math.round(ads * 100) / 100;
 }

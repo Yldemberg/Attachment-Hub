@@ -335,6 +335,53 @@ async function fetchProductAdsSpendFallback(
   }
 }
 
+/**
+ * Custo de Product Ads por item no período (só itens com gasto > 0).
+ * Usa GET /advertising/product_ads/items/{id}?metrics=cost
+ */
+export async function fetchProductAdsItemCosts(
+  accountId: string,
+  itemIds: string[],
+  dateFrom: string,
+  dateTo: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const unique = [...new Set(itemIds.filter(Boolean))];
+  if (unique.length === 0) return out;
+
+  const chunkSize = 6;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (itemId) => {
+        try {
+          const qs = new URLSearchParams({
+            date_from: dateFrom,
+            date_to: dateTo,
+            metrics: "cost",
+          });
+          const data = await ml.getWithHeaders<{
+            item_id?: string;
+            metrics?: { cost?: number | null };
+            metrics_summary?: { cost?: number | null };
+          }>(
+            accountId,
+            `/advertising/product_ads/items/${encodeURIComponent(itemId)}?${qs.toString()}`,
+            { "api-version": "2" },
+          );
+          const cost = Number(data.metrics?.cost ?? data.metrics_summary?.cost ?? 0);
+          if (Number.isFinite(cost) && cost > 0) {
+            out.set(itemId, roundMoney(cost));
+          }
+        } catch {
+          // item sem Ads / sem permissão — permanece ausente (pedido fica sem Ads)
+        }
+      }),
+    );
+  }
+  return out;
+}
+
 async function paginateBilling<T>(
   accountId: string,
   buildPath: (fromId: number) => string,
