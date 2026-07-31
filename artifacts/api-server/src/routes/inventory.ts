@@ -5,6 +5,7 @@ import { getDb } from "../lib/db";
 import { productsTable, accountsTable, skuMandateInventoryTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
+import { patchAmazonListingQuantity } from "../lib/amazon-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import { propagateStockBySku } from "../lib/order-mandate-stock";
 
@@ -371,9 +372,13 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
       return;
     }
 
-    const products = await db
-      .select()
+    const rows = await db
+      .select({
+        product: productsTable,
+        platform: accountsTable.platform,
+      })
       .from(productsTable)
+      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
       .where(
         and(
           inArray(productsTable.accountId, accountIds),
@@ -382,7 +387,7 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
         ),
       );
 
-    if (products.length === 0) {
+    if (rows.length === 0) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
       return;
     }
@@ -395,7 +400,7 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
       )
       .limit(1);
 
-    const listingMins = products.map((p) => p.availableQuantity);
+    const listingMins = rows.map((r) => r.product.availableQuantity);
     const baseline = mandateRow
       ? mandateRow.quantity
       : listingMins.length > 0
@@ -417,15 +422,53 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
     let updated = 0;
     let failed = 0;
 
-    for (const product of products) {
+    for (const { product, platform } of rows) {
+      if (platform === "amazon") {
+        const sellerSku = product.amazonSku || product.sku || sku;
+        if (!sellerSku) {
+          failed++;
+          results.push({
+            productId: product.id,
+            mlItemId: "",
+            success: false,
+            reason: "Amazon listing without seller SKU",
+          });
+          continue;
+        }
+        try {
+          const after = await patchAmazonListingQuantity(
+            product.accountId,
+            sellerSku,
+            mandateQty,
+            product.amazonProductType,
+          );
+          const qty =
+            after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? mandateQty;
+          await db
+            .update(productsTable)
+            .set({ availableQuantity: qty, updatedAt: new Date() })
+            .where(eq(productsTable.id, product.id));
+          updated++;
+          results.push({ productId: product.id, mlItemId: "", success: true, reason: null });
+        } catch (err) {
+          failed++;
+          results.push({
+            productId: product.id,
+            mlItemId: "",
+            success: false,
+            reason: (err as Error).message,
+          });
+        }
+        continue;
+      }
+
       if (!product.mlItemId) {
-        // Amazon / non-ML listings: mandate stock is ML-only in this phase
         failed++;
         results.push({
           productId: product.id,
           mlItemId: "",
           success: false,
-          reason: "skipped non-ML listing",
+          reason: "missing mlItemId",
         });
         continue;
       }
@@ -480,9 +523,13 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
       return;
     }
 
-    const products = await db
-      .select()
+    const rows = await db
+      .select({
+        product: productsTable,
+        platform: accountsTable.platform,
+      })
       .from(productsTable)
+      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
       .where(
         and(
           inArray(productsTable.accountId, accountIds),
@@ -491,27 +538,50 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
         ),
       );
 
-    if (products.length === 0) {
+    if (rows.length === 0) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Nenhum anúncio não Full com este SKU" } });
       return;
     }
 
-    let sourceProduct = products[0]!;
+    let sourceRow = rows[0]!;
     if (body.sourceProductId) {
-      const found = products.find((p) => p.id === body.sourceProductId);
+      const found = rows.find((r) => r.product.id === body.sourceProductId);
       if (!found) {
         res.status(400).json({ error: { code: "BAD_REQUEST", message: "sourceProductId não encontrado entre os anúncios não Full com este SKU" } });
         return;
       }
-      sourceProduct = found;
+      sourceRow = found;
     } else {
-      const active = products.find((p) => p.status === "active");
-      if (active) sourceProduct = active;
+      const active = rows.find((r) => r.product.status === "active");
+      if (active) sourceRow = active;
+    }
+
+    const sourceProduct = sourceRow.product;
+    let newStock: number;
+
+    if (sourceRow.platform === "amazon") {
+      newStock = sourceProduct.availableQuantity;
+      await db
+        .update(productsTable)
+        .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
+        .where(eq(productsTable.id, sourceProduct.id));
+
+      const excludeAmazonSku = sourceProduct.amazonSku || sourceProduct.sku || sku;
+      const { synced, skipped } = await propagateStockBySku({
+        userId: req.user!.id,
+        effectiveSku: sku,
+        sourceListingStock: newStock,
+        excludeAmazonSku,
+        excludeAccountId: sourceProduct.accountId,
+      });
+
+      res.json({ synced: synced + 1, skipped, sku, newStock });
+      return;
     }
 
     if (!sourceProduct.mlItemId) {
       res.status(400).json({
-        error: { code: "BAD_REQUEST", message: "Sync de SKU via ML disponível apenas para anúncios Mercado Livre" },
+        error: { code: "BAD_REQUEST", message: "Anúncio de origem sem mlItemId nem vínculo Amazon" },
       });
       return;
     }
@@ -520,7 +590,7 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
       sourceProduct.accountId,
       `/items/${encodeURIComponent(sourceProduct.mlItemId)}`,
     );
-    const newStock = mlItem.available_quantity;
+    newStock = mlItem.available_quantity;
 
     await db
       .update(productsTable)

@@ -20,7 +20,8 @@ description: >-
 
 - Não dump da documentação completa da SP-API
 - Não commitir Client ID, Client Secret ou Refresh Token
-- Não propagar mandato de estoque ML↔Amazon (fase atual)
+
+O mandato de estoque do Inventário Geral espelha quantidade em anúncios ML **e** Amazon com o mesmo SKU (`POST /inventory/mandate-adjust` + `propagateStockBySku`).
 
 ## Conta dona do app (Developer Central)
 

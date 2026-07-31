@@ -221,7 +221,7 @@ export default function GeneralInventory() {
       onSuccess: (data) => {
         toast({
           title: "Estoque atualizado",
-          description: `SKU ${data.sku}: mandatário ${data.mandateQuantity} un. · ${data.updated} anúncio(s) no ML.`,
+          description: `SKU ${data.sku}: mandatário ${data.mandateQuantity} un. · ${data.updated} anúncio(s) atualizado(s) (ML e Amazon).`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/inventory/search"] });
         queryClient.invalidateQueries({ queryKey: ["/api/products"] });
@@ -383,7 +383,7 @@ export default function GeneralInventory() {
         <div>
           <h1 className="text-base font-bold text-foreground">Inventário geral</h1>
           <p className="text-muted-foreground text-xs leading-snug">
-            Busque por SKU, descrição ou MLB. Inclui anúncios Full e não Full. O estoque mandatário só pode ser
+            Busque por SKU, descrição ou MLB. Inclui anúncios Full e não Full (ML e Amazon). O estoque mandatário só pode ser
             espelhado nos anúncios não Full.
           </p>
         </div>
@@ -721,7 +721,7 @@ export default function GeneralInventory() {
 
             <Button type="button" size="sm" className="w-full sm:w-auto" onClick={applyAdjust} disabled={adjusting}>
               {adjusting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              <span className={cn(adjusting && "ml-2")}>Aplicar e espelhar no Mercado Livre</span>
+              <span className={cn(adjusting && "ml-2")}>Aplicar e espelhar nos anúncios</span>
             </Button>
               </>
             )}

@@ -11,6 +11,7 @@ import {
   putMlItemStockForSellerSku,
   resolveStockPropagationSource,
 } from "./mercadolivre";
+import { patchAmazonListingQuantity } from "./amazon-listings";
 
 /**
  * Estados ML tratados como pagamento confirmado (`paid`, `confirmed`, `partially_paid`).
@@ -145,7 +146,7 @@ export type PropagateStockResult = {
  * Propaga o estoque `sourceListingStock` para todos os anúncios não-Full do `userId`
  * com o mesmo `effectiveSku`, excluindo opcionalmente o anúncio de origem.
  *
- * Atualiza o ML (PUT /items) e o banco (`products.available_quantity`) para cada irmão.
+ * Atualiza ML (PUT /items) e Amazon (Listings Items quantity) + `products.available_quantity`.
  * Retorna contagens de anúncios sincronizados e ignorados (falha).
  */
 export async function propagateStockBySku(params: {
@@ -153,13 +154,21 @@ export async function propagateStockBySku(params: {
   effectiveSku: string;
   sourceListingStock: number;
   excludeMlItemId?: string;
+  excludeAmazonSku?: string;
   excludeAccountId?: string;
 }): Promise<PropagateStockResult> {
-  const { userId, effectiveSku, sourceListingStock, excludeMlItemId, excludeAccountId } = params;
+  const {
+    userId,
+    effectiveSku,
+    sourceListingStock,
+    excludeMlItemId,
+    excludeAmazonSku,
+    excludeAccountId,
+  } = params;
   const db = getDb();
 
   const targets = await db
-    .select({ product: productsTable })
+    .select({ product: productsTable, platform: accountsTable.platform })
     .from(productsTable)
     .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
     .where(
@@ -170,13 +179,29 @@ export async function propagateStockBySku(params: {
       ),
     );
 
-  const siblings = targets
-    .map((r) => r.product)
-    .filter(
-      (product) =>
-        !!product.mlItemId &&
-        !(excludeMlItemId && product.mlItemId === excludeMlItemId && product.accountId === excludeAccountId),
-    );
+  const siblings = targets.filter(({ product, platform }) => {
+    if (platform === "amazon") {
+      const sellerSku = product.amazonSku || product.sku;
+      if (!sellerSku) return false;
+      if (
+        excludeAmazonSku &&
+        sellerSku === excludeAmazonSku &&
+        product.accountId === excludeAccountId
+      ) {
+        return false;
+      }
+      return true;
+    }
+    if (!product.mlItemId) return false;
+    if (
+      excludeMlItemId &&
+      product.mlItemId === excludeMlItemId &&
+      product.accountId === excludeAccountId
+    ) {
+      return false;
+    }
+    return true;
+  });
 
   let synced = 0;
   let skipped = 0;
@@ -184,7 +209,46 @@ export async function propagateStockBySku(params: {
   await runPool(
     siblings,
     SIBLING_UPDATE_CONCURRENCY,
-    async (target) => {
+    async ({ product: target, platform }) => {
+      if (platform === "amazon") {
+        const sellerSku = target.amazonSku || target.sku || effectiveSku;
+        const logCtx = {
+          amazonSku: sellerSku,
+          accountId: target.accountId,
+          sku: effectiveSku,
+          sourceListingStock,
+        };
+        try {
+          await withSiblingListingRetry(
+            async () => {
+              const after = await patchAmazonListingQuantity(
+                target.accountId,
+                sellerSku,
+                sourceListingStock,
+                target.amazonProductType,
+              );
+              const qty =
+                after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ??
+                sourceListingStock;
+              await db
+                .update(productsTable)
+                .set({ availableQuantity: qty, updatedAt: new Date() })
+                .where(eq(productsTable.id, target.id));
+            },
+            logCtx,
+          );
+          logger.info(logCtx, "Stock propagation: Amazon sibling listing aligned");
+          synced++;
+        } catch (err) {
+          logger.warn(
+            { err, ...logCtx },
+            "Stock propagation: failed to update Amazon sibling after retries",
+          );
+          skipped++;
+        }
+        return;
+      }
+
       const mlItemId = target.mlItemId!;
       const logCtx = {
         mlItemId,
