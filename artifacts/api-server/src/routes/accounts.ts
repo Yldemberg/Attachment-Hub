@@ -13,6 +13,7 @@ import {
   getAmazonEnvCredentials,
   getAmazonLwaAppCredentials,
   getAmazonMarketplaceId,
+  healInactiveAmazonAccounts,
   resolveAmazonOAuthRedirectUri,
 } from "../lib/amazon";
 import { syncAccount } from "../lib/sync";
@@ -63,6 +64,12 @@ function serializeAccount(row: typeof accountsTable.$inferSelect) {
 router.get("/accounts", ...auth, async (req, res) => {
   try {
     const db = getDb();
+    // Corrige legado: refresh falho nunca deve manter Amazon “desconectada” se ainda há token.
+    const healed = await healInactiveAmazonAccounts(req.user!.id);
+    if (healed > 0) {
+      req.log.info({ healed }, "Reactivated Amazon accounts previously marked inactive");
+    }
+
     const rows = await db
       .select()
       .from(accountsTable)

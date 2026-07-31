@@ -4,7 +4,7 @@ import {
   productsTable,
   accountsTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { ml, type MlItem, type MlVariation } from "./mercadolivre";
 import {
   getMlItemDescription,
@@ -325,9 +325,14 @@ export async function syncListingTemplatesForUser(userId: string): Promise<{
 }> {
   const db = getDb();
   const accounts = await db
-    .select({ id: accountsTable.id })
+    .select({ id: accountsTable.id, platform: accountsTable.platform })
     .from(accountsTable)
-    .where(and(eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)));
+    .where(
+      and(
+        eq(accountsTable.userId, userId),
+        or(eq(accountsTable.isActive, true), eq(accountsTable.platform, "amazon"))!,
+      ),
+    );
 
   let synced = 0;
   let failed = 0;

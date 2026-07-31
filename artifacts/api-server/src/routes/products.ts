@@ -4,6 +4,7 @@ import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, or, inArray, lt, sql, gt, isNotNull, asc } from "drizzle-orm";
+import { getUserAccountIds } from "../lib/account-scope";
 import {
   fetchMlItemPrices,
   ml,
@@ -210,17 +211,6 @@ async function formatProductResponse(product: ProductRow) {
     regularAmount: product.regularAmount !== null ? Number(product.regularAmount) : null,
     account: account ?? null,
   };
-}
-
-async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
-  const db = getDb();
-  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
-  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
-  const accounts = await db
-    .select({ id: accountsTable.id })
-    .from(accountsTable)
-    .where(and(...conditions));
-  return accounts.map((a) => a.id);
 }
 
 /** Escape `%`, `_` and `\` for use in ILIKE … ESCAPE '\\' (PostgreSQL). */

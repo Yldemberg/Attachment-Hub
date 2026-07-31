@@ -1,6 +1,6 @@
 import { getDb } from "./db";
 import { accountsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 
 const LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token";
@@ -185,7 +185,7 @@ export class AmazonLwaError extends Error {
     this.name = "AmazonLwaError";
   }
 
-  /** Refresh token revogado/inválido — única razão para marcar a conta inativa. */
+  /** Refresh token revogado/inválido na Amazon (exige nova autorização do seller). */
   get isPermanentAuthFailure(): boolean {
     const code = (this.errorCode ?? "").toLowerCase();
     return code === "invalid_grant" || code === "invalid_token";
@@ -238,7 +238,43 @@ export async function exchangeRefreshTokenForAccess(
   return res.json() as Promise<LwaTokenResponse>;
 }
 
+/** Single-flight: refreshes concorrentes da mesma conta compartilham uma única troca LWA. */
+const refreshInflight = new Map<string, Promise<string>>();
+
+const ACCESS_TOKEN_SKEW_MS = 5 * 60 * 1000;
+
+function resolveStoredRefreshToken(account: {
+  refreshToken?: string | null;
+}): string {
+  return account.refreshToken?.trim() || process.env.AMAZON_REFRESH_TOKEN?.trim() || "";
+}
+
+function accessTokenStillValid(
+  account: { accessToken?: string | null; tokenExpiresAt?: Date | null },
+  skewMs = ACCESS_TOKEN_SKEW_MS,
+): account is { accessToken: string; tokenExpiresAt: Date } {
+  if (!account.accessToken?.trim() || !account.tokenExpiresAt) return false;
+  return account.tokenExpiresAt.getTime() > Date.now() + skewMs;
+}
+
+/**
+ * Renova o access token. Nunca marca isActive=false: desconexão Amazon é só via DELETE
+ * (usuário em Integrações). Falha de refresh propaga erro na operação, sem “desligar” a loja.
+ */
 async function refreshAccessToken(accountId: string): Promise<string> {
+  const existing = refreshInflight.get(accountId);
+  if (existing) return existing;
+
+  const promise = doRefreshAccessToken(accountId).finally(() => {
+    if (refreshInflight.get(accountId) === promise) {
+      refreshInflight.delete(accountId);
+    }
+  });
+  refreshInflight.set(accountId, promise);
+  return promise;
+}
+
+async function doRefreshAccessToken(accountId: string): Promise<string> {
   const db = getDb();
   const [account] = await db
     .select()
@@ -247,9 +283,19 @@ async function refreshAccessToken(accountId: string): Promise<string> {
 
   if (!account) throw new Error("Account not found");
 
+  // Outro caller pode ter renovado enquanto esperávamos o single-flight.
+  if (accessTokenStillValid(account)) {
+    if (!account.isActive) {
+      await db
+        .update(accountsTable)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(accountsTable.id, accountId));
+    }
+    return account.accessToken;
+  }
+
   const lwa = getAmazonLwaAppCredentials();
-  const refreshToken =
-    account.refreshToken?.trim() || process.env.AMAZON_REFRESH_TOKEN?.trim() || "";
+  const refreshToken = resolveStoredRefreshToken(account);
   if (!refreshToken) {
     throw new Error("Conta Amazon sem refresh token. Reconecte a loja em Integrações.");
   }
@@ -269,25 +315,16 @@ async function refreshAccessToken(accountId: string): Promise<string> {
       .where(eq(accountsTable.id, accountId));
     return data.access_token;
   } catch (err) {
-    const permanent = err instanceof AmazonLwaError && err.isPermanentAuthFailure;
     logger.warn(
       {
         accountId,
-        permanent,
+        permanent: err instanceof AmazonLwaError && err.isPermanentAuthFailure,
         status: err instanceof AmazonLwaError ? err.status : undefined,
         errorCode: err instanceof AmazonLwaError ? err.errorCode : undefined,
         err,
       },
-      "Amazon token refresh failed",
+      "Amazon token refresh failed — conta permanece conectada (desconexão só manual)",
     );
-    // Só desativa se a Amazon rejeitou o refresh token de forma definitiva.
-    // Erros de rede, 5xx, env ausente ou invalid_client NÃO devem desconectar a loja.
-    if (permanent) {
-      await db
-        .update(accountsTable)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(accountsTable.id, accountId));
-    }
     throw err;
   }
 }
@@ -301,28 +338,57 @@ async function getValidToken(accountId: string): Promise<string> {
 
   if (!account) throw new Error("Account not found");
 
-  const hasRefreshToken = !!(
-    account.refreshToken?.trim() || process.env.AMAZON_REFRESH_TOKEN?.trim()
-  );
+  const hasRefreshToken = !!resolveStoredRefreshToken(account);
 
-  // Desconexão manual remove a conta (DELETE). isActive=false só indica falha de auth;
-  // se ainda há refresh token, tenta recuperar em vez de travar permanente.
-  if (!account.isActive && !hasRefreshToken) {
+  // Sem credenciais e já marcada inativa: não há como recuperar.
+  // Com refresh token, sempre tenta renovar — isActive=false legado não bloqueia.
+  if (!account.isActive && !hasRefreshToken && !accessTokenStillValid(account)) {
     throw new Error("Account is inactive");
   }
 
-  const fiveMinFromNow = new Date(Date.now() + 5 * 60 * 1000);
-  const needsRefresh =
-    !account.isActive ||
-    !account.tokenExpiresAt ||
-    account.tokenExpiresAt < fiveMinFromNow ||
-    !account.accessToken;
-
-  if (needsRefresh) {
-    return refreshAccessToken(accountId);
+  if (accessTokenStillValid(account) && account.isActive) {
+    return account.accessToken;
   }
 
-  return account.accessToken;
+  if (accessTokenStillValid(account) && !account.isActive) {
+    await db
+      .update(accountsTable)
+      .set({ isActive: true, updatedAt: new Date() })
+      .where(eq(accountsTable.id, accountId));
+    return account.accessToken;
+  }
+
+  return refreshAccessToken(accountId);
+}
+
+/**
+ * Reativa contas Amazon do usuário que ainda têm refresh token mas foram
+ * marcadas inativas por bugs/legado de refresh. Idempotente.
+ */
+export async function healInactiveAmazonAccounts(userId: string): Promise<number> {
+  const db = getDb();
+  const inactive = await db
+    .select({ id: accountsTable.id, refreshToken: accountsTable.refreshToken })
+    .from(accountsTable)
+    .where(
+      and(
+        eq(accountsTable.userId, userId),
+        eq(accountsTable.platform, "amazon"),
+        eq(accountsTable.isActive, false),
+      ),
+    );
+
+  const toHeal = inactive
+    .filter((row) => !!resolveStoredRefreshToken(row))
+    .map((row) => row.id);
+  if (toHeal.length === 0) return 0;
+
+  await db
+    .update(accountsTable)
+    .set({ isActive: true, updatedAt: new Date() })
+    .where(inArray(accountsTable.id, toHeal));
+
+  return toHeal.length;
 }
 
 export async function getAmazonAccessToken(accountId: string): Promise<string> {

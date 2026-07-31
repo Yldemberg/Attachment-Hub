@@ -8,18 +8,10 @@ import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
 import { patchAmazonListingQuantity } from "../lib/amazon-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import { propagateStockBySku } from "../lib/order-mandate-stock";
+import { getUserAccountIds } from "../lib/account-scope";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
-
-async function getUserAccountIds(userId: string): Promise<string[]> {
-  const db = getDb();
-  const accounts = await db
-    .select({ id: accountsTable.id })
-    .from(accountsTable)
-    .where(and(eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)));
-  return accounts.map((a) => a.id);
-}
 
 function escapeIlikePattern(token: string): string {
   return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");

@@ -5,20 +5,10 @@ import { getDb } from "../lib/db";
 import { questionsTable, accountsTable, productsTable } from "@workspace/db/schema";
 import { eq, and, inArray, or, sql } from "drizzle-orm";
 import { ml } from "../lib/mercadolivre";
+import { getUserAccountIds } from "../lib/account-scope";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
-
-async function getUserAccountIds(userId: string, filterAccountId?: string): Promise<string[]> {
-  const db = getDb();
-  const conditions = [eq(accountsTable.userId, userId), eq(accountsTable.isActive, true)];
-  if (filterAccountId) conditions.push(eq(accountsTable.id, filterAccountId));
-  const accounts = await db
-    .select({ id: accountsTable.id })
-    .from(accountsTable)
-    .where(and(...conditions));
-  return accounts.map((a) => a.id);
-}
 
 router.get("/questions", ...auth, async (req, res) => {
   try {
