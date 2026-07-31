@@ -11,7 +11,7 @@ import {
 import { formatDateTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle,
+  Plug, Plus, RefreshCw, Trash2, CheckCircle, XCircle, Link2,
   Loader2, Copy, Check, Store, ShieldCheck, ShieldOff, ChevronDown, ChevronUp, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -627,7 +627,9 @@ export default function Integrations() {
   const [, navigate] = useLocation();
 
   const [syncingAccounts, setSyncingAccounts] = useState<Record<string, string | null>>({});
+  const [reconnectingAmazon, setReconnectingAmazon] = useState(false);
   const syncTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const { signOut } = useAuth();
 
   useEffect(() => {
     const timeouts = syncTimeoutsRef.current;
@@ -724,6 +726,38 @@ export default function Integrations() {
       },
     },
   });
+
+  const handleAmazonReconnect = async () => {
+    setReconnectingAmazon(true);
+    try {
+      const { getAmazonConnectUrl } = await import("@workspace/api-client-react");
+      const data = await getAmazonConnectUrl();
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error("URL não retornada");
+      window.location.href = url;
+    } catch (err) {
+      let description =
+        "Não foi possível iniciar a reconexão. Tente novamente ou use Conectar Amazon.";
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          description = "Sessão expirada. Você será redirecionado para o login.";
+          toast({ variant: "destructive", title: "Erro ao reconectar Amazon", description });
+          setTimeout(async () => {
+            await signOut();
+          }, 2000);
+          return;
+        }
+        if (err.status === 503) {
+          const body = err.data as { error?: { message?: string } } | undefined;
+          description =
+            body?.error?.message ??
+            "OAuth Amazon não configurado no servidor.";
+        }
+      }
+      toast({ variant: "destructive", title: "Erro ao reconectar Amazon", description });
+      setReconnectingAmazon(false);
+    }
+  };
 
   const handleSync = (account: Account) => {
     if (syncingAccounts[account.id] !== undefined) return;
@@ -878,6 +912,22 @@ export default function Integrations() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {!account.isActive && isAmazon && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleAmazonReconnect()}
+                          disabled={reconnectingAmazon}
+                          className="h-8 text-xs gap-1.5 border-orange-200 text-orange-700 hover:bg-orange-50"
+                        >
+                          {reconnectingAmazon ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Link2 className="w-3 h-3" />
+                          )}
+                          Reconectar
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"

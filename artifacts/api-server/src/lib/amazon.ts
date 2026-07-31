@@ -173,6 +173,33 @@ type LwaTokenResponse = {
   refresh_token?: string;
 };
 
+/** Erro LWA com status/código — usado para distinguir falha permanente vs transitória. */
+export class AmazonLwaError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly errorCode?: string,
+    public readonly errorDescription?: string,
+  ) {
+    super(message);
+    this.name = "AmazonLwaError";
+  }
+
+  /** Refresh token revogado/inválido — única razão para marcar a conta inativa. */
+  get isPermanentAuthFailure(): boolean {
+    const code = (this.errorCode ?? "").toLowerCase();
+    return code === "invalid_grant" || code === "invalid_token";
+  }
+}
+
+function parseLwaErrorBody(text: string): { error?: string; error_description?: string } {
+  try {
+    return JSON.parse(text) as { error?: string; error_description?: string };
+  } catch {
+    return {};
+  }
+}
+
 export async function exchangeRefreshTokenForAccess(
   refreshToken: string,
   clientId?: string,
@@ -199,7 +226,13 @@ export async function exchangeRefreshTokenForAccess(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Amazon LWA token exchange failed: ${res.status} ${text}`);
+    const parsed = parseLwaErrorBody(text);
+    throw new AmazonLwaError(
+      `Amazon LWA token exchange failed: ${res.status} ${text}`,
+      res.status,
+      parsed.error,
+      parsed.error_description,
+    );
   }
 
   return res.json() as Promise<LwaTokenResponse>;
@@ -236,11 +269,25 @@ async function refreshAccessToken(accountId: string): Promise<string> {
       .where(eq(accountsTable.id, accountId));
     return data.access_token;
   } catch (err) {
-    logger.warn({ accountId, err }, "Amazon token refresh failed");
-    await db
-      .update(accountsTable)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(accountsTable.id, accountId));
+    const permanent = err instanceof AmazonLwaError && err.isPermanentAuthFailure;
+    logger.warn(
+      {
+        accountId,
+        permanent,
+        status: err instanceof AmazonLwaError ? err.status : undefined,
+        errorCode: err instanceof AmazonLwaError ? err.errorCode : undefined,
+        err,
+      },
+      "Amazon token refresh failed",
+    );
+    // Só desativa se a Amazon rejeitou o refresh token de forma definitiva.
+    // Erros de rede, 5xx, env ausente ou invalid_client NÃO devem desconectar a loja.
+    if (permanent) {
+      await db
+        .update(accountsTable)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(accountsTable.id, accountId));
+    }
     throw err;
   }
 }
@@ -253,10 +300,25 @@ async function getValidToken(accountId: string): Promise<string> {
     .where(eq(accountsTable.id, accountId));
 
   if (!account) throw new Error("Account not found");
-  if (!account.isActive) throw new Error("Account is inactive");
+
+  const hasRefreshToken = !!(
+    account.refreshToken?.trim() || process.env.AMAZON_REFRESH_TOKEN?.trim()
+  );
+
+  // Desconexão manual remove a conta (DELETE). isActive=false só indica falha de auth;
+  // se ainda há refresh token, tenta recuperar em vez de travar permanente.
+  if (!account.isActive && !hasRefreshToken) {
+    throw new Error("Account is inactive");
+  }
 
   const fiveMinFromNow = new Date(Date.now() + 5 * 60 * 1000);
-  if (!account.tokenExpiresAt || account.tokenExpiresAt < fiveMinFromNow || !account.accessToken) {
+  const needsRefresh =
+    !account.isActive ||
+    !account.tokenExpiresAt ||
+    account.tokenExpiresAt < fiveMinFromNow ||
+    !account.accessToken;
+
+  if (needsRefresh) {
     return refreshAccessToken(accountId);
   }
 
