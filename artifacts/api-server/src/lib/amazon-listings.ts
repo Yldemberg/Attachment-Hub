@@ -2188,13 +2188,79 @@ export async function patchAmazonListingQuantity(
       body,
     );
     assertSubmissionAccepted(submission, sellerSku);
-  } catch (err) {
-    if (err instanceof AmazonListingError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    throw new AmazonListingError(message, "AMAZON_API_ERROR");
+  } catch (firstErr) {
+    const usedCachedType = !!productType?.trim();
+    if (!usedCachedType) {
+      if (firstErr instanceof AmazonListingError) throw firstErr;
+      throw new AmazonListingError(
+        firstErr instanceof Error ? firstErr.message : String(firstErr),
+        "AMAZON_API_ERROR",
+      );
+    }
+
+    // productType do banco pode estar desatualizado — tenta o tipo ao vivo uma vez.
+    let liveType = "";
+    try {
+      const current = await getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
+      liveType = extractListingSummary(current)?.productType?.trim() || "";
+    } catch {
+      /* keep empty */
+    }
+    if (!liveType || liveType === resolvedType) {
+      if (firstErr instanceof AmazonListingError) throw firstErr;
+      throw new AmazonListingError(
+        firstErr instanceof Error ? firstErr.message : String(firstErr),
+        "AMAZON_API_ERROR",
+      );
+    }
+
+    logger.info(
+      { sellerSku, accountId, cachedType: resolvedType, liveType },
+      "Amazon quantity patch retry with live productType",
+    );
+    try {
+      const submission = await amazon.patch<AmazonListingsSubmissionResponse>(
+        accountId,
+        listingsItemPath(sellerId, sellerSku, marketplaceId),
+        { productType: liveType, patches: body.patches },
+      );
+      assertSubmissionAccepted(submission, sellerSku);
+    } catch (retryErr) {
+      if (retryErr instanceof AmazonListingError) throw retryErr;
+      throw new AmazonListingError(
+        retryErr instanceof Error ? retryErr.message : String(retryErr),
+        "AMAZON_API_ERROR",
+      );
+    }
   }
 
-  return getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
+  // GET após PATCH costuma vir com quantidade antiga (consistência eventual).
+  // Sobrescreve com a quantidade aceita para o iHub espelhar corretamente.
+  try {
+    const fresh = await getListingsItem(accountId, sellerId, sellerSku, marketplaceId);
+    const channels = [...(fresh.fulfillmentAvailability ?? [])];
+    let replaced = false;
+    for (let i = 0; i < channels.length; i++) {
+      const ch = channels[i]!;
+      if (ch.fulfillmentChannelCode === "DEFAULT" || ch.quantity != null) {
+        channels[i] = { ...ch, quantity };
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      channels.push({ fulfillmentChannelCode: "DEFAULT", quantity });
+    }
+    return { ...fresh, sku: sellerSku, fulfillmentAvailability: channels };
+  } catch (err) {
+    logger.warn(
+      { sellerSku, accountId, err: err instanceof Error ? err.message : String(err) },
+      "Amazon getListingsItem after quantity patch failed — using requested quantity",
+    );
+    return {
+      sku: sellerSku,
+      fulfillmentAvailability: [{ fulfillmentChannelCode: "DEFAULT", quantity }],
+    };
+  }
 }
 
 export async function patchAmazonListingPrice(

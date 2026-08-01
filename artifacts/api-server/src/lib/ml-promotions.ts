@@ -778,6 +778,15 @@ export function mapMlPromotionError(err: unknown): string {
   if (msg.includes("ERROR_CREDIBILITY_DISCOUNTED_PRICE") || /discounted price is not credible/i.test(msg)) {
     return "O preço com desconto não é considerado credível pelo Mercado Livre. Use o preço sugerido ou um valor dentro da faixa permitida (desconto mínimo/máximo da campanha) e tente novamente.";
   }
+  if (
+    msg.includes("buyer_discount_not_in_range") ||
+    /buyers_discount_percentage parameter must be in range/i.test(msg)
+  ) {
+    return "O desconto deve estar entre 5% e 80%.";
+  }
+  if (msg.includes("best_buyer_discount") || /loyal.?buyer/i.test(msg)) {
+    return "O desconto exclusivo para meli+/níveis 3–6 precisa ser maior que o desconto geral (diferença mínima de 5% até 35%, ou 10% acima disso).";
+  }
   if (msg.includes("Preço promocional credível não disponível")) {
     return msg.replace(/^ML API \d+: /, "");
   }
@@ -1395,6 +1404,109 @@ export async function buildPromotionSummary(
   }
 
   return { totalCampaigns, activeCampaigns, candidateItems, expiringToday, accounts: accountStats };
+}
+
+/** Vigência máxima do PRICE_DISCOUNT no ML (dias corridos inclusive). */
+export const PRICE_DISCOUNT_MAX_DAYS = 14;
+/** Desconto mínimo (%) permitido pelo ML para PRICE_DISCOUNT. */
+export const PRICE_DISCOUNT_MIN_PERCENT = 5;
+/** Desconto máximo (%) permitido pelo ML para PRICE_DISCOUNT. */
+export const PRICE_DISCOUNT_MAX_PERCENT = 80;
+
+export type CreatePriceDiscountBody = {
+  dealPrice: number;
+  topDealPrice?: number | null;
+  startDate: string;
+  finishDate: string;
+};
+
+function parseLocalDateOnly(value: string): Date | null {
+  const day = value.trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+function formatMlStartDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}T00:00:00`;
+}
+
+function formatMlFinishDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}T23:59:59`;
+}
+
+function daysInclusive(start: Date, finish: Date): number {
+  const ms = finish.getTime() - start.getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000)) + 1;
+}
+
+/**
+ * Cria desconto individual (PRICE_DISCOUNT) — "Criar Desconto por Porcentagem".
+ * POST /seller-promotions/items/{itemId} sem promotion_id.
+ */
+export async function createPriceDiscount(
+  accountId: string,
+  itemId: string,
+  body: CreatePriceDiscountBody,
+): Promise<unknown> {
+  if (!(body.dealPrice > 0)) {
+    throw new Error("Informe um preço final válido maior que zero.");
+  }
+  if (body.topDealPrice != null && !(body.topDealPrice > 0)) {
+    throw new Error("Preço exclusivo meli+ inválido.");
+  }
+  if (body.topDealPrice != null && body.topDealPrice >= body.dealPrice) {
+    throw new Error(
+      "O preço exclusivo para meli+/níveis 3–6 deve ser menor que o preço com desconto geral.",
+    );
+  }
+
+  const start = parseLocalDateOnly(body.startDate);
+  const finish = parseLocalDateOnly(body.finishDate);
+  if (!start || !finish) {
+    throw new Error("Datas inválidas. Use o formato AAAA-MM-DD.");
+  }
+  if (finish.getTime() < start.getTime()) {
+    throw new Error("A data de fim deve ser igual ou posterior à data de início.");
+  }
+  const span = daysInclusive(start, finish);
+  if (span > PRICE_DISCOUNT_MAX_DAYS) {
+    throw new Error(
+      `A vigência máxima do desconto por porcentagem é de ${PRICE_DISCOUNT_MAX_DAYS} dias.`,
+    );
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (start.getTime() < today.getTime()) {
+    throw new Error("A data de início não pode ser anterior a hoje.");
+  }
+
+  const payload: Record<string, unknown> = {
+    deal_price: body.dealPrice,
+    start_date: formatMlStartDate(start),
+    finish_date: formatMlFinishDate(finish),
+    promotion_type: "PRICE_DISCOUNT",
+  };
+  if (body.topDealPrice != null) {
+    payload.top_deal_price = body.topDealPrice;
+  }
+
+  const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;
+  const result = await ml.post(accountId, path, payload);
+  invalidatePromotionsCache(accountId);
+  return result;
 }
 
 export async function activatePromotionItem(

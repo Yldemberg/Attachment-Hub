@@ -219,10 +219,26 @@ export default function GeneralInventory() {
   const { mutate: adjust, isPending: adjusting } = useAdjustMandateInventory({
     mutation: {
       onSuccess: (data) => {
-        toast({
-          title: "Estoque atualizado",
-          description: `SKU ${data.sku}: mandatário ${data.mandateQuantity} un. · ${data.updated} anúncio(s) atualizado(s) (ML e Amazon).`,
-        });
+        const failedReasons =
+          data.results
+            ?.filter((r) => !r.success && r.reason)
+            .map((r) => r.reason!)
+            .slice(0, 2) ?? [];
+        if (data.failed > 0) {
+          toast({
+            variant: data.updated > 0 ? "default" : "destructive",
+            title: data.updated > 0 ? "Estoque parcialmente atualizado" : "Falha ao atualizar Amazon",
+            description:
+              data.updated > 0
+                ? `SKU ${data.sku}: ${data.updated} ok, ${data.failed} falha(s).${failedReasons.length ? ` ${failedReasons.join(" · ")}` : ""}`
+                : `SKU ${data.sku}: nenhum anúncio atualizado.${failedReasons.length ? ` ${failedReasons.join(" · ")}` : ""}`,
+          });
+        } else {
+          toast({
+            title: "Estoque atualizado",
+            description: `SKU ${data.sku}: mandatário ${data.mandateQuantity} un. · ${data.updated} anúncio(s) atualizado(s) (ML e Amazon).`,
+          });
+        }
         queryClient.invalidateQueries({ queryKey: ["/api/inventory/search"] });
         queryClient.invalidateQueries({ queryKey: ["/api/products"] });
         if (selected?.sku === data.sku) {

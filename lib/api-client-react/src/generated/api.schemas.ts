@@ -924,6 +924,30 @@ export interface ActivatePromotionItemRequest {
   offerId?: string | null;
 }
 
+/**
+ * Cria desconto individual (PRICE_DISCOUNT) no ML — equivalente a "Criar Desconto por Porcentagem" na Central de Promoções. Desconto entre 5% e 80%; vigência máxima de 14 dias.
+
+ */
+export interface CreatePriceDiscountRequest {
+  accountId: string;
+  /** MLB item ID */
+  itemId: string;
+  /**
+   * Preço final com desconto para todos os compradores
+   * @exclusiveMinimum 0
+   */
+  dealPrice: number;
+  /**
+   * Preço opcional para compradores nível 3–6 (meli+)
+   * @exclusiveMinimum 0
+   */
+  topDealPrice?: number | null;
+  /** Data de início (YYYY-MM-DD ou ISO datetime) */
+  startDate: string;
+  /** Data de fim (YYYY-MM-DD ou ISO datetime) */
+  finishDate: string;
+}
+
 export interface BulkActivatePromotionItem {
   itemId: string;
   dealPrice?: number | null;
@@ -1428,6 +1452,8 @@ export type ListPromotionsParams = {
   limit?: number;
   refresh?: boolean;
 };
+
+export type CreatePriceDiscount200 = { [key: string]: unknown };
 
 export type GetPromotionParams = {
   account_id: string;

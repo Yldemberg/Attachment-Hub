@@ -26,6 +26,8 @@ export * from "./bulkUpdateProductListingStatusResponseStatus";
 export * from "./bulkUpdateProductListingStatusResponseSummary";
 export * from "./bulkUpdateProductListingStatusResult";
 export * from "./connectAmazonAccountBody";
+export * from "./createPriceDiscount200";
+export * from "./createPriceDiscountRequest";
 export * from "./createProductRequest";
 export * from "./createProductRequestCondition";
 export * from "./criticalAd";

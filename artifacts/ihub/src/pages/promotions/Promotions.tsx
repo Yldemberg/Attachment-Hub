@@ -10,7 +10,7 @@ import {
   getListPromotionItemsQueryKey,
   getGetPromotionsSummaryQueryKey,
 } from "@workspace/api-client-react";
-import type { PromotionInboxEntry, PromotionItem } from "@workspace/api-client-react";
+import type { Promotion, PromotionInboxEntry, PromotionItem } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -26,6 +26,8 @@ import {
   CheckSquare,
   Square,
   MinusSquare,
+  Plus,
+  Percent,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,10 +38,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PromotionTypeBadge, formatDeadline } from "./components/PromotionTypeBadge";
 import { ActivatePromotionDialog } from "./components/ActivatePromotionDialog";
+import { CreatePriceDiscountDialog } from "./components/CreatePriceDiscountDialog";
 import { PromotionEarningsBlock } from "./components/PromotionEarningsBlock";
 import {
   bulkActivateToastContent,
@@ -49,6 +58,19 @@ import {
 } from "./components/bulkActivateFeedback";
 
 const ALL_CANDIDATES = "all-candidates";
+
+const SELLER_CREATED_TYPES = new Set([
+  "PRICE_DISCOUNT",
+  "SELLER_CAMPAIGN",
+  "SELLER_COUPON_CAMPAIGN",
+]);
+
+type MainTab = "candidates" | "created";
+
+const MAIN_TABS: Array<{ value: MainTab; label: string }> = [
+  { value: "candidates", label: "Candidatos" },
+  { value: "created", label: "Criadas por você" },
+];
 
 function entrySelectionKey(entry: PromotionInboxEntry): string {
   return `${entry.promotionId}:${entry.itemId}`;
@@ -254,7 +276,52 @@ function CandidateCard({
   );
 }
 
+function CreatedPromotionCard({ promo }: { promo: Promotion }) {
+  const deadline = formatDeadline(promo.deadlineDate ?? promo.finishDate);
+  return (
+    <div className="flex items-center gap-3 bg-card border border-card-border rounded-xl px-3 py-3">
+      <div className="size-10 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center flex-shrink-0">
+        <Percent className="w-5 h-5 text-rose-600" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <PromotionTypeBadge type={promo.type} label={promo.typeLabel ?? undefined} />
+          <p className="text-sm font-medium text-foreground truncate">
+            {promo.name?.trim() || promo.typeLabel || "Promoção própria"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground flex-wrap">
+          {promo.accountNickname && <span>{promo.accountNickname}</span>}
+          {promo.startDate && promo.finishDate && (
+            <span>
+              {new Date(promo.startDate).toLocaleDateString("pt-BR")} –{" "}
+              {new Date(promo.finishDate).toLocaleDateString("pt-BR")}
+            </span>
+          )}
+          {deadline && (
+            <span className="inline-flex items-center gap-0.5">
+              <Clock className="w-3 h-3" />
+              {deadline}
+            </span>
+          )}
+          {promo.candidateCount != null && promo.candidateCount > 0 && (
+            <span>{promo.candidateCount} candidato(s)</span>
+          )}
+        </div>
+      </div>
+      <Link
+        href={`/promotions/${encodeURIComponent(promo.id)}?account_id=${promo.accountId}&promotion_type=${promo.type}`}
+      >
+        <Button variant="outline" size="sm" className="h-8 text-xs flex-shrink-0">
+          Ver
+        </Button>
+      </Link>
+    </div>
+  );
+}
+
 export default function Promotions() {
+  const [mainTab, setMainTab] = useState<MainTab>("candidates");
   const [accountId, setAccountId] = useState<string>("all");
   const [selectedCampaign, setSelectedCampaign] = useState(ALL_CANDIDATES);
   const [search, setSearch] = useState("");
@@ -262,6 +329,7 @@ export default function Promotions() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activateTarget, setActivateTarget] = useState<PromotionInboxEntry | null>(null);
+  const [createDiscountOpen, setCreateDiscountOpen] = useState(false);
   const [bulkPending, setBulkPending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
@@ -312,6 +380,21 @@ export default function Promotions() {
       })),
     ];
   }, [campaignsDropdownData?.data, summary?.candidateItems]);
+
+  const createdPromotions = useMemo(() => {
+    const campaigns = campaignsDropdownData?.data ?? [];
+    const q = search.trim().toLowerCase();
+    return campaigns.filter((p) => {
+      if (!SELLER_CREATED_TYPES.has(p.type)) return false;
+      if (!q) return true;
+      return (
+        (p.name ?? "").toLowerCase().includes(q) ||
+        (p.typeLabel ?? "").toLowerCase().includes(q) ||
+        (p.id ?? "").toLowerCase().includes(q) ||
+        (p.accountNickname ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [campaignsDropdownData?.data, search]);
 
   const selectedCampaignMeta = useMemo(() => {
     if (!campaignFilter) return null;
@@ -504,6 +587,7 @@ export default function Promotions() {
   }
 
   const showCampaignNameInCards = !campaignFilter;
+  const isCreatedTab = mainTab === "created";
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -513,10 +597,31 @@ export default function Promotions() {
             <Tag className="w-5 h-5 text-red-600" />
             <h1 className="text-lg font-bold text-foreground">Promoções</h1>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={cn("w-4 h-4 mr-1.5", refreshing && "animate-spin")} />
-            Atualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="h-8">
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Criar promoção
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setMainTab("created");
+                    setCreateDiscountOpen(true);
+                  }}
+                >
+                  <Percent className="w-4 h-4 mr-2 text-rose-600" />
+                  Desconto por porcentagem
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn("w-4 h-4 mr-1.5", refreshing && "animate-spin")} />
+              Atualizar
+            </Button>
+          </div>
         </div>
 
         {!summaryLoading && summary && (
@@ -526,6 +631,29 @@ export default function Promotions() {
             <KpiCard label="Vence hoje" value={summary.expiringToday} accent="text-amber-600" />
           </div>
         )}
+
+        <div className="flex flex-wrap gap-1.5">
+          {MAIN_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => {
+                setMainTab(tab.value);
+                setPage(1);
+                setSelected(new Set());
+                setSearch("");
+              }}
+              className={cn(
+                "h-8 px-3 rounded-full text-xs font-medium border transition-colors",
+                mainTab === tab.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
         <div className="flex flex-wrap gap-2 items-center">
           <Select
@@ -550,27 +678,29 @@ export default function Promotions() {
             </SelectContent>
           </Select>
 
-          <Select
-            value={selectedCampaign}
-            onValueChange={(v) => {
-              setSelectedCampaign(v);
-              setPage(1);
-              setSelected(new Set());
-            }}
-            disabled={campaignsDropdownLoading}
-          >
-            <SelectTrigger className="w-[220px] h-8 text-xs">
-              <SelectValue placeholder="Todos os tipos" />
-            </SelectTrigger>
-            <SelectContent>
-              {campaignOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  <span className="truncate">{o.label}</span>
-                  {o.hint && <span className="text-muted-foreground ml-1">· {o.hint}</span>}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isCreatedTab && (
+            <Select
+              value={selectedCampaign}
+              onValueChange={(v) => {
+                setSelectedCampaign(v);
+                setPage(1);
+                setSelected(new Set());
+              }}
+              disabled={campaignsDropdownLoading}
+            >
+              <SelectTrigger className="w-[220px] h-8 text-xs">
+                <SelectValue placeholder="Todos os tipos" />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    <span className="truncate">{o.label}</span>
+                    {o.hint && <span className="text-muted-foreground ml-1">· {o.hint}</span>}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -581,12 +711,47 @@ export default function Promotions() {
                 setPage(1);
                 setSelected(new Set());
               }}
-              placeholder="Buscar por SKU, MLB ou título..."
+              placeholder={
+                isCreatedTab
+                  ? "Buscar promoção criada..."
+                  : "Buscar por SKU, MLB ou título..."
+              }
               className="pl-8 h-8 text-xs"
             />
           </div>
         </div>
 
+        {isCreatedTab ? (
+          <>
+            {campaignsDropdownLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : createdPromotions.length === 0 ? (
+              <div className="text-center py-12 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {search.trim()
+                    ? `Nenhuma promoção própria para "${search.trim()}".`
+                    : "Você ainda não criou promoções personalizadas."}
+                </p>
+                <Button size="sm" onClick={() => setCreateDiscountOpen(true)}>
+                  <Percent className="w-4 h-4 mr-1.5" />
+                  Criar desconto por porcentagem
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {createdPromotions.length} promoção(ões) criada(s) por você
+                </p>
+                {createdPromotions.map((promo) => (
+                  <CreatedPromotionCard key={`${promo.accountId}-${promo.id}-${promo.type}`} promo={promo} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
         {candidateEntries.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2">
             <button
@@ -714,6 +879,8 @@ export default function Promotions() {
             </Button>
           </div>
         )}
+          </>
+        )}
       </div>
 
       {activateTarget && (
@@ -726,6 +893,12 @@ export default function Promotions() {
           item={activateTarget}
         />
       )}
+
+      <CreatePriceDiscountDialog
+        open={createDiscountOpen}
+        onOpenChange={setCreateDiscountOpen}
+        defaultAccountId={accountId}
+      />
     </div>
   );
 }

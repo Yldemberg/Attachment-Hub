@@ -27,6 +27,8 @@ import type {
   BulkUpdateProductListingStatusRequest,
   BulkUpdateProductListingStatusResponse,
   ConnectAmazonAccountBody,
+  CreatePriceDiscount200,
+  CreatePriceDiscountRequest,
   CreateProductRequest,
   CriticalAdListResponse,
   DashboardSummary,
@@ -4903,6 +4905,99 @@ export function useListPromotions<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Create a seller PRICE_DISCOUNT (percentage/individual discount) on an item
+ */
+export const getCreatePriceDiscountUrl = () => {
+  return `/api/promotions/price-discount`;
+};
+
+export const createPriceDiscount = async (
+  createPriceDiscountRequest: CreatePriceDiscountRequest,
+  options?: RequestInit,
+): Promise<CreatePriceDiscount200> => {
+  return customFetch<CreatePriceDiscount200>(getCreatePriceDiscountUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPriceDiscountRequest),
+  });
+};
+
+export const getCreatePriceDiscountMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPriceDiscount>>,
+    TError,
+    { data: BodyType<CreatePriceDiscountRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPriceDiscount>>,
+  TError,
+  { data: BodyType<CreatePriceDiscountRequest> },
+  TContext
+> => {
+  const mutationKey = ["createPriceDiscount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPriceDiscount>>,
+    { data: BodyType<CreatePriceDiscountRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPriceDiscount(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePriceDiscountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPriceDiscount>>
+>;
+export type CreatePriceDiscountMutationBody =
+  BodyType<CreatePriceDiscountRequest>;
+export type CreatePriceDiscountMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Create a seller PRICE_DISCOUNT (percentage/individual discount) on an item
+ */
+export const useCreatePriceDiscount = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPriceDiscount>>,
+    TError,
+    { data: BodyType<CreatePriceDiscountRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPriceDiscount>>,
+  TError,
+  { data: BodyType<CreatePriceDiscountRequest> },
+  TContext
+> => {
+  return useMutation(getCreatePriceDiscountMutationOptions(options));
+};
 
 /**
  * @summary Get promotion campaign details

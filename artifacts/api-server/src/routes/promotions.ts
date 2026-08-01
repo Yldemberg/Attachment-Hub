@@ -14,6 +14,7 @@ import {
   aggregateInboxForAccount,
   buildPromotionSummary,
   activatePromotionItem,
+  createPriceDiscount,
   updatePromotionItem,
   deletePromotionItem,
   bulkActivatePromotionItems,
@@ -417,6 +418,42 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: mapMlPromotionError(err) });
+  }
+});
+
+router.post("/promotions/price-discount", ...auth, async (req, res) => {
+  try {
+    const { accountId, itemId, dealPrice, topDealPrice, startDate, finishDate } = req.body as {
+      accountId?: string;
+      itemId?: string;
+      dealPrice?: number;
+      topDealPrice?: number | null;
+      startDate?: string;
+      finishDate?: string;
+    };
+
+    if (!accountId || !itemId || dealPrice == null || !startDate || !finishDate) {
+      res.status(400).json({
+        error: "accountId, itemId, dealPrice, startDate e finishDate são obrigatórios",
+      });
+      return;
+    }
+
+    const accounts = await getUserAccounts(req.user!.id, accountId);
+    if (!accounts.some((a) => a.id === accountId)) {
+      res.status(404).json({ error: "Conta não encontrada" });
+      return;
+    }
+
+    const result = await createPriceDiscount(accountId, itemId, {
+      dealPrice: Number(dealPrice),
+      topDealPrice: topDealPrice == null ? undefined : Number(topDealPrice),
+      startDate: String(startDate),
+      finishDate: String(finishDate),
+    });
+    res.json(result ?? { ok: true });
+  } catch (err) {
+    res.status(400).json({ error: mapMlPromotionError(err) });
   }
 });
 

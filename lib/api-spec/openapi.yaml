@@ -1670,6 +1670,34 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /promotions/price-discount:
+    post:
+      operationId: createPriceDiscount
+      tags: [promotions]
+      summary: Create a seller PRICE_DISCOUNT (percentage/individual discount) on an item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePriceDiscountRequest"
+      responses:
+        "200":
+          description: Discount created
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /promotions/{promotionId}:
     get:
       operationId: getPromotion
@@ -3930,6 +3958,35 @@ components:
           type: string
           nullable: true
       required: [accountId, promotionType]
+
+    CreatePriceDiscountRequest:
+      type: object
+      description: >
+        Cria desconto individual (PRICE_DISCOUNT) no ML — equivalente a
+        "Criar Desconto por Porcentagem" na Central de Promoções.
+        Desconto entre 5% e 80%; vigência máxima de 14 dias.
+      properties:
+        accountId:
+          type: string
+        itemId:
+          type: string
+          description: MLB item ID
+        dealPrice:
+          type: number
+          description: Preço final com desconto para todos os compradores
+          exclusiveMinimum: 0
+        topDealPrice:
+          type: number
+          nullable: true
+          description: Preço opcional para compradores nível 3–6 (meli+)
+          exclusiveMinimum: 0
+        startDate:
+          type: string
+          description: Data de início (YYYY-MM-DD ou ISO datetime)
+        finishDate:
+          type: string
+          description: Data de fim (YYYY-MM-DD ou ISO datetime)
+      required: [accountId, itemId, dealPrice, startDate, finishDate]
 
     BulkActivatePromotionItem:
       type: object

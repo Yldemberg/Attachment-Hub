@@ -12,6 +12,7 @@ import {
   resolveStockPropagationSource,
 } from "./mercadolivre";
 import { patchAmazonListingQuantity } from "./amazon-listings";
+import { isAmazonProductRow, productsMatchSellerSku } from "./product-sku";
 
 /**
  * Estados ML tratados como pagamento confirmado (`paid`, `confirmed`, `partially_paid`).
@@ -69,10 +70,16 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** PUT no ML + leitura + persistência: retenta com backoff (rede, 429, indisponibilidade). */
+/** PUT no ML / patch Amazon + persistência: retenta com backoff (rede, 429, indisponibilidade). */
 async function withSiblingListingRetry(
   op: () => Promise<void>,
-  logCtx: { mlItemId: string; accountId: string; sku: string; sourceListingStock: number },
+  logCtx: {
+    accountId: string;
+    sku: string;
+    sourceListingStock: number;
+    mlItemId?: string;
+    amazonSku?: string;
+  },
 ): Promise<void> {
   let last: unknown;
   for (let attempt = 0; attempt < SIBLING_PUT_RETRY_MAX; attempt++) {
@@ -174,13 +181,13 @@ export async function propagateStockBySku(params: {
     .where(
       and(
         eq(accountsTable.userId, userId),
-        eq(productsTable.sku, effectiveSku),
+        productsMatchSellerSku(effectiveSku),
         eq(productsTable.isFull, false),
       ),
     );
 
   const siblings = targets.filter(({ product, platform }) => {
-    if (platform === "amazon") {
+    if (isAmazonProductRow({ platform, amazonSku: product.amazonSku, mlItemId: product.mlItemId })) {
       const sellerSku = product.amazonSku || product.sku;
       if (!sellerSku) return false;
       if (
@@ -210,7 +217,7 @@ export async function propagateStockBySku(params: {
     siblings,
     SIBLING_UPDATE_CONCURRENCY,
     async ({ product: target, platform }) => {
-      if (platform === "amazon") {
+      if (isAmazonProductRow({ platform, amazonSku: target.amazonSku, mlItemId: target.mlItemId })) {
         const sellerSku = target.amazonSku || target.sku || effectiveSku;
         const logCtx = {
           amazonSku: sellerSku,
@@ -221,18 +228,15 @@ export async function propagateStockBySku(params: {
         try {
           await withSiblingListingRetry(
             async () => {
-              const after = await patchAmazonListingQuantity(
+              await patchAmazonListingQuantity(
                 target.accountId,
                 sellerSku,
                 sourceListingStock,
                 target.amazonProductType,
               );
-              const qty =
-                after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ??
-                sourceListingStock;
               await db
                 .update(productsTable)
-                .set({ availableQuantity: qty, updatedAt: new Date() })
+                .set({ availableQuantity: sourceListingStock, updatedAt: new Date() })
                 .where(eq(productsTable.id, target.id));
             },
             logCtx,

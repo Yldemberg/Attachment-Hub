@@ -5,6 +5,7 @@ import { getDb } from "../lib/db";
 import { productsTable, accountsTable } from "@workspace/db/schema";
 import { eq, and, or, inArray, lt, sql, gt, isNotNull, asc } from "drizzle-orm";
 import { getUserAccountIds } from "../lib/account-scope";
+import { isAmazonProductRow, productsMatchSellerSku } from "../lib/product-sku";
 import {
   fetchMlItemPrices,
   ml,
@@ -1120,24 +1121,23 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
       .from(accountsTable)
       .where(eq(accountsTable.id, product.accountId));
 
-    if (account?.platform === "amazon") {
+    if (account?.platform === "amazon" || isAmazonProductRow({ platform: account?.platform, amazonSku: product.amazonSku })) {
       const sellerSku = product.amazonSku || product.sku;
       if (!sellerSku) {
         res.status(400).json({ error: { code: "BAD_REQUEST", message: "Produto Amazon sem SKU" } });
         return;
       }
-      const after = await patchAmazonListingQuantity(
+      await patchAmazonListingQuantity(
         product.accountId,
         sellerSku,
         quantity,
         product.amazonProductType,
       );
-      const qty = after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? quantity;
       await db
         .update(productsTable)
-        .set({ availableQuantity: qty, updatedAt: new Date() })
+        .set({ availableQuantity: quantity, updatedAt: new Date() })
         .where(eq(productsTable.id, product.id));
-      res.json({ success: true, productId: product.id, quantity: qty });
+      res.json({ success: true, productId: product.id, quantity });
       return;
     }
 
@@ -1199,7 +1199,12 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
     const products = await db
       .select()
       .from(productsTable)
-      .where(and(eq(productsTable.sku, req.params.sku as string), inArray(productsTable.accountId, accountIds)));
+      .where(
+        and(
+          productsMatchSellerSku(req.params.sku as string),
+          inArray(productsTable.accountId, accountIds),
+        ),
+      );
 
     const results: Array<{ productId: string; mlItemId: string | null; success: boolean; reason: string | null }> = [];
     let updated = 0, skipped = 0, failed = 0;
@@ -1210,19 +1215,18 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
         .from(accountsTable)
         .where(eq(accountsTable.id, product.accountId));
 
-      if (account?.platform === "amazon") {
+      if (account?.platform === "amazon" || isAmazonProductRow({ platform: account?.platform, amazonSku: product.amazonSku })) {
         const sellerSku = product.amazonSku || product.sku || (req.params.sku as string);
         try {
-          const after = await patchAmazonListingQuantity(
+          await patchAmazonListingQuantity(
             product.accountId,
             sellerSku,
             quantity,
             product.amazonProductType,
           );
-          const qty = after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? quantity;
           await db
             .update(productsTable)
-            .set({ availableQuantity: qty, updatedAt: new Date() })
+            .set({ availableQuantity: quantity, updatedAt: new Date() })
             .where(eq(productsTable.id, product.id));
           updated++;
           results.push({ productId: product.id, mlItemId: product.mlItemId, success: true, reason: null });

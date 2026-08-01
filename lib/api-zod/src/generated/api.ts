@@ -2055,6 +2055,42 @@ export const ListPromotionsResponse = zod.object({
 });
 
 /**
+ * @summary Create a seller PRICE_DISCOUNT (percentage/individual discount) on an item
+ */
+export const createPriceDiscountBodyDealPriceExclusiveMin = 0;
+
+export const createPriceDiscountBodyTopDealPriceExclusiveMin = 0;
+
+export const CreatePriceDiscountBody = zod
+  .object({
+    accountId: zod.string(),
+    itemId: zod.string().describe("MLB item ID"),
+    dealPrice: zod
+      .number()
+      .gt(createPriceDiscountBodyDealPriceExclusiveMin)
+      .describe("Preço final com desconto para todos os compradores"),
+    topDealPrice: zod
+      .number()
+      .gt(createPriceDiscountBodyTopDealPriceExclusiveMin)
+      .nullish()
+      .describe("Preço opcional para compradores nível 3–6 (meli+)"),
+    startDate: zod
+      .string()
+      .describe("Data de início (YYYY-MM-DD ou ISO datetime)"),
+    finishDate: zod
+      .string()
+      .describe("Data de fim (YYYY-MM-DD ou ISO datetime)"),
+  })
+  .describe(
+    'Cria desconto individual (PRICE_DISCOUNT) no ML — equivalente a \"Criar Desconto por Porcentagem\" na Central de Promoções. Desconto entre 5% e 80%; vigência máxima de 14 dias.\n',
+  );
+
+export const CreatePriceDiscountResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
  * @summary Get promotion campaign details
  */
 export const GetPromotionParams = zod.object({

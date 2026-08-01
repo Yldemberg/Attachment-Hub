@@ -3,12 +3,13 @@ import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
 import { productsTable, accountsTable, skuMandateInventoryTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
 import { patchAmazonListingQuantity } from "../lib/amazon-listings";
 import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import { propagateStockBySku } from "../lib/order-mandate-stock";
 import { getUserAccountIds } from "../lib/account-scope";
+import { isAmazonProductRow, productsMatchSellerSku } from "../lib/product-sku";
 
 const router = Router();
 const auth = [requireAuth, requireActivePlan];
@@ -91,7 +92,13 @@ router.get("/inventory/search", ...auth, async (req, res) => {
       return;
     }
 
-    const baseScope = [inArray(productsTable.accountId, accountIds), isNotNull(productsTable.sku)];
+    const baseScope = [
+      inArray(productsTable.accountId, accountIds),
+      sql`(
+        (nullif(trim(coalesce(${productsTable.sku}, '')), '') is not null)
+        OR (nullif(trim(coalesce(${productsTable.amazonSku}, '')), '') is not null)
+      )`,
+    ];
 
     type Row = ProductRow;
     let bySku: Map<string, Row[]>;
@@ -107,7 +114,8 @@ router.get("/inventory/search", ...auth, async (req, res) => {
 
       bySku = new Map();
       for (const row of rows) {
-        const sku = row.sku!;
+        const sku = (row.sku?.trim() || row.amazonSku?.trim() || "").trim();
+        if (!sku) continue;
         const list = bySku.get(sku) ?? [];
         list.push(row);
         bySku.set(sku, list);
@@ -125,7 +133,9 @@ router.get("/inventory/search", ...auth, async (req, res) => {
           sql`(
             coalesce(${productsTable.title}, '') ILIKE ${pat} ESCAPE '\\'
             OR coalesce(${productsTable.sku}, '') ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.amazonSku}, '') ILIKE ${pat} ESCAPE '\\'
             OR ${productsTable.mlItemId} ILIKE ${pat} ESCAPE '\\'
+            OR coalesce(${productsTable.amazonAsin}, '') ILIKE ${pat} ESCAPE '\\'
             OR coalesce(${productsTable.variationsJson}::text, '') ILIKE ${pat} ESCAPE '\\'
           )`,
         );
@@ -136,7 +146,8 @@ router.get("/inventory/search", ...auth, async (req, res) => {
 
       bySku = new Map();
       for (const row of rows) {
-        const sku = row.sku!;
+        const sku = (row.sku?.trim() || row.amazonSku?.trim() || "").trim();
+        if (!sku) continue;
         const list = bySku.get(sku) ?? [];
         list.push(row);
         bySku.set(sku, list);
@@ -374,7 +385,7 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
       .where(
         and(
           inArray(productsTable.accountId, accountIds),
-          eq(productsTable.sku, sku),
+          productsMatchSellerSku(sku),
           eq(productsTable.isFull, false),
         ),
       );
@@ -415,7 +426,7 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
     let failed = 0;
 
     for (const { product, platform } of rows) {
-      if (platform === "amazon") {
+      if (isAmazonProductRow({ platform, amazonSku: product.amazonSku, mlItemId: product.mlItemId })) {
         const sellerSku = product.amazonSku || product.sku || sku;
         if (!sellerSku) {
           failed++;
@@ -428,22 +439,24 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
           continue;
         }
         try {
-          const after = await patchAmazonListingQuantity(
+          await patchAmazonListingQuantity(
             product.accountId,
             sellerSku,
             mandateQty,
             product.amazonProductType,
           );
-          const qty =
-            after.fulfillmentAvailability?.find((f) => f.quantity != null)?.quantity ?? mandateQty;
           await db
             .update(productsTable)
-            .set({ availableQuantity: qty, updatedAt: new Date() })
+            .set({ availableQuantity: mandateQty, updatedAt: new Date() })
             .where(eq(productsTable.id, product.id));
           updated++;
           results.push({ productId: product.id, mlItemId: "", success: true, reason: null });
         } catch (err) {
           failed++;
+          req.log.warn(
+            { err, productId: product.id, sellerSku, sku },
+            "mandate-adjust Amazon listing failed",
+          );
           results.push({
             productId: product.id,
             mlItemId: "",
@@ -525,7 +538,7 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
       .where(
         and(
           inArray(productsTable.accountId, accountIds),
-          eq(productsTable.sku, sku),
+          productsMatchSellerSku(sku),
           eq(productsTable.isFull, false),
         ),
       );
@@ -551,7 +564,13 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
     const sourceProduct = sourceRow.product;
     let newStock: number;
 
-    if (sourceRow.platform === "amazon") {
+    if (
+      isAmazonProductRow({
+        platform: sourceRow.platform,
+        amazonSku: sourceProduct.amazonSku,
+        mlItemId: sourceProduct.mlItemId,
+      })
+    ) {
       newStock = sourceProduct.availableQuantity;
       await db
         .update(productsTable)
