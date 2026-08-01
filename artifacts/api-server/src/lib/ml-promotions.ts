@@ -787,6 +787,13 @@ export function mapMlPromotionError(err: unknown): string {
   if (msg.includes("best_buyer_discount") || /loyal.?buyer/i.test(msg)) {
     return "O desconto exclusivo para meli+/níveis 3–6 precisa ser maior que o desconto geral (diferença mínima de 5% até 35%, ou 10% acima disso).";
   }
+  if (/no candidates found for item/i.test(msg) || /no candidates found for item/i.test(mlBody)) {
+    return (
+      "Este anúncio não está elegível para desconto por porcentagem no Mercado Livre. " +
+      "Confira: anúncio ativo, condição novo, exposição paga (não grátis), reputação verde da conta " +
+      "e se já não existe um desconto individual ativo/agendado neste MLB."
+    );
+  }
   if (msg.includes("Preço promocional credível não disponível")) {
     return msg.replace(/^ML API \d+: /, "");
   }
@@ -1491,6 +1498,91 @@ export async function createPriceDiscount(
   today.setHours(0, 0, 0, 0);
   if (start.getTime() < today.getTime()) {
     throw new Error("A data de início não pode ser anterior a hoje.");
+  }
+
+  // Pré-checagem de elegibilidade (evita 400 genérico "No candidates found for item").
+  type MlItemLite = {
+    id: string;
+    status?: string;
+    listing_type_id?: string;
+    condition?: string;
+    sold_quantity?: number;
+    price?: number;
+    original_price?: number | null;
+  };
+
+  let mlItem: MlItemLite | null = null;
+  try {
+    mlItem = await ml.get<MlItemLite>(accountId, `/items/${encodeURIComponent(itemId)}`);
+  } catch {
+    throw new Error(
+      "Não foi possível carregar o anúncio no Mercado Livre. Confirme se o MLB pertence à conta selecionada.",
+    );
+  }
+
+  if (mlItem.status && mlItem.status !== "active") {
+    throw new Error(
+      `O anúncio precisa estar ativo para receber desconto por porcentagem (status atual: ${mlItem.status}).`,
+    );
+  }
+
+  const listingType = (mlItem.listing_type_id ?? "").toLowerCase();
+  if (listingType === "free" || listingType === "bronze") {
+    throw new Error(
+      "Anúncios com exposição grátis não podem ter desconto por porcentagem. Use anúncio Clássico ou Premium.",
+    );
+  }
+
+  if (mlItem.condition && mlItem.condition !== "new") {
+    throw new Error("Desconto por porcentagem só é permitido para anúncios na condição novo.");
+  }
+
+  let priceDiscountContexts: MlItemPromotionContext[] = [];
+  try {
+    const contexts = await fetchMlItemPromotions(accountId, itemId);
+    priceDiscountContexts = contexts.filter((c) => c.type === "PRICE_DISCOUNT");
+  } catch {
+    // segue para o POST — o ML ainda é a fonte da verdade
+  }
+
+  const blocking = priceDiscountContexts.find((c) =>
+    ["started", "pending", "sync_requested"].includes(String(c.status ?? "")),
+  );
+  if (blocking) {
+    const label =
+      blocking.status === "started"
+        ? "ativo"
+        : blocking.status === "pending"
+          ? "agendado"
+          : "em processamento";
+    throw new Error(
+      `Este anúncio já possui um desconto individual ${label}. Remova ou aguarde o fim da vigência antes de criar outro.`,
+    );
+  }
+
+  const candidate = priceDiscountContexts.find((c) => c.status === "candidate");
+  if (priceDiscountContexts.length > 0 && !candidate) {
+    const statuses = priceDiscountContexts.map((c) => c.status).filter(Boolean).join(", ");
+    throw new Error(
+      `Este anúncio não está como candidato a desconto individual no ML` +
+        (statuses ? ` (status: ${statuses})` : "") +
+        ". Tente pelo Central de Promoções do ML ou escolha outro anúncio.",
+    );
+  }
+
+  const originalPrice =
+    (typeof mlItem.original_price === "number" && mlItem.original_price > 0
+      ? mlItem.original_price
+      : null) ??
+    (typeof mlItem.price === "number" && mlItem.price > 0 ? mlItem.price : null);
+
+  if (originalPrice != null) {
+    const pct = ((originalPrice - body.dealPrice) / originalPrice) * 100;
+    if (pct < PRICE_DISCOUNT_MIN_PERCENT || pct > PRICE_DISCOUNT_MAX_PERCENT) {
+      throw new Error(
+        `O desconto deve estar entre ${PRICE_DISCOUNT_MIN_PERCENT}% e ${PRICE_DISCOUNT_MAX_PERCENT}% (atual: ${pct.toFixed(1)}%).`,
+      );
+    }
   }
 
   const payload: Record<string, unknown> = {

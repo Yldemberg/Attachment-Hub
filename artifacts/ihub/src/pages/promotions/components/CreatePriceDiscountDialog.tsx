@@ -311,7 +311,7 @@ export function CreatePriceDiscountDialog({
 
     createDiscount({
       data: {
-        accountId,
+        accountId: selected.accountId || accountId,
         itemId: selected.mlItemId,
         dealPrice: Math.round(parsedPrice * 100) / 100,
         topDealPrice: parsedTop != null ? Math.round(parsedTop * 100) / 100 : null,
