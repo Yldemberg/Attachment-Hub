@@ -480,7 +480,7 @@ export default function GestaoFull() {
             Nenhum anúncio Full encontrado. Sincronize a conta em Integrações e use “Sync estoque”.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2">
             {items.map((it) => {
               const key = rowKey(it);
               const selected = selectedKeys.has(key);
