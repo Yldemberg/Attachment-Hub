@@ -11,3 +11,4 @@ export * from "./oauth-states";
 export * from "./listing-prepare-jobs";
 export * from "./listing-templates";
 export * from "./ml-diagnostico-critico";
+export * from "./full-gestao";

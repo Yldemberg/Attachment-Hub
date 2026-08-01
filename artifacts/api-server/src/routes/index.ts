@@ -13,6 +13,7 @@ import promotionsRouter from "./promotions";
 import criticalAdsRouter from "./critical-ads";
 import listingTemplatesRouter from "./listing-templates";
 import webhooksRouter from "./webhooks";
+import fullRouter from "./full";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(dashboardRouter);
 router.use(promotionsRouter);
 router.use(criticalAdsRouter);
 router.use(listingTemplatesRouter);
+router.use(fullRouter);
 
 export default router;

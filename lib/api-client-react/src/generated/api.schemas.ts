@@ -1167,6 +1167,106 @@ export interface PublishListingTemplateResponse {
   data: PublishListingTemplateResponseData;
 }
 
+export type FullSkuStatus = (typeof FullSkuStatus)[keyof typeof FullSkuStatus];
+
+export const FullSkuStatus = {
+  ruptura: "ruptura",
+  critico: "critico",
+  saudavel: "saudavel",
+  parado: "parado",
+} as const;
+
+export interface FullSettings {
+  accountId: string;
+  coverageTargetDays: number;
+  leadTimeDays: number;
+  salesPeriodDays: number;
+  stuckMultiplier: number;
+  whatsappPhone?: string | null;
+  alertsEnabled: boolean;
+  alertRuptura: boolean;
+  alertCritico: boolean;
+  alertParado: boolean;
+  alertCooldownHours: number;
+}
+
+export type FullSettingsUpdateRequestSalesPeriodDays =
+  (typeof FullSettingsUpdateRequestSalesPeriodDays)[keyof typeof FullSettingsUpdateRequestSalesPeriodDays];
+
+export const FullSettingsUpdateRequestSalesPeriodDays = {
+  NUMBER_7: 7,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export interface FullSettingsUpdateRequest {
+  accountId: string;
+  coverageTargetDays?: number;
+  leadTimeDays?: number;
+  salesPeriodDays?: FullSettingsUpdateRequestSalesPeriodDays;
+  stuckMultiplier?: number;
+  whatsappPhone?: string | null;
+  alertsEnabled?: boolean;
+  alertRuptura?: boolean;
+  alertCritico?: boolean;
+  alertParado?: boolean;
+  alertCooldownHours?: number;
+}
+
+export interface FullOverviewItem {
+  sku: string;
+  title: string;
+  thumbnail?: string | null;
+  mlItemId?: string | null;
+  productId?: string | null;
+  permalink?: string | null;
+  stockFull: number;
+  notAvailable: number;
+  unitsSoldPeriod: number;
+  salesPerDay: number;
+  coverageDays?: number | null;
+  suggestedQty: number;
+  sendBy?: string | null;
+  status: FullSkuStatus;
+  lastSyncedAt?: string | null;
+}
+
+export interface FullOverviewKpis {
+  rupturaCount: number;
+  criticoCount: number;
+  saudavelCount: number;
+  paradoCount: number;
+  avgCoverageDays?: number | null;
+}
+
+export type FullOverviewResponseSettings = {
+  coverageTargetDays: number;
+  leadTimeDays: number;
+  salesPeriodDays: number;
+  stuckMultiplier: number;
+  whatsappPhone?: string | null;
+  alertsEnabled: boolean;
+  alertRuptura: boolean;
+  alertCritico: boolean;
+  alertParado: boolean;
+  alertCooldownHours: number;
+};
+
+export interface FullOverviewResponse {
+  accountId: string;
+  settings: FullOverviewResponseSettings;
+  kpis: FullOverviewKpis;
+  items: FullOverviewItem[];
+}
+
+export interface FullStockSyncResponse {
+  synced: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
 export interface MercadoLivreWebhookPayload {
   _id?: string;
   resource: string;
@@ -1415,6 +1515,50 @@ export type SaveListingTemplateFromProduct201 = {
 
 export type GetListingTemplate200 = {
   data: ListingTemplateDetail;
+};
+
+export type GetFullOverviewParams = {
+  account_id: string;
+  status?: GetFullOverviewStatus;
+  search?: string;
+  /**
+   * Janela de vendas (não persiste; override temporário)
+   */
+  period_days?: GetFullOverviewPeriodDays;
+};
+
+export type GetFullOverviewStatus =
+  (typeof GetFullOverviewStatus)[keyof typeof GetFullOverviewStatus];
+
+export const GetFullOverviewStatus = {
+  all: "all",
+  ruptura: "ruptura",
+  critico: "critico",
+  saudavel: "saudavel",
+  parado: "parado",
+} as const;
+
+export type GetFullOverviewPeriodDays =
+  (typeof GetFullOverviewPeriodDays)[keyof typeof GetFullOverviewPeriodDays];
+
+export const GetFullOverviewPeriodDays = {
+  NUMBER_7: 7,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export type GetFullSettingsParams = {
+  account_id: string;
+};
+
+export type SyncFullStockBody = {
+  accountId: string;
+};
+
+export type RunFullAlerts200 = {
+  accounts: number;
+  alertsSent: number;
 };
 
 export type GetPromotionsSummaryParams = {

@@ -1,0 +1,28 @@
+{
+  "accountId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "accountNickname": "LOJA_EXEMPLO",
+  "phone": "5511999999999",
+  "generatedAt": "2026-08-01T18:00:00.000Z",
+  "alerts": [
+    {
+      "type": "ruptura",
+      "sku": "ABC-1",
+      "title": "Produto Exemplo Full",
+      "stockFull": 0,
+      "salesPerDay": 2.4,
+      "suggestedQty": 72,
+      "sendBy": "2026-08-03",
+      "coverageDays": 0
+    },
+    {
+      "type": "critico",
+      "sku": "XYZ-2",
+      "title": "Outro SKU",
+      "stockFull": 8,
+      "salesPerDay": 3.1,
+      "suggestedQty": 85,
+      "sendBy": "2026-08-02",
+      "coverageDays": 2.6
+    }
+  ]
+}

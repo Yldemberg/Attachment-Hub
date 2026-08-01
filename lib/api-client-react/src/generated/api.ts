@@ -36,9 +36,15 @@ import type {
   DuplicateProductRequest,
   DuplicateProductResponse,
   ErrorResponse,
+  FullOverviewResponse,
+  FullSettings,
+  FullSettingsUpdateRequest,
+  FullStockSyncResponse,
   GetAmazonConnectUrl200,
   GetConnectUrl200,
   GetDashboardSummaryParams,
+  GetFullOverviewParams,
+  GetFullSettingsParams,
   GetListingTemplate200,
   GetLowStockProducts200,
   GetLowStockProductsParams,
@@ -103,6 +109,7 @@ import type {
   QuestionListResponse,
   RemovePromotionItem200,
   RemovePromotionItemParams,
+  RunFullAlerts200,
   SalesChartResponse,
   SalesReportResponse,
   SaveListingTemplateFromProduct201,
@@ -110,6 +117,7 @@ import type {
   SkuSyncRequest,
   SkuSyncResponse,
   SyncAccount202,
+  SyncFullStockBody,
   SyncListingTemplates202,
   UnauthorizedResponse,
   UpdateProductListingStatus200,
@@ -4610,6 +4618,472 @@ export const usePublishListingTemplate = <
   TContext
 > => {
   return useMutation(getPublishListingTemplateMutationOptions(options));
+};
+
+/**
+ * @summary Overview de cobertura e reposição Full por SKU
+ */
+export const getGetFullOverviewUrl = (params: GetFullOverviewParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/full/overview?${stringifiedParams}`
+    : `/api/full/overview`;
+};
+
+export const getFullOverview = async (
+  params: GetFullOverviewParams,
+  options?: RequestInit,
+): Promise<FullOverviewResponse> => {
+  return customFetch<FullOverviewResponse>(getGetFullOverviewUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFullOverviewQueryKey = (params?: GetFullOverviewParams) => {
+  return [`/api/full/overview`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFullOverviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFullOverview>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: GetFullOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFullOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFullOverviewQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFullOverview>>> = ({
+    signal,
+  }) => getFullOverview(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFullOverview>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFullOverviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFullOverview>>
+>;
+export type GetFullOverviewQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Overview de cobertura e reposição Full por SKU
+ */
+
+export function useGetFullOverview<
+  TData = Awaited<ReturnType<typeof getFullOverview>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: GetFullOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFullOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFullOverviewQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Configuração de Gestão Full da conta
+ */
+export const getGetFullSettingsUrl = (params: GetFullSettingsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/full/settings?${stringifiedParams}`
+    : `/api/full/settings`;
+};
+
+export const getFullSettings = async (
+  params: GetFullSettingsParams,
+  options?: RequestInit,
+): Promise<FullSettings> => {
+  return customFetch<FullSettings>(getGetFullSettingsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFullSettingsQueryKey = (params?: GetFullSettingsParams) => {
+  return [`/api/full/settings`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFullSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFullSettings>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: GetFullSettingsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFullSettings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFullSettingsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFullSettings>>> = ({
+    signal,
+  }) => getFullSettings(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFullSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFullSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFullSettings>>
+>;
+export type GetFullSettingsQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Configuração de Gestão Full da conta
+ */
+
+export function useGetFullSettings<
+  TData = Awaited<ReturnType<typeof getFullSettings>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: GetFullSettingsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFullSettings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFullSettingsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Atualizar configuração de Gestão Full
+ */
+export const getUpdateFullSettingsUrl = () => {
+  return `/api/full/settings`;
+};
+
+export const updateFullSettings = async (
+  fullSettingsUpdateRequest: FullSettingsUpdateRequest,
+  options?: RequestInit,
+): Promise<FullSettings> => {
+  return customFetch<FullSettings>(getUpdateFullSettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(fullSettingsUpdateRequest),
+  });
+};
+
+export const getUpdateFullSettingsMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFullSettings>>,
+    TError,
+    { data: BodyType<FullSettingsUpdateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFullSettings>>,
+  TError,
+  { data: BodyType<FullSettingsUpdateRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateFullSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFullSettings>>,
+    { data: BodyType<FullSettingsUpdateRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateFullSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFullSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFullSettings>>
+>;
+export type UpdateFullSettingsMutationBody =
+  BodyType<FullSettingsUpdateRequest>;
+export type UpdateFullSettingsMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Atualizar configuração de Gestão Full
+ */
+export const useUpdateFullSettings = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFullSettings>>,
+    TError,
+    { data: BodyType<FullSettingsUpdateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFullSettings>>,
+  TError,
+  { data: BodyType<FullSettingsUpdateRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateFullSettingsMutationOptions(options));
+};
+
+/**
+ * @summary Sincronizar estoque Full via API ML fulfillment
+ */
+export const getSyncFullStockUrl = () => {
+  return `/api/full/sync-stock`;
+};
+
+export const syncFullStock = async (
+  syncFullStockBody: SyncFullStockBody,
+  options?: RequestInit,
+): Promise<FullStockSyncResponse> => {
+  return customFetch<FullStockSyncResponse>(getSyncFullStockUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(syncFullStockBody),
+  });
+};
+
+export const getSyncFullStockMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncFullStock>>,
+    TError,
+    { data: BodyType<SyncFullStockBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncFullStock>>,
+  TError,
+  { data: BodyType<SyncFullStockBody> },
+  TContext
+> => {
+  const mutationKey = ["syncFullStock"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncFullStock>>,
+    { data: BodyType<SyncFullStockBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return syncFullStock(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncFullStockMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncFullStock>>
+>;
+export type SyncFullStockMutationBody = BodyType<SyncFullStockBody>;
+export type SyncFullStockMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Sincronizar estoque Full via API ML fulfillment
+ */
+export const useSyncFullStock = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncFullStock>>,
+    TError,
+    { data: BodyType<SyncFullStockBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncFullStock>>,
+  TError,
+  { data: BodyType<SyncFullStockBody> },
+  TContext
+> => {
+  return useMutation(getSyncFullStockMutationOptions(options));
+};
+
+/**
+ * @summary Disparar job de alertas WhatsApp (N8N) manualmente
+ */
+export const getRunFullAlertsUrl = () => {
+  return `/api/full/alerts/run`;
+};
+
+export const runFullAlerts = async (
+  options?: RequestInit,
+): Promise<RunFullAlerts200> => {
+  return customFetch<RunFullAlerts200>(getRunFullAlertsUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunFullAlertsMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runFullAlerts>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runFullAlerts>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["runFullAlerts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runFullAlerts>>,
+    void
+  > = () => {
+    return runFullAlerts(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunFullAlertsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runFullAlerts>>
+>;
+
+export type RunFullAlertsMutationError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Disparar job de alertas WhatsApp (N8N) manualmente
+ */
+export const useRunFullAlerts = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runFullAlerts>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runFullAlerts>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRunFullAlertsMutationOptions(options));
 };
 
 /**

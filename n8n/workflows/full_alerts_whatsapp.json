@@ -1,0 +1,120 @@
+{
+  "name": "Gestão Full — Alertas WhatsApp (Evolution)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "full_alerts",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook Full Alerts",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "full-alerts-webhook",
+      "notes": "Recebe POST do iHub: accountId, phone, alerts[]. Ver n8n/FULL_ALERTS_CONTRACT.md"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst body = raw.body || raw;\nconst phone = String(body.phone || '').replace(/\\D/g, '');\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst nick = body.accountNickname || 'ML';\nif (!phone || alerts.length === 0) {\n  return [{ json: { skip: true, reason: 'phone ou alerts vazios' } }];\n}\nconst lines = alerts.slice(0, 25).map((a, i) => {\n  const tipo = String(a.type || '').toUpperCase();\n  const cov = a.coverageDays != null ? `${a.coverageDays}d` : '—';\n  const send = a.sendBy || '—';\n  return `${i + 1}. [${tipo}] ${a.sku}\\n   ${a.title || ''}\\n   Estoque: ${a.stockFull} | Vendas/dia: ${a.salesPerDay} | Cobertura: ${cov}\\n   Enviar: ${a.suggestedQty || 0} un. até ${send}`;\n});\nconst text = `*iHub Gestão Full* — ${nick}\\n${alerts.length} alerta(s)\\n\\n${lines.join('\\n\\n')}`;\nreturn [{ json: { skip: false, phone, text, alertCount: alerts.length } }];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "Formatar mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.skip }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "Tem alertas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.phone }}\",\n  \"text\": {{ JSON.stringify($json.text) }}\n}",
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+      "name": "Evolution sendText",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220],
+      "notes": "Defina no N8N: EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, skipped: true }) }}"
+      },
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+      "name": "Respond skipped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [940, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, sent: true }) }}"
+      },
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+      "name": "Respond ok",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1180, 220]
+    }
+  ],
+  "connections": {
+    "Webhook Full Alerts": {
+      "main": [[{ "node": "Formatar mensagem", "type": "main", "index": 0 }]]
+    },
+    "Formatar mensagem": {
+      "main": [[{ "node": "Tem alertas?", "type": "main", "index": 0 }]]
+    },
+    "Tem alertas?": {
+      "main": [
+        [{ "node": "Evolution sendText", "type": "main", "index": 0 }],
+        [{ "node": "Respond skipped", "type": "main", "index": 0 }]
+      ]
+    },
+    "Evolution sendText": {
+      "main": [[{ "node": "Respond ok", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

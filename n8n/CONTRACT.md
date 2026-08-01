@@ -125,7 +125,15 @@ Publicação no iHub: `createAmazonListing` / SP-API com os atributos revisados.
 
 ---
 
-## 5. Checklist N8N
+## 5. Alertas Gestão Full (WhatsApp)
+
+Ver contrato dedicado: [`FULL_ALERTS_CONTRACT.md`](FULL_ALERTS_CONTRACT.md)  
+Workflow: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)  
+Env: `N8N_FULL_ALERTS_WEBHOOK_URL`
+
+---
+
+## 6. Checklist N8N
 
 ### Workflow ML (`criar_anuncio`)
 - [ ] Payload final = `N8nListingDraft` (sem campos Amazon)
@@ -136,3 +144,8 @@ Publicação no iHub: `createAmazonListing` / SP-API com os atributos revisados.
 - [ ] Payload final = `N8nAmazonListingDraft` (`platform: amazon`)
 - [ ] Callback com `jobId`, `status`, `draft`
 - [ ] Preferir `callbackUrl` do request no nó HTTP final
+
+### Workflow Full alerts (`full_alerts`)
+- [ ] Webhook path `full_alerts`
+- [ ] Env Evolution: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`
+- [ ] `N8N_FULL_ALERTS_WEBHOOK_URL` apontando para o webhook

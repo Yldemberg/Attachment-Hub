@@ -34,6 +34,8 @@ tags:
     description: Critical listing diagnostics from Mercado Livre
   - name: listing-templates
     description: Modelos de anúncio derivados das contas ML sincronizadas
+  - name: full
+    description: Gestão Full — cobertura, reposição e alertas WhatsApp
   - name: webhooks
     description: External webhook receivers
 
@@ -1540,6 +1542,158 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  # ---------------------------------------------------------------------------
+  # Gestão Full
+  # ---------------------------------------------------------------------------
+  /full/overview:
+    get:
+      operationId: getFullOverview
+      tags: [full]
+      summary: Overview de cobertura e reposição Full por SKU
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, ruptura, critico, saudavel, parado]
+            default: all
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: period_days
+          in: query
+          description: Janela de vendas (não persiste; override temporário)
+          schema:
+            type: integer
+            enum: [7, 15, 30, 60]
+      responses:
+        "200":
+          description: KPIs + lista de SKUs Full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullOverviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /full/settings:
+    get:
+      operationId: getFullSettings
+      tags: [full]
+      summary: Configuração de Gestão Full da conta
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateFullSettings
+      tags: [full]
+      summary: Atualizar configuração de Gestão Full
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FullSettingsUpdateRequest"
+      responses:
+        "200":
+          description: Settings atualizados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /full/sync-stock:
+    post:
+      operationId: syncFullStock
+      tags: [full]
+      summary: Sincronizar estoque Full via API ML fulfillment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountId:
+                  type: string
+              required: [accountId]
+      responses:
+        "200":
+          description: Resultado do sync
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullStockSyncResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /full/alerts/run:
+    post:
+      operationId: runFullAlerts
+      tags: [full]
+      summary: Disparar job de alertas WhatsApp (N8N) manualmente
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Contagem de alertas enviados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: integer
+                  alertsSent:
+                    type: integer
+                required: [accounts, alertsSent]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ---------------------------------------------------------------------------
   # Promotions
@@ -4432,6 +4586,209 @@ components:
               type: string
           required: [productId, mlItemId]
       required: [data]
+
+    # --------------------------------------------------------------------------
+    # Gestão Full
+    # --------------------------------------------------------------------------
+    FullSkuStatus:
+      type: string
+      enum: [ruptura, critico, saudavel, parado]
+
+    FullSettings:
+      type: object
+      properties:
+        accountId:
+          type: string
+        coverageTargetDays:
+          type: integer
+        leadTimeDays:
+          type: integer
+        salesPeriodDays:
+          type: integer
+        stuckMultiplier:
+          type: integer
+        whatsappPhone:
+          type: string
+          nullable: true
+        alertsEnabled:
+          type: boolean
+        alertRuptura:
+          type: boolean
+        alertCritico:
+          type: boolean
+        alertParado:
+          type: boolean
+        alertCooldownHours:
+          type: integer
+      required:
+        - accountId
+        - coverageTargetDays
+        - leadTimeDays
+        - salesPeriodDays
+        - stuckMultiplier
+        - alertsEnabled
+        - alertRuptura
+        - alertCritico
+        - alertParado
+        - alertCooldownHours
+
+    FullSettingsUpdateRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        coverageTargetDays:
+          type: integer
+        leadTimeDays:
+          type: integer
+        salesPeriodDays:
+          type: integer
+          enum: [7, 15, 30, 60]
+        stuckMultiplier:
+          type: integer
+        whatsappPhone:
+          type: string
+          nullable: true
+        alertsEnabled:
+          type: boolean
+        alertRuptura:
+          type: boolean
+        alertCritico:
+          type: boolean
+        alertParado:
+          type: boolean
+        alertCooldownHours:
+          type: integer
+      required: [accountId]
+
+    FullOverviewItem:
+      type: object
+      properties:
+        sku:
+          type: string
+        title:
+          type: string
+        thumbnail:
+          type: string
+          nullable: true
+        mlItemId:
+          type: string
+          nullable: true
+        productId:
+          type: string
+          nullable: true
+        permalink:
+          type: string
+          nullable: true
+        stockFull:
+          type: integer
+        notAvailable:
+          type: integer
+        unitsSoldPeriod:
+          type: integer
+        salesPerDay:
+          type: number
+        coverageDays:
+          type: number
+          nullable: true
+        suggestedQty:
+          type: integer
+        sendBy:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/FullSkuStatus"
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - sku
+        - title
+        - stockFull
+        - notAvailable
+        - unitsSoldPeriod
+        - salesPerDay
+        - suggestedQty
+        - status
+
+    FullOverviewKpis:
+      type: object
+      properties:
+        rupturaCount:
+          type: integer
+        criticoCount:
+          type: integer
+        saudavelCount:
+          type: integer
+        paradoCount:
+          type: integer
+        avgCoverageDays:
+          type: number
+          nullable: true
+      required: [rupturaCount, criticoCount, saudavelCount, paradoCount]
+
+    FullOverviewResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+        settings:
+          type: object
+          properties:
+            coverageTargetDays:
+              type: integer
+            leadTimeDays:
+              type: integer
+            salesPeriodDays:
+              type: integer
+            stuckMultiplier:
+              type: integer
+            whatsappPhone:
+              type: string
+              nullable: true
+            alertsEnabled:
+              type: boolean
+            alertRuptura:
+              type: boolean
+            alertCritico:
+              type: boolean
+            alertParado:
+              type: boolean
+            alertCooldownHours:
+              type: integer
+          required:
+            - coverageTargetDays
+            - leadTimeDays
+            - salesPeriodDays
+            - stuckMultiplier
+            - alertsEnabled
+            - alertRuptura
+            - alertCritico
+            - alertParado
+            - alertCooldownHours
+        kpis:
+          $ref: "#/components/schemas/FullOverviewKpis"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FullOverviewItem"
+      required: [accountId, settings, kpis, items]
+
+    FullStockSyncResponse:
+      type: object
+      properties:
+        synced:
+          type: integer
+        skipped:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+      required: [synced, skipped, failed, errors]
 
     # --------------------------------------------------------------------------
     # Webhooks

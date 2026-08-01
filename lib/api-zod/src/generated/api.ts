@@ -1888,6 +1888,141 @@ export const PublishListingTemplateBody = zod.object({
 });
 
 /**
+ * @summary Overview de cobertura e reposição Full por SKU
+ */
+export const getFullOverviewQueryStatusDefault = `all`;
+
+export const GetFullOverviewQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+  status: zod
+    .enum(["all", "ruptura", "critico", "saudavel", "parado"])
+    .default(getFullOverviewQueryStatusDefault),
+  search: zod.coerce.string().optional(),
+  period_days: zod
+    .union([zod.literal(7), zod.literal(15), zod.literal(30), zod.literal(60)])
+    .optional()
+    .describe("Janela de vendas (não persiste; override temporário)"),
+});
+
+export const GetFullOverviewResponse = zod.object({
+  accountId: zod.string(),
+  settings: zod.object({
+    coverageTargetDays: zod.number(),
+    leadTimeDays: zod.number(),
+    salesPeriodDays: zod.number(),
+    stuckMultiplier: zod.number(),
+    whatsappPhone: zod.string().nullish(),
+    alertsEnabled: zod.boolean(),
+    alertRuptura: zod.boolean(),
+    alertCritico: zod.boolean(),
+    alertParado: zod.boolean(),
+    alertCooldownHours: zod.number(),
+  }),
+  kpis: zod.object({
+    rupturaCount: zod.number(),
+    criticoCount: zod.number(),
+    saudavelCount: zod.number(),
+    paradoCount: zod.number(),
+    avgCoverageDays: zod.number().nullish(),
+  }),
+  items: zod.array(
+    zod.object({
+      sku: zod.string(),
+      title: zod.string(),
+      thumbnail: zod.string().nullish(),
+      mlItemId: zod.string().nullish(),
+      productId: zod.string().nullish(),
+      permalink: zod.string().nullish(),
+      stockFull: zod.number(),
+      notAvailable: zod.number(),
+      unitsSoldPeriod: zod.number(),
+      salesPerDay: zod.number(),
+      coverageDays: zod.number().nullish(),
+      suggestedQty: zod.number(),
+      sendBy: zod.string().nullish(),
+      status: zod.enum(["ruptura", "critico", "saudavel", "parado"]),
+      lastSyncedAt: zod.coerce.date().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Configuração de Gestão Full da conta
+ */
+export const GetFullSettingsQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+});
+
+export const GetFullSettingsResponse = zod.object({
+  accountId: zod.string(),
+  coverageTargetDays: zod.number(),
+  leadTimeDays: zod.number(),
+  salesPeriodDays: zod.number(),
+  stuckMultiplier: zod.number(),
+  whatsappPhone: zod.string().nullish(),
+  alertsEnabled: zod.boolean(),
+  alertRuptura: zod.boolean(),
+  alertCritico: zod.boolean(),
+  alertParado: zod.boolean(),
+  alertCooldownHours: zod.number(),
+});
+
+/**
+ * @summary Atualizar configuração de Gestão Full
+ */
+export const UpdateFullSettingsBody = zod.object({
+  accountId: zod.string(),
+  coverageTargetDays: zod.number().optional(),
+  leadTimeDays: zod.number().optional(),
+  salesPeriodDays: zod
+    .union([zod.literal(7), zod.literal(15), zod.literal(30), zod.literal(60)])
+    .optional(),
+  stuckMultiplier: zod.number().optional(),
+  whatsappPhone: zod.string().nullish(),
+  alertsEnabled: zod.boolean().optional(),
+  alertRuptura: zod.boolean().optional(),
+  alertCritico: zod.boolean().optional(),
+  alertParado: zod.boolean().optional(),
+  alertCooldownHours: zod.number().optional(),
+});
+
+export const UpdateFullSettingsResponse = zod.object({
+  accountId: zod.string(),
+  coverageTargetDays: zod.number(),
+  leadTimeDays: zod.number(),
+  salesPeriodDays: zod.number(),
+  stuckMultiplier: zod.number(),
+  whatsappPhone: zod.string().nullish(),
+  alertsEnabled: zod.boolean(),
+  alertRuptura: zod.boolean(),
+  alertCritico: zod.boolean(),
+  alertParado: zod.boolean(),
+  alertCooldownHours: zod.number(),
+});
+
+/**
+ * @summary Sincronizar estoque Full via API ML fulfillment
+ */
+export const SyncFullStockBody = zod.object({
+  accountId: zod.string(),
+});
+
+export const SyncFullStockResponse = zod.object({
+  synced: zod.number(),
+  skipped: zod.number(),
+  failed: zod.number(),
+  errors: zod.array(zod.string()),
+});
+
+/**
+ * @summary Disparar job de alertas WhatsApp (N8N) manualmente
+ */
+export const RunFullAlertsResponse = zod.object({
+  accounts: zod.number(),
+  alertsSent: zod.number(),
+});
+
+/**
  * @summary Promotion KPIs across connected accounts
  */
 export const getPromotionsSummaryQueryRefreshDefault = false;

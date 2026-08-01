@@ -26,6 +26,7 @@ import {
   Tag,
   AlertTriangle,
   LayoutTemplate,
+  Boxes,
 } from "lucide-react";
 import logo from "@/assets/ihub-logo.png";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ const navItems = [
   { path: "/listing-templates", label: "Modelos", icon: LayoutTemplate, badge: "none" as const },
   { path: "/promotions", label: "Promoções", icon: Tag, badge: "none" as const },
   { path: "/inventory", label: "Inventário geral", icon: Warehouse, badge: "none" as const },
+  { path: "/full", label: "Gestão Full", icon: Boxes, badge: "none" as const },
   { path: "/reports/sales", label: "Relatório de vendas", icon: FileSpreadsheet, badge: "none" as const },
   { path: "/orders", label: "Pedidos", icon: ShoppingCart, badge: "none" as const },
   { path: "/questions", label: "Perguntas", icon: MessageSquare, badge: "questions" as const },

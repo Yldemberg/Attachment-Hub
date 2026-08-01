@@ -266,6 +266,8 @@ export type MlItem = {
   catalog_listing?: boolean;
   /** Product video clip on the listing; null/absent when there is no clip. */
   video_id?: string | null;
+  /** Fulfillment inventory id (Envios Full) — present when item is in Full. */
+  inventory_id?: string | null;
   variations?: MlVariation[];
 };
 
@@ -374,6 +376,8 @@ export type MlVariation = {
   seller_custom_field?: string | null;
   /** Some API responses expose SKU here. */
   seller_sku?: string | null;
+  /** Fulfillment inventory id for this variation (Envios Full). */
+  inventory_id?: string | null;
   /**
    * Per-variation attributes from GET /items/{id}/variations (e.g. SELLER_SKU).
    * Multiget /items?ids= often omits these.
@@ -387,6 +391,30 @@ export type MlVariation = {
   }>;
   picture_ids?: string[];
 };
+
+/** GET /inventories/{inventory_id}/stock/fulfillment */
+export type MlFulfillmentStock = {
+  inventory_id: string;
+  total?: number;
+  available_quantity: number;
+  not_available_quantity: number;
+  not_available_detail?: Array<{ status?: string; quantity?: number }>;
+  external_references?: Array<{
+    type?: string;
+    id?: string;
+    variation_id?: number;
+  }>;
+};
+
+export async function fetchMlFulfillmentStock(
+  accountId: string,
+  inventoryId: string,
+): Promise<MlFulfillmentStock> {
+  return ml.get<MlFulfillmentStock>(
+    accountId,
+    `/inventories/${encodeURIComponent(inventoryId)}/stock/fulfillment`,
+  );
+}
 
 function trimNonEmpty(v: unknown): string | null {
   if (typeof v !== "string") return null;

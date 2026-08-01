@@ -26,6 +26,7 @@ import PromotionDetail from "@/pages/promotions/PromotionDetail";
 import CriticalAds from "@/pages/CriticalAds";
 import ListingTemplates from "@/pages/templates/ListingTemplates";
 import ListingTemplateDetail from "@/pages/templates/ListingTemplateDetail";
+import GestaoFull from "@/pages/full/GestaoFull";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -138,6 +139,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <GeneralInventory />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/full">
+        <ProtectedRoute>
+          <AppLayout>
+            <GestaoFull />
           </AppLayout>
         </ProtectedRoute>
       </Route>
