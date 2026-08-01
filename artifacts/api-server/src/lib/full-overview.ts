@@ -5,13 +5,13 @@ import {
   fullSettingsTable,
   type FullSettings,
 } from "@workspace/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   computeFullSkuMetrics,
   computeFullOverviewKpis,
   type FullSkuStatus,
 } from "./full-engine";
-import { sumFullSalesBySku } from "./full-sync";
+import { sumFullSalesMaps } from "./full-sync";
 
 export type FullOverviewItem = {
   sku: string;
@@ -47,6 +47,8 @@ export type FullOverviewResult = {
   };
   kpis: ReturnType<typeof computeFullOverviewKpis>;
   items: FullOverviewItem[];
+  /** Total de anúncios Full da conta (antes de filtros de status/busca). */
+  totalFullListings: number;
 };
 
 const DEFAULT_SETTINGS = {
@@ -134,6 +136,7 @@ export async function buildFullOverviewForAccount(opts: {
     settings.salesPeriodDays = opts.periodDaysOverride;
   }
 
+  // Todos os anúncios Full da conta (com ou sem SKU).
   const fullProducts = await db
     .select()
     .from(productsTable)
@@ -141,7 +144,6 @@ export async function buildFullOverviewForAccount(opts: {
       and(
         eq(productsTable.accountId, opts.accountId),
         eq(productsTable.isFull, true),
-        sql`(nullif(trim(coalesce(${productsTable.sku}, '')), '') is not null)`,
       ),
     );
 
@@ -150,78 +152,40 @@ export async function buildFullOverviewForAccount(opts: {
     .from(fullStockSnapshotTable)
     .where(eq(fullStockSnapshotTable.accountId, opts.accountId));
 
-  type Agg = {
-    sku: string;
-    stockFull: number;
-    notAvailable: number;
-    title: string;
-    thumbnail: string | null;
-    mlItemId: string | null;
-    productId: string | null;
-    permalink: string | null;
-    lastSyncedAt: Date | null;
-    hasSnapshot: boolean;
+  type SnapAgg = { available: number; notAvailable: number; syncedAt: Date | null };
+  const snapByProductId = new Map<string, SnapAgg>();
+  const snapByMlItemId = new Map<string, SnapAgg>();
+  const snapBySku = new Map<string, SnapAgg>();
+
+  const mergeSnap = (map: Map<string, SnapAgg>, key: string, available: number, notAvailable: number, syncedAt: Date) => {
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, { available, notAvailable, syncedAt });
+      return;
+    }
+    prev.available += available;
+    prev.notAvailable += notAvailable;
+    if (!prev.syncedAt || syncedAt > prev.syncedAt) prev.syncedAt = syncedAt;
   };
 
-  const bySku = new Map<string, Agg>();
-
   for (const snap of snapshots) {
+    if (snap.productId) {
+      mergeSnap(snapByProductId, snap.productId, snap.availableQuantity, snap.notAvailableQuantity, snap.syncedAt);
+    }
+    if (snap.mlItemId) {
+      mergeSnap(snapByMlItemId, snap.mlItemId, snap.availableQuantity, snap.notAvailableQuantity, snap.syncedAt);
+    }
     const sku = snap.sku.trim();
-    if (!sku) continue;
-    const prev = bySku.get(sku);
-    if (!prev) {
-      bySku.set(sku, {
-        sku,
-        stockFull: snap.availableQuantity,
-        notAvailable: snap.notAvailableQuantity,
-        title: "",
-        thumbnail: null,
-        mlItemId: snap.mlItemId,
-        productId: snap.productId,
-        permalink: null,
-        lastSyncedAt: snap.syncedAt,
-        hasSnapshot: true,
-      });
-    } else {
-      prev.stockFull += snap.availableQuantity;
-      prev.notAvailable += snap.notAvailableQuantity;
-      prev.hasSnapshot = true;
-      if (snap.syncedAt && (!prev.lastSyncedAt || snap.syncedAt > prev.lastSyncedAt)) {
-        prev.lastSyncedAt = snap.syncedAt;
-      }
+    if (sku) {
+      mergeSnap(snapBySku, sku, snap.availableQuantity, snap.notAvailableQuantity, snap.syncedAt);
     }
   }
 
-  for (const p of fullProducts) {
-    const sku = (p.sku ?? "").trim();
-    if (!sku) continue;
-    const prev = bySku.get(sku);
-    if (!prev) {
-      bySku.set(sku, {
-        sku,
-        stockFull: p.availableQuantity ?? 0,
-        notAvailable: 0,
-        title: p.title ?? sku,
-        thumbnail: p.thumbnail,
-        mlItemId: p.mlItemId,
-        productId: p.id,
-        permalink: p.permalink,
-        lastSyncedAt: p.lastSyncedAt,
-        hasSnapshot: false,
-      });
-    } else {
-      if (!prev.title) prev.title = p.title ?? sku;
-      if (!prev.thumbnail) prev.thumbnail = p.thumbnail;
-      if (!prev.permalink) prev.permalink = p.permalink;
-      if (!prev.productId) prev.productId = p.id;
-      if (!prev.mlItemId) prev.mlItemId = p.mlItemId;
-      if (!prev.hasSnapshot) {
-        prev.stockFull = Math.max(prev.stockFull, p.availableQuantity ?? 0);
-      }
-    }
-  }
+  const { bySku: salesBySku, byItemId: salesByItemId } = await sumFullSalesMaps(
+    [opts.accountId],
+    settings.salesPeriodDays,
+  );
 
-  const salesMap = await sumFullSalesBySku([opts.accountId], settings.salesPeriodDays);
   const engineParams = {
     coverageTargetDays: settings.coverageTargetDays,
     leadTimeDays: settings.leadTimeDays,
@@ -231,30 +195,50 @@ export async function buildFullOverviewForAccount(opts: {
   };
 
   let items: FullOverviewItem[] = [];
-  for (const agg of bySku.values()) {
-    const unitsSoldPeriod = salesMap.get(agg.sku) ?? 0;
+
+  for (const p of fullProducts) {
+    const sku = (p.sku ?? "").trim();
+    const displaySku = sku || p.mlItemId || p.id;
+    const snap =
+      (p.id ? snapByProductId.get(p.id) : undefined) ??
+      (p.mlItemId ? snapByMlItemId.get(p.mlItemId) : undefined) ??
+      (sku ? snapBySku.get(sku) : undefined);
+
+    const stockFull = snap ? snap.available : (p.availableQuantity ?? 0);
+    const notAvailable = snap ? snap.notAvailable : 0;
+    const lastSyncedAt = snap?.syncedAt ?? p.lastSyncedAt;
+
+    let unitsSoldPeriod = 0;
+    if (sku) unitsSoldPeriod = salesBySku.get(sku) ?? 0;
+    if (unitsSoldPeriod === 0 && p.mlItemId) {
+      unitsSoldPeriod = salesByItemId.get(p.mlItemId) ?? 0;
+    }
+
     const metrics = computeFullSkuMetrics(
-      { stockFull: agg.stockFull, unitsSoldPeriod },
+      { stockFull, unitsSoldPeriod },
       engineParams,
     );
+
     items.push({
-      sku: agg.sku,
-      title: agg.title || agg.sku,
-      thumbnail: agg.thumbnail,
-      mlItemId: agg.mlItemId,
-      productId: agg.productId,
-      permalink: agg.permalink,
-      stockFull: agg.stockFull,
-      notAvailable: agg.notAvailable,
+      sku: displaySku,
+      title: p.title ?? displaySku,
+      thumbnail: p.thumbnail,
+      mlItemId: p.mlItemId,
+      productId: p.id,
+      permalink: p.permalink,
+      stockFull,
+      notAvailable,
       unitsSoldPeriod,
       salesPerDay: metrics.salesPerDay,
       coverageDays: metrics.coverageDays,
       suggestedQty: metrics.suggestedQty,
       sendBy: metrics.sendBy,
       status: metrics.status,
-      lastSyncedAt: agg.lastSyncedAt ? agg.lastSyncedAt.toISOString() : null,
+      lastSyncedAt: lastSyncedAt ? lastSyncedAt.toISOString() : null,
     });
   }
+
+  const totalFullListings = items.length;
 
   const search = opts.search?.trim().toLowerCase();
   if (search) {
@@ -290,6 +274,7 @@ export async function buildFullOverviewForAccount(opts: {
     settings,
     kpis,
     items,
+    totalFullListings,
   };
 }
 

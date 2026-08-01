@@ -26,14 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -45,6 +37,7 @@ import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   PackageX,
   PauseCircle,
@@ -64,7 +57,9 @@ const STATUS_LABEL: Record<FullSkuStatus, string> = {
   parado: "Parado",
 };
 
-function toOverviewStatus(status: StatusFilter): (typeof GetFullOverviewStatus)[keyof typeof GetFullOverviewStatus] {
+function toOverviewStatus(
+  status: StatusFilter,
+): (typeof GetFullOverviewStatus)[keyof typeof GetFullOverviewStatus] {
   if (status === "ruptura") return GetFullOverviewStatus.ruptura;
   if (status === "critico") return GetFullOverviewStatus.critico;
   if (status === "saudavel") return GetFullOverviewStatus.saudavel;
@@ -72,7 +67,9 @@ function toOverviewStatus(status: StatusFilter): (typeof GetFullOverviewStatus)[
   return GetFullOverviewStatus.all;
 }
 
-function toPeriodDays(n: number): (typeof GetFullOverviewPeriodDays)[keyof typeof GetFullOverviewPeriodDays] {
+function toPeriodDays(
+  n: number,
+): (typeof GetFullOverviewPeriodDays)[keyof typeof GetFullOverviewPeriodDays] {
   if (n === 7) return GetFullOverviewPeriodDays.NUMBER_7;
   if (n === 15) return GetFullOverviewPeriodDays.NUMBER_15;
   if (n === 60) return GetFullOverviewPeriodDays.NUMBER_60;
@@ -105,6 +102,14 @@ function formatSendBy(ymd: string | null | undefined): string {
   return `${d}/${m}/${y}`;
 }
 
+function rowKey(item: FullOverviewItem): string {
+  return item.productId ?? item.mlItemId ?? item.sku;
+}
+
+const TH =
+  "border border-border bg-muted/50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground";
+const TD = "border border-border px-3 py-2.5 align-middle text-sm";
+
 export default function GestaoFull() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -124,7 +129,7 @@ export default function GestaoFull() {
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!accountId && mlAccounts.length > 0) {
@@ -267,27 +272,47 @@ export default function GestaoFull() {
 
   const items = overview?.items ?? [];
   const kpis = overview?.kpis;
+  const totalFull = overview?.totalFullListings ?? items.length;
 
-  const toggleSku = (sku: string) => {
-    setSelectedSkus((prev) => {
+  const toggleRow = (key: string) => {
+    setSelectedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(sku)) next.delete(sku);
-      else next.add(sku);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+  };
+
+  const allVisibleSelected =
+    items.length > 0 && items.every((it) => selectedKeys.has(rowKey(it)));
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        for (const it of items) next.delete(rowKey(it));
+        return next;
+      });
+    } else {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        for (const it of items) next.add(rowKey(it));
+        return next;
+      });
+    }
   };
 
   const selectedSuggested = useMemo(() => {
     let qty = 0;
     for (const it of items) {
-      if (selectedSkus.has(it.sku)) qty += it.suggestedQty;
+      if (selectedKeys.has(rowKey(it))) qty += it.suggestedQty;
     }
     return qty;
-  }, [items, selectedSkus]);
+  }, [items, selectedKeys]);
 
   if (accountsLoading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
+      <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
         <Loader2 className="w-5 h-5 animate-spin" />
         Carregando contas…
       </div>
@@ -296,199 +321,301 @@ export default function GestaoFull() {
 
   if (mlAccounts.length === 0) {
     return (
-      <div className="max-w-lg mx-auto py-16 text-center space-y-3">
-        <Boxes className="w-10 h-10 mx-auto text-muted-foreground" />
-        <h1 className="text-xl font-semibold text-foreground">Gestão Full</h1>
-        <p className="text-sm text-muted-foreground">
-          Conecte uma conta Mercado Livre em Integrações para gerenciar estoque Full.
-        </p>
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-lg mx-auto py-16 text-center space-y-3 px-6">
+          <Boxes className="w-10 h-10 mx-auto text-muted-foreground" />
+          <h1 className="text-xl font-semibold text-foreground">Gestão Full</h1>
+          <p className="text-sm text-muted-foreground">
+            Conecte uma conta Mercado Livre em Integrações para gerenciar estoque Full.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Gestão Full</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-            Evite ruptura e estoque parado: cobertura em dias, quanto enviar e alertas no WhatsApp.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
-            <Settings2 className="w-4 h-4 mr-1.5" />
-            Configurar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void onRunAlerts()}
-            disabled={runAlerts.isPending}
-          >
-            {runAlerts.isPending ? (
-              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-            ) : (
-              <MessageCircle className="w-4 h-4 mr-1.5" />
-            )}
-            Testar alertas
-          </Button>
-          <Button size="sm" onClick={() => void onSync()} disabled={!accountId || syncMutation.isPending}>
-            {syncMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-1.5" />
-            )}
-            Sync estoque Full
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:flex-wrap">
-        <div className="space-y-1.5 min-w-[200px]">
-          <Label className="text-xs text-muted-foreground">Conta ML</Label>
-          <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione a conta" />
-            </SelectTrigger>
-            <SelectContent>
-              {mlAccounts.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.mlNickname ?? a.id.slice(0, 8)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5 min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Período de vendas</Label>
-          <Select
-            value={String(periodDays)}
-            onValueChange={(v) => setPeriodDays(Number(v))}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[7, 15, 30, 60].map((d) => (
-                <SelectItem key={d} value={String(d)}>
-                  {d} dias
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5 min-w-[160px]">
-          <Label className="text-xs text-muted-foreground">Status</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="ruptura">Ruptura</SelectItem>
-              <SelectItem value="critico">Crítico</SelectItem>
-              <SelectItem value="parado">Parado</SelectItem>
-              <SelectItem value="saudavel">Saudável</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5 flex-1 min-w-[200px]">
-          <Label className="text-xs text-muted-foreground">Buscar</Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="SKU, título ou MLB…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Gestão Full</h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+              Evite ruptura e estoque parado: cobertura em dias, quanto enviar e alertas no WhatsApp.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings2 className="w-4 h-4 mr-1.5" />
+              Configurar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void onRunAlerts()}
+              disabled={runAlerts.isPending}
+            >
+              {runAlerts.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : (
+                <MessageCircle className="w-4 h-4 mr-1.5" />
+              )}
+              Testar alertas
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void onSync()}
+              disabled={!accountId || syncMutation.isPending}
+            >
+              {syncMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-1.5" />
+              )}
+              Sync estoque Full
+            </Button>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard
-          label="Ruptura"
-          value={kpis?.rupturaCount ?? 0}
-          icon={PackageX}
-          tone="red"
-        />
-        <KpiCard
-          label="Crítico"
-          value={kpis?.criticoCount ?? 0}
-          icon={AlertTriangle}
-          tone="amber"
-        />
-        <KpiCard
-          label="Parado"
-          value={kpis?.paradoCount ?? 0}
-          icon={PauseCircle}
-          tone="slate"
-        />
-        <KpiCard
-          label="Cobertura média"
-          value={
-            kpis?.avgCoverageDays != null ? `${kpis.avgCoverageDays.toFixed(1)}d` : "—"
-          }
-          icon={CheckCircle2}
-          tone="emerald"
-        />
-      </div>
-
-      {selectedSkus.size > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">
-          <span>
-            <strong>{selectedSkus.size}</strong> SKU(s) na lista · sugerido enviar{" "}
-            <strong>{selectedSuggested}</strong> un.
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedSkus(new Set())}>
-            Limpar
-          </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Conta ML</Label>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione a conta" />
+              </SelectTrigger>
+              <SelectContent>
+                {mlAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.mlNickname ?? a.id.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Período de vendas</Label>
+            <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[7, 15, 30, 60].map((d) => (
+                  <SelectItem key={d} value={String(d)}>
+                    {d} dias
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="ruptura">Ruptura</SelectItem>
+                <SelectItem value="critico">Crítico</SelectItem>
+                <SelectItem value="parado">Parado</SelectItem>
+                <SelectItem value="saudavel">Saudável</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Buscar</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pl-9 w-full"
+                placeholder="SKU, título ou MLB…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
-      )}
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10" />
-                <TableHead>SKU / Anúncio</TableHead>
-                <TableHead className="text-right">Estoque Full</TableHead>
-                <TableHead className="text-right">Vendas/dia</TableHead>
-                <TableHead className="text-right">Cobertura</TableHead>
-                <TableHead className="text-right">Enviar</TableHead>
-                <TableHead>Até</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {overviewLoading || (isFetching && items.length === 0) ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                    <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
-                    Calculando cobertura…
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                    Nenhum anúncio Full com SKU encontrado. Sincronize a conta e o estoque Full.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((it) => (
-                  <FullRow
-                    key={it.sku}
-                    item={it}
-                    selected={selectedSkus.has(it.sku)}
-                    onToggle={() => toggleSku(it.sku)}
-                  />
-                ))
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard label="Ruptura" value={kpis?.rupturaCount ?? 0} icon={PackageX} tone="red" />
+          <KpiCard label="Crítico" value={kpis?.criticoCount ?? 0} icon={AlertTriangle} tone="amber" />
+          <KpiCard label="Parado" value={kpis?.paradoCount ?? 0} icon={PauseCircle} tone="slate" />
+          <KpiCard
+            label="Cobertura média"
+            value={kpis?.avgCoverageDays != null ? `${kpis.avgCoverageDays.toFixed(1)}d` : "—"}
+            icon={CheckCircle2}
+            tone="emerald"
+          />
+        </div>
+
+        {selectedKeys.size > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">
+            <span>
+              <strong>{selectedKeys.size}</strong> anúncio(s) na lista · sugerido enviar{" "}
+              <strong>{selectedSuggested}</strong> un.
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedKeys(new Set())}>
+              Limpar
+            </Button>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+            <p className="text-sm text-foreground font-medium">
+              {overviewLoading ? "Carregando…" : `${items.length} anúncio(s) exibido(s)`}
+              {!overviewLoading && totalFull > 0 && items.length !== totalFull && (
+                <span className="text-muted-foreground font-normal">
+                  {" "}
+                  de {totalFull} Full na conta
+                </span>
               )}
-            </TableBody>
-          </Table>
+              {isFetching && !overviewLoading && (
+                <Loader2 className="inline w-3.5 h-3.5 ml-2 animate-spin text-muted-foreground" />
+              )}
+            </p>
+            {overview?.settings && (
+              <p className="text-xs text-muted-foreground">
+                Meta {overview.settings.coverageTargetDays}d · Lead{" "}
+                {overview.settings.leadTimeDays}d
+              </p>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] border-collapse table-fixed">
+              <colgroup>
+                <col className="w-11" />
+                <col />
+                <col className="w-[110px]" />
+                <col className="w-[100px]" />
+                <col className="w-[100px]" />
+                <col className="w-[90px]" />
+                <col className="w-[110px]" />
+                <col className="w-[110px]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={cn(TH, "text-center")}>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label="Selecionar todos"
+                      disabled={items.length === 0}
+                    />
+                  </th>
+                  <th className={cn(TH, "text-left")}>SKU / Anúncio</th>
+                  <th className={cn(TH, "text-center")}>Estoque Full</th>
+                  <th className={cn(TH, "text-center")}>Vendas/dia</th>
+                  <th className={cn(TH, "text-center")}>Cobertura</th>
+                  <th className={cn(TH, "text-center")}>Enviar</th>
+                  <th className={cn(TH, "text-center")}>Até</th>
+                  <th className={cn(TH, "text-center")}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overviewLoading || (isFetching && items.length === 0) ? (
+                  <tr>
+                    <td colSpan={8} className={cn(TD, "text-center py-14 text-muted-foreground")}>
+                      <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                      Calculando cobertura…
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className={cn(TD, "text-center py-14 text-muted-foreground")}>
+                      Nenhum anúncio Full encontrado. Sincronize a conta em Integrações e use
+                      “Sync estoque Full”.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((it) => {
+                    const key = rowKey(it);
+                    const selected = selectedKeys.has(key);
+                    return (
+                      <tr
+                        key={key}
+                        className={cn(
+                          "hover:bg-muted/40 transition-colors",
+                          selected && "bg-primary/5",
+                        )}
+                      >
+                        <td className={cn(TD, "text-center")}>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleRow(key)}
+                            aria-label={`Selecionar ${it.sku}`}
+                          />
+                        </td>
+                        <td className={TD}>
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            {it.thumbnail ? (
+                              <img
+                                src={it.thumbnail}
+                                alt=""
+                                className="size-10 rounded-md object-cover border border-border flex-shrink-0 bg-muted"
+                              />
+                            ) : (
+                              <div className="size-10 rounded-md bg-muted border border-border flex-shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-mono text-muted-foreground truncate">
+                                {it.sku}
+                                {it.mlItemId && it.mlItemId !== it.sku ? (
+                                  <span className="ml-1.5 opacity-70">· {it.mlItemId}</span>
+                                ) : null}
+                              </p>
+                              <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
+                                {it.title}
+                              </p>
+                              {it.permalink && (
+                                <a
+                                  href={it.permalink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-primary mt-0.5 hover:underline"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Ver no ML
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className={cn(TD, "text-center tabular-nums font-semibold")}>
+                          {it.stockFull}
+                        </td>
+                        <td className={cn(TD, "text-center tabular-nums")}>
+                          {it.salesPerDay.toFixed(2)}
+                        </td>
+                        <td className={cn(TD, "text-center tabular-nums")}>
+                          {formatCoverage(it.coverageDays)}
+                        </td>
+                        <td className={cn(TD, "text-center tabular-nums font-semibold")}>
+                          {it.suggestedQty > 0 ? it.suggestedQty : "—"}
+                        </td>
+                        <td className={cn(TD, "text-center text-muted-foreground whitespace-nowrap")}>
+                          {formatSendBy(it.sendBy)}
+                        </td>
+                        <td className={cn(TD, "text-center")}>
+                          <span
+                            className={cn(
+                              "inline-flex text-[11px] font-medium px-2 py-0.5 rounded-md border",
+                              statusBadgeClass(it.status),
+                            )}
+                          >
+                            {STATUS_LABEL[it.status]}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -624,59 +751,5 @@ function KpiCard({
       </div>
       <p className="text-2xl font-semibold mt-1 tabular-nums">{value}</p>
     </div>
-  );
-}
-
-function FullRow({
-  item,
-  selected,
-  onToggle,
-}: {
-  item: FullOverviewItem;
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <TableRow className={cn(selected && "bg-primary/5")}>
-      <TableCell>
-        <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Selecionar ${item.sku}`} />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-start gap-2.5 min-w-0 max-w-[280px]">
-          {item.thumbnail ? (
-            <img
-              src={item.thumbnail}
-              alt=""
-              className="size-9 rounded-md object-cover border border-border flex-shrink-0"
-            />
-          ) : (
-            <div className="size-9 rounded-md bg-muted flex-shrink-0" />
-          )}
-          <div className="min-w-0">
-            <p className="text-xs font-mono text-muted-foreground truncate">{item.sku}</p>
-            <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug">{item.title}</p>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="text-right tabular-nums font-medium">{item.stockFull}</TableCell>
-      <TableCell className="text-right tabular-nums">{item.salesPerDay.toFixed(2)}</TableCell>
-      <TableCell className="text-right tabular-nums">{formatCoverage(item.coverageDays)}</TableCell>
-      <TableCell className="text-right tabular-nums font-semibold">
-        {item.suggestedQty > 0 ? item.suggestedQty : "—"}
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-        {formatSendBy(item.sendBy)}
-      </TableCell>
-      <TableCell>
-        <span
-          className={cn(
-            "inline-flex text-[11px] font-medium px-2 py-0.5 rounded-md border",
-            statusBadgeClass(item.status),
-          )}
-        >
-          {STATUS_LABEL[item.status]}
-        </span>
-      </TableCell>
-    </TableRow>
   );
 }

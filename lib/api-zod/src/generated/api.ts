@@ -1944,6 +1944,7 @@ export const GetFullOverviewResponse = zod.object({
       lastSyncedAt: zod.coerce.date().nullish(),
     }),
   ),
+  totalFullListings: zod.number(),
 });
 
 /**

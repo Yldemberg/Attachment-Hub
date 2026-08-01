@@ -1258,6 +1258,8 @@ export interface FullOverviewResponse {
   settings: FullOverviewResponseSettings;
   kpis: FullOverviewKpis;
   items: FullOverviewItem[];
+  /** Total de anúncios Full da conta (antes de filtros) */
+  totalFullListings: number;
 }
 
 export interface FullStockSyncResponse {

@@ -214,14 +214,23 @@ function isFullLogistic(logistic: string | null | undefined): boolean {
 }
 
 /**
- * Soma unidades vendidas no Full por SKU no período (a partir de orders.items_json).
+ * Soma unidades vendidas no Full por SKU e por item_id no período.
  */
 export async function sumFullSalesBySku(
   accountIds: string[],
   periodDays: number,
 ): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  if (accountIds.length === 0) return map;
+  const { bySku } = await sumFullSalesMaps(accountIds, periodDays);
+  return bySku;
+}
+
+export async function sumFullSalesMaps(
+  accountIds: string[],
+  periodDays: number,
+): Promise<{ bySku: Map<string, number>; byItemId: Map<string, number> }> {
+  const bySku = new Map<string, number>();
+  const byItemId = new Map<string, number>();
+  if (accountIds.length === 0) return { bySku, byItemId };
 
   const since = new Date();
   since.setDate(since.getDate() - Math.max(1, periodDays));
@@ -248,11 +257,14 @@ export async function sumFullSalesBySku(
     for (const it of items) {
       const logistic = it.sale_logistic_type ?? it.logistic_type;
       if (!isFullLogistic(logistic)) continue;
+      const qty = Number(it.quantity) || 0;
+      if (qty <= 0) continue;
       const sku = trimSku(it.sku);
-      if (!sku) continue;
-      map.set(sku, (map.get(sku) ?? 0) + (Number(it.quantity) || 0));
+      if (sku) bySku.set(sku, (bySku.get(sku) ?? 0) + qty);
+      const itemId = trimSku(it.item_id);
+      if (itemId) byItemId.set(itemId, (byItemId.get(itemId) ?? 0) + qty);
     }
   }
 
-  return map;
+  return { bySku, byItemId };
 }
