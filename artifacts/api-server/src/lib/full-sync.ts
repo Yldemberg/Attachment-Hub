@@ -215,6 +215,7 @@ function isFullLogistic(logistic: string | null | undefined): boolean {
 
 /**
  * Soma unidades vendidas no Full por SKU e por item_id no período.
+ * Também retorna a data da última venda Full (lookback max(period, 90) dias).
  */
 export async function sumFullSalesBySku(
   accountIds: string[],
@@ -224,35 +225,62 @@ export async function sumFullSalesBySku(
   return bySku;
 }
 
+export type FullSalesMaps = {
+  bySku: Map<string, number>;
+  byItemId: Map<string, number>;
+  lastSaleAtBySku: Map<string, Date>;
+  lastSaleAtByItemId: Map<string, Date>;
+  /** Janela usada para lastSaleAt (dias). */
+  lastSaleLookbackDays: number;
+};
+
 export async function sumFullSalesMaps(
   accountIds: string[],
   periodDays: number,
-): Promise<{ bySku: Map<string, number>; byItemId: Map<string, number> }> {
+): Promise<FullSalesMaps> {
   const bySku = new Map<string, number>();
   const byItemId = new Map<string, number>();
-  if (accountIds.length === 0) return { bySku, byItemId };
+  const lastSaleAtBySku = new Map<string, Date>();
+  const lastSaleAtByItemId = new Map<string, Date>();
+  const period = Math.max(1, periodDays);
+  const lastSaleLookbackDays = Math.max(period, 90);
+  if (accountIds.length === 0) {
+    return { bySku, byItemId, lastSaleAtBySku, lastSaleAtByItemId, lastSaleLookbackDays };
+  }
 
-  const since = new Date();
-  since.setDate(since.getDate() - Math.max(1, periodDays));
+  const now = new Date();
+  const periodSince = new Date(now);
+  periodSince.setDate(periodSince.getDate() - period);
+  const lookbackSince = new Date(now);
+  lookbackSince.setDate(lookbackSince.getDate() - lastSaleLookbackDays);
 
   const db = getDb();
   const rows = await db
     .select({
       itemsJson: ordersTable.itemsJson,
       status: ordersTable.status,
+      dateCreated: ordersTable.dateCreated,
     })
     .from(ordersTable)
     .where(
       and(
         inArray(ordersTable.accountId, accountIds),
-        gte(ordersTable.dateCreated, since),
+        gte(ordersTable.dateCreated, lookbackSince),
       ),
     );
+
+  const bumpLast = (map: Map<string, Date>, key: string, at: Date) => {
+    const prev = map.get(key);
+    if (!prev || at > prev) map.set(key, at);
+  };
 
   for (const row of rows) {
     const status = (row.status ?? "").toLowerCase();
     if (status === "cancelled" || status === "canceled") continue;
     if (!Array.isArray(row.itemsJson)) continue;
+    const orderAt = row.dateCreated;
+    if (!orderAt) continue;
+    const inPeriod = orderAt >= periodSince;
     const items = row.itemsJson as StoredMlOrderItemsJsonRow[];
     for (const it of items) {
       const logistic = it.sale_logistic_type ?? it.logistic_type;
@@ -260,11 +288,17 @@ export async function sumFullSalesMaps(
       const qty = Number(it.quantity) || 0;
       if (qty <= 0) continue;
       const sku = trimSku(it.sku);
-      if (sku) bySku.set(sku, (bySku.get(sku) ?? 0) + qty);
+      if (sku) {
+        bumpLast(lastSaleAtBySku, sku, orderAt);
+        if (inPeriod) bySku.set(sku, (bySku.get(sku) ?? 0) + qty);
+      }
       const itemId = trimSku(it.item_id);
-      if (itemId) byItemId.set(itemId, (byItemId.get(itemId) ?? 0) + qty);
+      if (itemId) {
+        bumpLast(lastSaleAtByItemId, itemId, orderAt);
+        if (inPeriod) byItemId.set(itemId, (byItemId.get(itemId) ?? 0) + qty);
+      }
     }
   }
 
-  return { bySku, byItemId };
+  return { bySku, byItemId, lastSaleAtBySku, lastSaleAtByItemId, lastSaleLookbackDays };
 }

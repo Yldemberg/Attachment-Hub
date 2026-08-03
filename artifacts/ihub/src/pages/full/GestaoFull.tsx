@@ -114,6 +114,16 @@ function formatCoverage(days: number | null | undefined): string {
   return `${days.toFixed(1)}d`;
 }
 
+/** Lookback de lastSaleAt no backend é max(periodo, 90). */
+const DAYS_WITHOUT_SALES_LOOKBACK = 90;
+
+function formatDaysWithoutSales(days: number | null | undefined): string {
+  if (days == null) return `≥${DAYS_WITHOUT_SALES_LOOKBACK}d sem vendas`;
+  if (days === 0) return "0 dias sem vendas";
+  if (days === 1) return "1 dia sem vendas";
+  return `${days} dias sem vendas`;
+}
+
 function formatSendBy(ymd: string | null | undefined): string {
   if (!ymd) return "—";
   const [y, m, d] = ymd.split("-");
@@ -745,7 +755,8 @@ function FullListingCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px] text-muted-foreground">
-            <span className="tabular-nums">{item.salesPerDay.toFixed(2)} /dia</span>
+            <span className="tabular-nums">Média {item.salesPerDay.toFixed(2)}/dia</span>
+            <span className="tabular-nums">{formatDaysWithoutSales(item.daysWithoutSales)}</span>
             {item.suggestedQty > 0 ? (
               <span className="inline-flex items-center gap-0.5 font-medium text-foreground">
                 <Truck className="w-3 h-3" />

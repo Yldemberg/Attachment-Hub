@@ -1937,6 +1937,7 @@ export const GetFullOverviewResponse = zod.object({
       notAvailable: zod.number(),
       unitsSoldPeriod: zod.number(),
       salesPerDay: zod.number(),
+      daysWithoutSales: zod.number().nullable(),
       coverageDays: zod.number().nullish(),
       suggestedQty: zod.number(),
       sendBy: zod.string().nullish(),

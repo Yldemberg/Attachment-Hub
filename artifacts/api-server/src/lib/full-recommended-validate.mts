@@ -40,11 +40,17 @@ function assert(cond: unknown, msg: string): void {
   assert(m.sendBy === "2026-08-10", `sendBy expected 2026-08-10 got ${m.sendBy}`);
 }
 
-// Ruptura
+// Ruptura (com vendas)
 {
   const m = computeFullSkuMetrics({ stockFull: 0, unitsSoldPeriod: 45 }, params);
   assert(m.status === "ruptura", `status expected ruptura got ${m.status}`);
   assert(m.suggestedQty === 75, `suggestedQty expected 75 got ${m.suggestedQty}`);
+}
+
+// Ruptura (estoque zerado sem vendas no período)
+{
+  const m = computeFullSkuMetrics({ stockFull: 0, unitsSoldPeriod: 0 }, params);
+  assert(m.status === "ruptura", `status expected ruptura got ${m.status}`);
 }
 
 // WhatsApp: parado off — só ruptura/crítico elegíveis

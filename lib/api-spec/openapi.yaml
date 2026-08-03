@@ -4688,6 +4688,10 @@ components:
           type: integer
         salesPerDay:
           type: number
+        daysWithoutSales:
+          type: integer
+          nullable: true
+          description: Dias desde a última venda Full (lookback até 90d); null se sem venda no lookback
         coverageDays:
           type: number
           nullable: true
@@ -4709,6 +4713,7 @@ components:
         - notAvailable
         - unitsSoldPeriod
         - salesPerDay
+        - daysWithoutSales
         - suggestedQty
         - status
 

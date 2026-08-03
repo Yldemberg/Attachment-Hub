@@ -25,6 +25,7 @@ export type FullOverviewItem = {
   notAvailable: number;
   unitsSoldPeriod: number;
   salesPerDay: number;
+  daysWithoutSales: number | null;
   coverageDays: number | null;
   suggestedQty: number;
   sendBy: string | null;
@@ -193,7 +194,12 @@ export async function buildFullOverviewForAccount(opts: {
     }
   }
 
-  const { bySku: salesBySku, byItemId: salesByItemId } = await sumFullSalesMaps(
+  const {
+    bySku: salesBySku,
+    byItemId: salesByItemId,
+    lastSaleAtBySku,
+    lastSaleAtByItemId,
+  } = await sumFullSalesMaps(
     [opts.accountId],
     settings.salesPeriodDays,
   );
@@ -205,6 +211,9 @@ export async function buildFullOverviewForAccount(opts: {
     stuckMultiplier: settings.stuckMultiplier,
     inTransit: 0,
   };
+
+  const nowMs = Date.now();
+  const MS_PER_DAY = 86_400_000;
 
   let items: FullOverviewItem[] = [];
 
@@ -226,6 +235,14 @@ export async function buildFullOverviewForAccount(opts: {
       unitsSoldPeriod = salesByItemId.get(p.mlItemId) ?? 0;
     }
 
+    let lastSaleAt: Date | undefined;
+    if (sku) lastSaleAt = lastSaleAtBySku.get(sku);
+    if (!lastSaleAt && p.mlItemId) lastSaleAt = lastSaleAtByItemId.get(p.mlItemId);
+    const daysWithoutSales =
+      lastSaleAt != null
+        ? Math.max(0, Math.floor((nowMs - lastSaleAt.getTime()) / MS_PER_DAY))
+        : null;
+
     const metrics = computeFullSkuMetrics(
       { stockFull, unitsSoldPeriod },
       engineParams,
@@ -242,6 +259,7 @@ export async function buildFullOverviewForAccount(opts: {
       notAvailable,
       unitsSoldPeriod,
       salesPerDay: metrics.salesPerDay,
+      daysWithoutSales,
       coverageDays: metrics.coverageDays,
       suggestedQty: metrics.suggestedQty,
       sendBy: metrics.sendBy,

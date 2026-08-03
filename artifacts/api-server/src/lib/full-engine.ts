@@ -87,9 +87,9 @@ export function computeFullSkuMetrics(
   }
 
   let status: FullSkuStatus;
-  if (stock === 0 && sold > 0) {
+  if (stock === 0) {
     status = "ruptura";
-  } else if (stock > 0 && sold === 0) {
+  } else if (sold === 0) {
     status = "parado";
   } else if (hasVelocity && coverageDays != null && coverageDays > target * stuckMul) {
     status = "parado";
@@ -99,8 +99,6 @@ export function computeFullSkuMetrics(
     (coverageDays < lead || coverageDays < target * 0.3)
   ) {
     status = "critico";
-  } else if (stock === 0 && sold === 0) {
-    status = "parado";
   } else {
     status = "saudavel";
   }

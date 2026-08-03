@@ -1225,6 +1225,8 @@ export interface FullOverviewItem {
   notAvailable: number;
   unitsSoldPeriod: number;
   salesPerDay: number;
+  /** Dias desde a última venda Full (lookback até 90d); null se sem venda no lookback */
+  daysWithoutSales: number | null;
   coverageDays?: number | null;
   suggestedQty: number;
   sendBy?: string | null;
