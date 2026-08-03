@@ -225,7 +225,8 @@ export function resolveFeeSubsidyAmount(
 
 /**
  * Preço sugerido pelo ML para candidatos.
- * A API v2 usa `suggested_discounted_price`; `price` costuma ser 0 ou o teto (`max_discounted_price`).
+ * - LIGHTNING: docs oficiais — com status `candidate`, `price` é o preço sugerido.
+ * - DEAL e demais: `suggested_discounted_price`; `price` costuma ser 0 ou o teto (`max_discounted_price`).
  */
 export function resolveMlSuggestedPrice(
   item: Pick<
@@ -234,14 +235,38 @@ export function resolveMlSuggestedPrice(
     | "price"
     | "suggested_discounted_price"
     | "max_discounted_price"
+    | "min_discounted_price"
     | "original_price"
   >,
+  promotionType?: string,
 ): number | null {
+  // Oferta relâmpago: usar `price` do candidato (não aplicar heurísticas de DEAL).
+  if (promotionType === "LIGHTNING") {
+    if (item.status === "candidate" && item.price != null && item.price > 0) {
+      return item.price;
+    }
+    if (item.suggested_discounted_price != null && item.suggested_discounted_price > 0) {
+      return item.suggested_discounted_price;
+    }
+    if (item.price != null && item.price > 0) return item.price;
+    return null;
+  }
+
   if (item.suggested_discounted_price != null && item.suggested_discounted_price > 0) {
     return item.suggested_discounted_price;
   }
   if (item.status === "candidate" && item.price != null && item.price > 0) {
+    const minDiscounted = item.min_discounted_price;
     const maxDiscounted = item.max_discounted_price;
+    // Se o preço está dentro da faixa credível do ML, aceitar (ex.: LIGHTNING sem type explícito).
+    if (
+      minDiscounted != null &&
+      maxDiscounted != null &&
+      item.price >= minDiscounted &&
+      item.price <= maxDiscounted
+    ) {
+      return item.price;
+    }
     const original = item.original_price;
     const isCeilingPrice =
       maxDiscounted != null && Math.abs(item.price - maxDiscounted) < 0.02;
@@ -334,23 +359,27 @@ export function resolveActivationStock(params: {
   const available = availableQuantity ?? 0;
 
   if (promotionType === "LIGHTNING") {
-    if (hasAvailable && available <= 5) {
+    // Preferir faixa retornada pelo ML (`stock.min` / `stock.max`). Fallback 6–10 só se a API não informar.
+    let min = params.stockMin;
+    let max = params.stockMax;
+    if (min == null && max == null) {
+      min = 6;
+      max = 10;
+    } else {
+      min = min ?? 1;
+      if (max == null || max < min) max = min;
+    }
+    if (hasAvailable) max = Math.min(max, available);
+
+    if (hasAvailable && available < min) {
       return {
-        error:
-          "É necessário ter mais de 5 unidades em estoque para ativar a Oferta relâmpago.",
+        error: `Estoque insuficiente: a Oferta relâmpago exige entre ${min} e ${params.stockMax ?? max} unidades (disponível: ${available}).`,
       };
     }
 
-    // Faixa ML típica (>5 e <11). Se a API mandar min≤5 (piso exclusivo/errado), sobe para 6.
-    let min = params.stockMin;
-    let max = params.stockMax;
-    if (min == null || min < 6) min = 6;
-    if (max == null || max < min) max = 10;
-    if (hasAvailable) max = Math.min(max, available);
-
     if (hasAvailable && max < min) {
       return {
-        error: `Estoque insuficiente: a Oferta relâmpago exige entre ${min} e ${params.stockMax ?? 10} unidades (disponível: ${available}).`,
+        error: `Estoque insuficiente: a Oferta relâmpago exige entre ${min} e ${params.stockMax ?? max} unidades (disponível: ${available}).`,
       };
     }
 
@@ -439,7 +468,7 @@ async function loadItemStockContext(
       const bounds = parsePromotionStockBounds(merged.stock);
       stockMin = bounds.stockMin;
       stockMax = bounds.stockMax;
-      suggestedPrice = resolveMlSuggestedPrice(merged);
+      suggestedPrice = resolveMlSuggestedPrice(merged, promotionType);
       minDiscountedPrice = merged.min_discounted_price ?? null;
       maxDiscountedPrice = merged.max_discounted_price ?? null;
       originalPrice = merged.original_price ?? null;
@@ -487,6 +516,9 @@ function clampDealPriceToCredibilityBounds(
  * 1) preço sugerido fresco quando o cliente não enviou preço (ativação em massa)
  * 2) preço do cliente limitado à faixa fresca min/max_discounted
  * 3) se ainda inválido, cai no sugerido fresco
+ *
+ * Para LIGHTNING, o sugerido (`price` do candidato) é enviado sem arredondar para fora
+ * do valor exato retornado pelo ML — a credibilidade exige o valor sugerido.
  */
 function resolveFreshDealPrice(
   requested: number | null | undefined,
@@ -496,16 +528,34 @@ function resolveFreshDealPrice(
     maxDiscountedPrice: number | null;
     originalPrice: number | null;
   },
+  promotionType?: string,
 ): number | null {
   const bounds = {
     min: ctx.minDiscountedPrice,
     max: ctx.maxDiscountedPrice ?? ctx.originalPrice,
   };
 
+  const suggestedRaw =
+    ctx.suggestedPrice != null && ctx.suggestedPrice > 0 ? ctx.suggestedPrice : null;
+
+  // LIGHTNING: preferir o sugerido fresco sem clamp agressivo (evita ERROR_CREDIBILITY).
+  if (promotionType === "LIGHTNING") {
+    if (requested == null) {
+      return suggestedRaw != null ? Math.round(suggestedRaw * 100) / 100 : null;
+    }
+    const clamped = clampDealPriceToCredibilityBounds(requested, bounds);
+    if (
+      suggestedRaw != null &&
+      ((bounds.max != null && requested > bounds.max) ||
+        (bounds.min != null && requested < bounds.min))
+    ) {
+      return Math.round(suggestedRaw * 100) / 100;
+    }
+    return clamped;
+  }
+
   const suggested =
-    ctx.suggestedPrice != null && ctx.suggestedPrice > 0
-      ? clampDealPriceToCredibilityBounds(ctx.suggestedPrice, bounds)
-      : null;
+    suggestedRaw != null ? clampDealPriceToCredibilityBounds(suggestedRaw, bounds) : null;
 
   // Ativação em massa / sem preço: sempre preferir sugerido fresco do ML
   if (requested == null) {
@@ -966,7 +1016,7 @@ export async function aggregateInboxForAccount(
           const enriched = await enrichItemsWithProducts(accountId, items);
           for (const item of enriched) {
             if (!isPromotionItemCandidate(item.status)) continue;
-            const suggested = resolveMlSuggestedPrice(item);
+            const suggested = resolveMlSuggestedPrice(item, promo.type);
             const original = item.original_price;
             const stockBounds = parsePromotionStockBounds(item.stock);
             inbox.push({
@@ -1240,7 +1290,8 @@ export async function enrichInboxEntriesWithItemContext(
                 offerId: resolveOfferIdFromMlItem(merged) ?? next.offerId ?? null,
                 originalPrice: merged.original_price ?? next.originalPrice,
                 suggestedDiscountedPrice:
-                  resolveMlSuggestedPrice(merged) ?? next.suggestedDiscountedPrice,
+                  resolveMlSuggestedPrice(merged, entry.promotionType) ??
+                  next.suggestedDiscountedPrice,
               };
             }
           } catch {
@@ -1325,7 +1376,7 @@ export async function enrichPromotionItemsWithItemContext(
 
         if (normalizeNetProceeds(next.net_proceeds) == null) {
           const price =
-            resolveMlSuggestedPrice(next) ??
+            resolveMlSuggestedPrice(next, promotionType) ??
             (next.price != null && next.price > 0 ? next.price : null);
           const feeSubsidy = resolveFeeSubsidyAmount(next);
           if (price != null && next.mlCategoryId) {
@@ -1637,7 +1688,7 @@ export async function activatePromotionItem(
     if (!offerId) offerId = ctx.offerId;
 
     if (needsPrice) {
-      dealPrice = resolveFreshDealPrice(dealPrice, ctx) ?? undefined;
+      dealPrice = resolveFreshDealPrice(dealPrice, ctx, body.promotionType) ?? undefined;
     }
 
     if (PROMOTION_TYPES_REQUIRING_STOCK.has(body.promotionType)) {
@@ -1664,12 +1715,17 @@ export async function activatePromotionItem(
     }
   }
 
-  if (!offerId) {
-    offerId = await resolvePromotionOfferId(accountId, itemId, body.promotionId, body.promotionType);
-  }
+  // offer_id só é necessário para tipos específicos (SMART, PRICE_MATCHING, etc.)
+  if (body.promotionType !== "LIGHTNING") {
+    if (!offerId) {
+      offerId = await resolvePromotionOfferId(accountId, itemId, body.promotionId, body.promotionType);
+    }
 
-  if (PROMOTION_TYPES_REQUIRING_OFFER_ID.has(body.promotionType) && !offerId) {
-    throw new Error("OFFER_ID_REQUIRED");
+    if (PROMOTION_TYPES_REQUIRING_OFFER_ID.has(body.promotionType) && !offerId) {
+      throw new Error("OFFER_ID_REQUIRED");
+    }
+  } else {
+    offerId = undefined;
   }
 
   if (needsPrice && (dealPrice == null || !(dealPrice > 0))) {
@@ -1678,15 +1734,20 @@ export async function activatePromotionItem(
     );
   }
 
+  // LIGHTNING (docs ML): POST só com deal_price + stock + promotion_type — sem promotion_id/offer_id.
   const payload: Record<string, unknown> = {
-    promotion_id: body.promotionId,
     promotion_type: body.promotionType,
   };
-  if (offerId) payload.offer_id = offerId;
+  if (body.promotionType !== "LIGHTNING") {
+    payload.promotion_id = body.promotionId;
+    if (offerId) payload.offer_id = offerId;
+  }
   if (dealPrice != null && needsPrice) {
     payload.deal_price = dealPrice;
   }
-  if (body.topDealPrice != null) payload.top_deal_price = body.topDealPrice;
+  if (body.promotionType !== "LIGHTNING" && body.topDealPrice != null) {
+    payload.top_deal_price = body.topDealPrice;
+  }
   if (stock != null) payload.stock = stock;
 
   const path = `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`;

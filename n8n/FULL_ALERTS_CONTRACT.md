@@ -65,7 +65,16 @@ Ack: HTTP `2xx` rápido.
 
 Defaults recomendados no iHub (novas contas / botão na UI): meta **25**d, lead **12**d, período **15**d; WhatsApp com ruptura+crítico (parado off). Ver `full-recommended-settings.ts`.
 
-Workflow de referência: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)
+### Mensagem WhatsApp (nó Formatar mensagem)
+
+Formatação WhatsApp (`*negrito*`, `_itálico_`) + emojis por tipo:
+
+- 🔴 RUPTURA · 🟠 CRÍTICO · ⚪ PARADO
+- Negrito em: tipo, SKU, estoque, vendas/dia, cobertura, qtd e data de envio
+- Data `sendBy` em `DD/MM/AAAA`; até 25 alertas por mensagem
+
+Workflow de referência: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)  
+Preview: `node --experimental-strip-types n8n/examples/preview-full-alerts-message.mts`
 
 ---
 

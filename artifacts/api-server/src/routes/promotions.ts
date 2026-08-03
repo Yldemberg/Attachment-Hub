@@ -96,9 +96,9 @@ function mapPromotion(
   };
 }
 
-function mapPromotionItem(item: EnrichedPromotionItem) {
+function mapPromotionItem(item: EnrichedPromotionItem, promotionType?: string) {
   const stockBounds = parsePromotionStockBounds(item.stock);
-  const suggestedDiscountedPrice = resolveMlSuggestedPrice(item);
+  const suggestedDiscountedPrice = resolveMlSuggestedPrice(item, promotionType);
   return {
     itemId: item.id,
     status: item.status,
@@ -408,7 +408,7 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
     );
     const mapped = await attachInventorySkuFinancials(
       req.user!.id,
-      pageResult.data.map(mapPromotionItem),
+      pageResult.data.map((item) => mapPromotionItem(item, promotion_type)),
     );
 
     res.json({

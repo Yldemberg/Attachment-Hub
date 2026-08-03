@@ -220,12 +220,17 @@ export default function PromotionDetail() {
   const promoLoading = promotionLoading && itemsLoading && !promotion;
 
   async function invalidateAfterBulkActivate() {
+    setRefreshing(true);
     await queryClient.invalidateQueries({
-      queryKey: getListPromotionItemsQueryKey(promoId, itemsParams),
+      predicate: (q) =>
+        typeof q.queryKey[0] === "string" &&
+        (q.queryKey[0] as string).includes("/api/promotions/") &&
+        (q.queryKey[0] as string).endsWith("/items"),
     });
     await queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
+    setTimeout(() => setRefreshing(false), 500);
   }
 
   if (!accountId || !promotionType) {

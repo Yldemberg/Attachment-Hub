@@ -84,10 +84,7 @@ function validateBulkStock(
   const hasAvailable = availableQuantity != null;
 
   if (promotionType === "LIGHTNING") {
-    if (hasAvailable && total <= 5) {
-      return "É necessário ter mais de 5 unidades em estoque para ativar a Oferta relâmpago.";
-    }
-    const min = stockMin != null && stockMin >= 6 ? stockMin : 6;
+    const min = stockMin != null ? stockMin : 6;
     const maxCap = stockMax != null ? stockMax : 10;
     if (hasAvailable && total < min) {
       return `Estoque insuficiente: a promoção exige ${stockRangeLabel(min, maxCap)} unidades (disponível: ${total}).`;

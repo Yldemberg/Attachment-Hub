@@ -156,15 +156,37 @@ export function calcDiscountAmount(original: number, discountPercent: number): n
   return Math.round((original * (discountPercent / 100)) * 100) / 100;
 }
 
-/** Preço promocional sugerido pelo ML (`suggested_discounted_price` na API v2). */
+/** Preço promocional sugerido pelo ML (`suggested_discounted_price` na API v2; LIGHTNING usa `price`). */
 export function resolveSuggestedDealPrice(
   item: PromotionItemFields & { discountPercent?: number | null },
+  promotionType?: string,
 ): number | null {
+  // Oferta relâmpago: docs ML — com status candidate, `price` é o preço sugerido.
+  if (promotionType === "LIGHTNING") {
+    if (item.status === "candidate" && item.price != null && item.price > 0) {
+      return item.price;
+    }
+    if (item.suggestedDiscountedPrice != null && item.suggestedDiscountedPrice > 0) {
+      return item.suggestedDiscountedPrice;
+    }
+    if (item.price != null && item.price > 0) return item.price;
+    return null;
+  }
+
   if (item.suggestedDiscountedPrice != null && item.suggestedDiscountedPrice > 0) {
     return item.suggestedDiscountedPrice;
   }
   if (item.status === "candidate" && item.price != null && item.price > 0) {
+    const minDiscounted = item.minDiscountedPrice;
     const maxDiscounted = item.maxDiscountedPrice;
+    if (
+      minDiscounted != null &&
+      maxDiscounted != null &&
+      item.price >= minDiscounted &&
+      item.price <= maxDiscounted
+    ) {
+      return item.price;
+    }
     const original = item.originalPrice;
     const isCeilingPrice =
       maxDiscounted != null && Math.abs(item.price - maxDiscounted) < 0.02;
@@ -277,10 +299,15 @@ export function defaultStockValue(
   let max = item.stockMax ?? (total > 0 ? total : 1);
 
   if (config.needsStock || config.stockOptional) {
-    // Oferta relâmpago: ML exige >5 e <11 → reservar 6–10.
+    // Oferta relâmpago: usar faixa do ML; fallback 6–10 só se a API não informar.
     if (promotionType === "LIGHTNING") {
-      if (min < 6) min = 6;
-      if (item.stockMax == null) max = 10;
+      if (item.stockMin == null && item.stockMax == null) {
+        min = 6;
+        max = 10;
+      } else {
+        min = item.stockMin ?? 1;
+        max = item.stockMax ?? min;
+      }
       if (total > 0) max = Math.min(max, total);
     } else if (total > 0) {
       max = Math.min(max, total);

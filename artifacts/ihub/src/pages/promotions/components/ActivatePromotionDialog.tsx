@@ -136,7 +136,7 @@ export function ActivatePromotionDialog({
     if (initializedForRef.current === initKey) return;
     initializedForRef.current = initKey;
 
-    const suggestedPrice = resolveSuggestedDealPrice(merged);
+    const suggestedPrice = resolveSuggestedDealPrice(merged, promotionType);
     const orig = merged.originalPrice;
 
     setQuantity(defaultStockValue(merged, config, promotionType));
@@ -166,7 +166,10 @@ export function ActivatePromotionDialog({
         queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
         queryClient.invalidateQueries({
-          queryKey: getListPromotionItemsQueryKey(promotionId, itemParams),
+          predicate: (q) =>
+            typeof q.queryKey[0] === "string" &&
+            (q.queryKey[0] as string).includes("/api/promotions/") &&
+            (q.queryKey[0] as string).endsWith("/items"),
         });
         onOpenChange(false);
       },

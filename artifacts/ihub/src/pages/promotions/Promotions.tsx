@@ -477,6 +477,7 @@ export default function Promotions() {
   const isLoading = campaignFilter ? itemsLoading : inboxLoading;
 
   async function invalidateAfterBulkActivate() {
+    setRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: getListPromotionInboxQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getListPromotionsQueryKey() });
     await queryClient.invalidateQueries({
@@ -486,6 +487,7 @@ export default function Promotions() {
         (q.queryKey[0] as string).endsWith("/items"),
     });
     await queryClient.invalidateQueries({ queryKey: getGetPromotionsSummaryQueryKey() });
+    setTimeout(() => setRefreshing(false), 500);
   }
 
   function handleRefresh() {
