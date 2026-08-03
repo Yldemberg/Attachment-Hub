@@ -27,12 +27,12 @@ export const fullSettingsTable = pgTable(
     accountId: uuid("account_id")
       .notNull()
       .references(() => accountsTable.id, { onDelete: "cascade" }),
-    /** Dias de estoque desejados no Full. */
-    coverageTargetDays: integer("coverage_target_days").notNull().default(30),
-    /** Lead time estimado até o estoque chegar no CD. */
-    leadTimeDays: integer("lead_time_days").notNull().default(5),
-    /** Janela de vendas para calcular velocidade (7/15/30/60). */
-    salesPeriodDays: integer("sales_period_days").notNull().default(30),
+    /** Dias de estoque desejados no Full (recomendado: 25). */
+    coverageTargetDays: integer("coverage_target_days").notNull().default(25),
+    /** Lead time até estoque vendável no CD, com folga de agenda (recomendado: 12). */
+    leadTimeDays: integer("lead_time_days").notNull().default(12),
+    /** Janela de vendas para calcular velocidade (7/15/30/60; recomendado: 15). */
+    salesPeriodDays: integer("sales_period_days").notNull().default(15),
     /**
      * Multiplicador da meta: cobertura > target * multiplier ⇒ parado
      * (além de 0 vendas no período).
@@ -42,7 +42,8 @@ export const fullSettingsTable = pgTable(
     alertsEnabled: boolean("alerts_enabled").notNull().default(false),
     alertRuptura: boolean("alert_ruptura").notNull().default(true),
     alertCritico: boolean("alert_critico").notNull().default(true),
-    alertParado: boolean("alert_parado").notNull().default(true),
+    /** Recomendado false no WhatsApp — revise parado na tela. */
+    alertParado: boolean("alert_parado").notNull().default(false),
     alertCooldownHours: integer("alert_cooldown_hours").notNull().default(24),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

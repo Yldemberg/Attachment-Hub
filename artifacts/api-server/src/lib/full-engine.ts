@@ -5,6 +5,9 @@
  * cobertura = estoque_full / max(vendas_dia, epsilon)
  * qtd_sugerida = ceil(meta_dias * vendas_dia - estoque_full - em_transito)
  * quando_enviar = hoje + max(0, cobertura - lead_time)
+ * critico = cobertura < lead_time OU cobertura < meta * 0.3
+ *
+ * Defaults recomendados: ver full-recommended-settings.ts (meta 25, lead 12, período 15).
  *
  * Fase 2 (não implementado): em_transito de inbound, vendas perdidas R$, ABC, cap mandate.
  */

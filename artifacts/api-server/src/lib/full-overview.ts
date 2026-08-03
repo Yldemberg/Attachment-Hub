@@ -11,6 +11,7 @@ import {
   computeFullOverviewKpis,
   type FullSkuStatus,
 } from "./full-engine";
+import { FULL_RECOMMENDED_SETTINGS } from "./full-recommended-settings";
 import { sumFullSalesMaps } from "./full-sync";
 
 export type FullOverviewItem = {
@@ -52,16 +53,16 @@ export type FullOverviewResult = {
 };
 
 const DEFAULT_SETTINGS = {
-  coverageTargetDays: 30,
-  leadTimeDays: 5,
-  salesPeriodDays: 30,
-  stuckMultiplier: 2,
+  coverageTargetDays: FULL_RECOMMENDED_SETTINGS.coverageTargetDays,
+  leadTimeDays: FULL_RECOMMENDED_SETTINGS.leadTimeDays,
+  salesPeriodDays: FULL_RECOMMENDED_SETTINGS.salesPeriodDays,
+  stuckMultiplier: FULL_RECOMMENDED_SETTINGS.stuckMultiplier,
   whatsappPhone: null as string | null,
   alertsEnabled: false,
-  alertRuptura: true,
-  alertCritico: true,
-  alertParado: true,
-  alertCooldownHours: 24,
+  alertRuptura: FULL_RECOMMENDED_SETTINGS.alertRuptura,
+  alertCritico: FULL_RECOMMENDED_SETTINGS.alertCritico,
+  alertParado: FULL_RECOMMENDED_SETTINGS.alertParado,
+  alertCooldownHours: FULL_RECOMMENDED_SETTINGS.alertCooldownHours,
 };
 
 function settingsFromRow(row: FullSettings | null | undefined) {
@@ -95,7 +96,18 @@ export async function getOrCreateFullSettings(
 
   const [created] = await db
     .insert(fullSettingsTable)
-    .values({ userId, accountId })
+    .values({
+      userId,
+      accountId,
+      coverageTargetDays: FULL_RECOMMENDED_SETTINGS.coverageTargetDays,
+      leadTimeDays: FULL_RECOMMENDED_SETTINGS.leadTimeDays,
+      salesPeriodDays: FULL_RECOMMENDED_SETTINGS.salesPeriodDays,
+      stuckMultiplier: FULL_RECOMMENDED_SETTINGS.stuckMultiplier,
+      alertRuptura: FULL_RECOMMENDED_SETTINGS.alertRuptura,
+      alertCritico: FULL_RECOMMENDED_SETTINGS.alertCritico,
+      alertParado: FULL_RECOMMENDED_SETTINGS.alertParado,
+      alertCooldownHours: FULL_RECOMMENDED_SETTINGS.alertCooldownHours,
+    })
     .onConflictDoNothing()
     .returning();
 

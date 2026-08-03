@@ -63,6 +63,8 @@ Credenciais Evolution (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INST
 
 Ack: HTTP `2xx` rápido.
 
+Defaults recomendados no iHub (novas contas / botão na UI): meta **25**d, lead **12**d, período **15**d; WhatsApp com ruptura+crítico (parado off). Ver `full-recommended-settings.ts`.
+
 Workflow de referência: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)
 
 ---

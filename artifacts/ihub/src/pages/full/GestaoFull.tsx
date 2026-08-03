@@ -52,6 +52,16 @@ import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | FullSkuStatus;
 
+/** Critérios recomendados (lead ~9d + folga, promo A/B). */
+const FULL_RECOMMENDED = {
+  coverageTargetDays: 25,
+  leadTimeDays: 12,
+  salesPeriodDays: 15,
+  alertRuptura: true,
+  alertCritico: true,
+  alertParado: false,
+} as const;
+
 const STATUS_LABEL: Record<FullSkuStatus, string> = {
   ruptura: "Ruptura",
   critico: "Crítico",
@@ -177,14 +187,14 @@ export default function GestaoFull() {
   const updateSettings = useUpdateFullSettings();
   const runAlerts = useRunFullAlerts();
 
-  const [draftCoverage, setDraftCoverage] = useState(30);
-  const [draftLead, setDraftLead] = useState(5);
-  const [draftPeriod, setDraftPeriod] = useState(30);
+  const [draftCoverage, setDraftCoverage] = useState(FULL_RECOMMENDED.coverageTargetDays);
+  const [draftLead, setDraftLead] = useState(FULL_RECOMMENDED.leadTimeDays);
+  const [draftPeriod, setDraftPeriod] = useState(FULL_RECOMMENDED.salesPeriodDays);
   const [draftPhone, setDraftPhone] = useState("");
   const [draftAlertsEnabled, setDraftAlertsEnabled] = useState(false);
-  const [draftAlertRuptura, setDraftAlertRuptura] = useState(true);
-  const [draftAlertCritico, setDraftAlertCritico] = useState(true);
-  const [draftAlertParado, setDraftAlertParado] = useState(true);
+  const [draftAlertRuptura, setDraftAlertRuptura] = useState(FULL_RECOMMENDED.alertRuptura);
+  const [draftAlertCritico, setDraftAlertCritico] = useState(FULL_RECOMMENDED.alertCritico);
+  const [draftAlertParado, setDraftAlertParado] = useState(FULL_RECOMMENDED.alertParado);
 
   useEffect(() => {
     if (!settings) return;
@@ -262,9 +272,25 @@ export default function GestaoFull() {
   const onRunAlerts = async () => {
     try {
       const result = await runAlerts.mutateAsync();
+      if (result.accounts === 0) {
+        toast({
+          variant: "destructive",
+          title: "Nenhuma conta elegível",
+          description:
+            "Ative Alertas WhatsApp, salve um telefone (DDI+DDD+número) e confira N8N_FULL_ALERTS_WEBHOOK_URL.",
+        });
+        return;
+      }
+      if (result.alertsSent === 0) {
+        toast({
+          title: "Nenhum alerta enviado",
+          description: `${result.accounts} conta(s) ok, mas sem SKU ruptura/crítico/parado elegível (ou em cooldown 24h). O N8N não foi chamado.`,
+        });
+        return;
+      }
       toast({
         title: "Alertas disparados",
-        description: `${result.alertsSent} alerta(s) em ${result.accounts} conta(s)`,
+        description: `${result.alertsSent} alerta(s) em ${result.accounts} conta(s) → webhook N8N`,
       });
     } catch {
       toast({
@@ -273,6 +299,19 @@ export default function GestaoFull() {
         description: "Confira N8N_FULL_ALERTS_WEBHOOK_URL e o telefone nas configurações.",
       });
     }
+  };
+
+  const applyRecommendedSettings = () => {
+    setDraftCoverage(FULL_RECOMMENDED.coverageTargetDays);
+    setDraftLead(FULL_RECOMMENDED.leadTimeDays);
+    setDraftPeriod(FULL_RECOMMENDED.salesPeriodDays);
+    setDraftAlertRuptura(FULL_RECOMMENDED.alertRuptura);
+    setDraftAlertCritico(FULL_RECOMMENDED.alertCritico);
+    setDraftAlertParado(FULL_RECOMMENDED.alertParado);
+    toast({
+      title: "Critérios recomendados aplicados",
+      description: "Meta 25d · Lead 12d · Período 15d · Zap: ruptura+crítico. Salve para gravar.",
+    });
   };
 
   const items = overview?.items ?? [];
@@ -503,6 +542,23 @@ export default function GestaoFull() {
             <DialogTitle>Configuração Gestão Full</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 space-y-2">
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Recomendado para lead ~9d (compra+prep+agenda+trânsito) com folga: meta{" "}
+                {FULL_RECOMMENDED.coverageTargetDays}d, lead {FULL_RECOMMENDED.leadTimeDays}d,
+                vendas {FULL_RECOMMENDED.salesPeriodDays}d. Após 1–2 semanas: suba meta para 30 se
+                ainda romper; baixe para 20–22 se sobrar estoque parado.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={applyRecommendedSettings}
+              >
+                Aplicar recomendado
+              </Button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Meta de cobertura (dias)</Label>
@@ -513,6 +569,9 @@ export default function GestaoFull() {
                   value={draftCoverage}
                   onChange={(e) => setDraftCoverage(Number(e.target.value))}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Estoque alvo no CD. Qtd sugerida = meta × vendas/dia − estoque.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Lead time (dias)</Label>
@@ -523,6 +582,9 @@ export default function GestaoFull() {
                   value={draftLead}
                   onChange={(e) => setDraftLead(Number(e.target.value))}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Até ficar vendável no Full (inclui agenda). Crítico se cobertura &lt; lead.
+                </p>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -542,6 +604,9 @@ export default function GestaoFull() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-[11px] text-muted-foreground">
+                15d equilibra promoção/sazonalidade; 7d é mais reativo, 30d mais lento.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>WhatsApp (DDI+DDD+número)</Label>
@@ -551,7 +616,8 @@ export default function GestaoFull() {
                 onChange={(e) => setDraftPhone(e.target.value)}
               />
               <p className="text-[11px] text-muted-foreground">
-                Alertas via N8N + Evolution API. Credenciais ficam no N8N.
+                Alertas via N8N + Evolution API. Credenciais ficam no N8N. Cooldown 24h por
+                SKU+tipo.
               </p>
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -588,6 +654,9 @@ export default function GestaoFull() {
                 Parado
               </label>
             </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              No Zap, prefira só Ruptura + Crítico. Parado polui; revise-o na lista da Gestão Full.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSettingsOpen(false)}>
