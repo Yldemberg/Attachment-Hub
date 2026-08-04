@@ -1916,6 +1916,7 @@ export const GetFullOverviewResponse = zod.object({
     alertRuptura: zod.boolean(),
     alertCritico: zod.boolean(),
     alertParado: zod.boolean(),
+    alertQuestions: zod.boolean(),
     alertCooldownHours: zod.number(),
   }),
   kpis: zod.object({
@@ -1937,7 +1938,12 @@ export const GetFullOverviewResponse = zod.object({
       notAvailable: zod.number(),
       unitsSoldPeriod: zod.number(),
       salesPerDay: zod.number(),
-      daysWithoutSales: zod.number().nullable(),
+      daysWithoutSales: zod
+        .number()
+        .nullable()
+        .describe(
+          "Dias desde a última venda Full (lookback até 90d); null se sem venda no lookback",
+        ),
       coverageDays: zod.number().nullish(),
       suggestedQty: zod.number(),
       sendBy: zod.string().nullish(),
@@ -1945,7 +1951,9 @@ export const GetFullOverviewResponse = zod.object({
       lastSyncedAt: zod.coerce.date().nullish(),
     }),
   ),
-  totalFullListings: zod.number(),
+  totalFullListings: zod
+    .number()
+    .describe("Total de anúncios Full da conta (antes de filtros)"),
 });
 
 /**
@@ -1966,6 +1974,9 @@ export const GetFullSettingsResponse = zod.object({
   alertRuptura: zod.boolean(),
   alertCritico: zod.boolean(),
   alertParado: zod.boolean(),
+  alertQuestions: zod
+    .boolean()
+    .describe("Nova pergunta (webhook ML) → WhatsApp via N8N Full Alerts"),
   alertCooldownHours: zod.number(),
 });
 
@@ -1985,6 +1996,7 @@ export const UpdateFullSettingsBody = zod.object({
   alertRuptura: zod.boolean().optional(),
   alertCritico: zod.boolean().optional(),
   alertParado: zod.boolean().optional(),
+  alertQuestions: zod.boolean().optional(),
   alertCooldownHours: zod.number().optional(),
 });
 
@@ -1999,6 +2011,9 @@ export const UpdateFullSettingsResponse = zod.object({
   alertRuptura: zod.boolean(),
   alertCritico: zod.boolean(),
   alertParado: zod.boolean(),
+  alertQuestions: zod
+    .boolean()
+    .describe("Nova pergunta (webhook ML) → WhatsApp via N8N Full Alerts"),
   alertCooldownHours: zod.number(),
 });
 

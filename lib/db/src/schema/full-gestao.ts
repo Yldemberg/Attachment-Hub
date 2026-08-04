@@ -44,6 +44,8 @@ export const fullSettingsTable = pgTable(
     alertCritico: boolean("alert_critico").notNull().default(true),
     /** Recomendado false no WhatsApp — revise parado na tela. */
     alertParado: boolean("alert_parado").notNull().default(false),
+    /** Nova pergunta (webhook ML) → WhatsApp via mesmo N8N da Gestão Full. */
+    alertQuestions: boolean("alert_questions").notNull().default(true),
     alertCooldownHours: integer("alert_cooldown_hours").notNull().default(24),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

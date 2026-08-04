@@ -4618,6 +4618,9 @@ components:
           type: boolean
         alertParado:
           type: boolean
+        alertQuestions:
+          type: boolean
+          description: Nova pergunta (webhook ML) → WhatsApp via N8N Full Alerts
         alertCooldownHours:
           type: integer
       required:
@@ -4630,6 +4633,7 @@ components:
         - alertRuptura
         - alertCritico
         - alertParado
+        - alertQuestions
         - alertCooldownHours
 
     FullSettingsUpdateRequest:
@@ -4656,6 +4660,8 @@ components:
         alertCritico:
           type: boolean
         alertParado:
+          type: boolean
+        alertQuestions:
           type: boolean
         alertCooldownHours:
           type: integer
@@ -4760,6 +4766,8 @@ components:
               type: boolean
             alertParado:
               type: boolean
+            alertQuestions:
+              type: boolean
             alertCooldownHours:
               type: integer
           required:
@@ -4771,6 +4779,7 @@ components:
             - alertRuptura
             - alertCritico
             - alertParado
+            - alertQuestions
             - alertCooldownHours
         kpis:
           $ref: "#/components/schemas/FullOverviewKpis"

@@ -60,6 +60,7 @@ const FULL_RECOMMENDED = {
   alertRuptura: true,
   alertCritico: true,
   alertParado: false,
+  alertQuestions: true,
 } as const;
 
 const STATUS_LABEL: Record<FullSkuStatus, string> = {
@@ -205,6 +206,7 @@ export default function GestaoFull() {
   const [draftAlertRuptura, setDraftAlertRuptura] = useState(FULL_RECOMMENDED.alertRuptura);
   const [draftAlertCritico, setDraftAlertCritico] = useState(FULL_RECOMMENDED.alertCritico);
   const [draftAlertParado, setDraftAlertParado] = useState(FULL_RECOMMENDED.alertParado);
+  const [draftAlertQuestions, setDraftAlertQuestions] = useState(FULL_RECOMMENDED.alertQuestions);
 
   useEffect(() => {
     if (!settings) return;
@@ -216,6 +218,7 @@ export default function GestaoFull() {
     setDraftAlertRuptura(settings.alertRuptura);
     setDraftAlertCritico(settings.alertCritico);
     setDraftAlertParado(settings.alertParado);
+    setDraftAlertQuestions(settings.alertQuestions ?? true);
     setPeriodDays(settings.salesPeriodDays);
   }, [settings]);
 
@@ -264,6 +267,7 @@ export default function GestaoFull() {
           alertRuptura: draftAlertRuptura,
           alertCritico: draftAlertCritico,
           alertParado: draftAlertParado,
+          alertQuestions: draftAlertQuestions,
         },
       });
       setPeriodDays(draftPeriod);
@@ -318,9 +322,10 @@ export default function GestaoFull() {
     setDraftAlertRuptura(FULL_RECOMMENDED.alertRuptura);
     setDraftAlertCritico(FULL_RECOMMENDED.alertCritico);
     setDraftAlertParado(FULL_RECOMMENDED.alertParado);
+    setDraftAlertQuestions(FULL_RECOMMENDED.alertQuestions);
     toast({
       title: "Critérios recomendados aplicados",
-      description: "Meta 25d · Lead 12d · Período 15d · Zap: ruptura+crítico. Salve para gravar.",
+      description: "Meta 25d · Lead 12d · Período 15d · Zap: ruptura+crítico+perguntas. Salve para gravar.",
     });
   };
 
@@ -626,8 +631,8 @@ export default function GestaoFull() {
                 onChange={(e) => setDraftPhone(e.target.value)}
               />
               <p className="text-[11px] text-muted-foreground">
-                Alertas via N8N + Evolution API. Credenciais ficam no N8N. Cooldown 24h por
-                SKU+tipo.
+                Alertas via N8N + Evolution API (Full e Perguntas). Credenciais ficam no N8N.
+                Cooldown 24h por SKU+tipo (perguntas: até 6h).
               </p>
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -636,7 +641,7 @@ export default function GestaoFull() {
                 checked={draftAlertsEnabled}
                 onChange={(e) => setDraftAlertsEnabled(e.target.checked)}
               />
-              Alertas WhatsApp ativos
+              Alertas WhatsApp ativos (Gestão Full)
             </label>
             <div className="flex flex-wrap gap-4 text-sm pl-1">
               <label className="flex items-center gap-2">
@@ -664,8 +669,17 @@ export default function GestaoFull() {
                 Parado
               </label>
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draftAlertQuestions}
+                onChange={(e) => setDraftAlertQuestions(e.target.checked)}
+              />
+              Notificar novas perguntas no WhatsApp
+            </label>
             <p className="text-[11px] text-muted-foreground leading-snug">
               No Zap, prefira só Ruptura + Crítico. Parado polui; revise-o na lista da Gestão Full.
+              Perguntas usam o mesmo número e o mesmo workflow N8N.
             </p>
           </div>
           <DialogFooter>

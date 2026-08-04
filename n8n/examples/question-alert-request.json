@@ -1,0 +1,14 @@
+{
+  "kind": "question",
+  "accountId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "accountNickname": "LOJA_EXEMPLO",
+  "phone": "5511999999999",
+  "generatedAt": "2026-08-04T22:00:00.000Z",
+  "question": {
+    "id": "1234567890",
+    "fromNickname": "COMPRADOR123",
+    "text": "Tem na cor azul e envia hoje?",
+    "itemId": "MLB1234567890",
+    "permalink": "https://produto.mercadolivre.com.br/MLB-1234567890"
+  }
+}

@@ -18,5 +18,6 @@ export interface FullSettingsUpdateRequest {
   alertRuptura?: boolean;
   alertCritico?: boolean;
   alertParado?: boolean;
+  alertQuestions?: boolean;
   alertCooldownHours?: number;
 }

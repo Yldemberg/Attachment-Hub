@@ -16,5 +16,6 @@ export type FullOverviewResponseSettings = {
   alertRuptura: boolean;
   alertCritico: boolean;
   alertParado: boolean;
+  alertQuestions: boolean;
   alertCooldownHours: number;
 };

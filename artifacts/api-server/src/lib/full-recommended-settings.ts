@@ -15,6 +15,7 @@ export const FULL_RECOMMENDED_SETTINGS = {
   alertRuptura: true,
   alertCritico: true,
   alertParado: false,
+  alertQuestions: true,
   alertCooldownHours: 24,
 } as const;
 

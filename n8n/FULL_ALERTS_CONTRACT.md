@@ -1,13 +1,16 @@
-# Contrato iHub ↔ N8N — Alertas Gestão Full (WhatsApp / Evolution API)
+# Contrato iHub ↔ N8N — Alertas WhatsApp (Gestão Full + Perguntas / Evolution API)
 
 ## Fluxo
 
-1. Job iHub (`FULL_ALERTS_INTERVAL_MS`, default 1h) ou `POST /api/full/alerts/run`
-2. iHub → `POST N8N_FULL_ALERTS_WEBHOOK_URL` com payload abaixo
-3. N8N formata mensagem e chama Evolution API `POST /message/sendText`
-4. iHub grava `full_alert_log` (cooldown por SKU + tipo)
+1. **Gestão Full:** job iHub (`FULL_ALERTS_INTERVAL_MS`, default 1h) ou `POST /api/full/alerts/run`
+2. **Perguntas:** webhook ML `questions` → notificação `new_question` → `notifyNewQuestionWhatsApp`
+3. iHub → `POST N8N_FULL_ALERTS_WEBHOOK_URL` com payload abaixo (`kind`: `full` | `question`)
+4. N8N formata mensagem e chama Evolution API `POST /message/sendText`
+5. iHub grava `full_alert_log` (cooldown)
 
 Credenciais Evolution (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`) ficam **somente no N8N**.
+
+Telefone e toggles: `full_settings` (mesmo WhatsApp da Gestão Full; `alertQuestions` para perguntas).
 
 ---
 
@@ -17,13 +20,23 @@ Credenciais Evolution (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INST
 **URL:** `N8N_FULL_ALERTS_WEBHOOK_URL` (ex. `/webhook/full_alerts`)  
 **Header opcional:** `X-N8N-Secret: <N8N_WEBHOOK_SECRET>`
 
+### Campos comuns
+
 | Campo | Tipo | Obrigatório | Descrição |
 | --- | --- | --- | --- |
+| `kind` | `full` \| `question` | não (default `full`) | Tipo da mensagem |
 | `accountId` | uuid | sim | Conta ML |
 | `accountNickname` | string \| null | não | Nickname ML |
 | `phone` | string | sim | Somente dígitos (ex. `5511999999999`) |
+| `generatedAt` | ISO datetime | sim | Momento do envio |
+
+---
+
+## kind = `full` (Gestão Full)
+
+| Campo | Tipo | Obrigatório | Descrição |
+| --- | --- | --- | --- |
 | `alerts` | array | sim | Até 40 itens |
-| `generatedAt` | ISO datetime | sim | Momento do job |
 
 ### Item `alerts[]`
 
@@ -38,10 +51,11 @@ Credenciais Evolution (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INST
 | `sendBy` | `YYYY-MM-DD` \| null | Data sugerida para enviar |
 | `coverageDays` | number \| null | Dias de cobertura |
 
-### Exemplo
+### Exemplo Full
 
 ```json
 {
+  "kind": "full",
   "accountId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
   "accountNickname": "LOJA_EXEMPLO",
   "phone": "5511999999999",
@@ -61,20 +75,54 @@ Credenciais Evolution (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INST
 }
 ```
 
-Ack: HTTP `2xx` rápido.
-
-Defaults recomendados no iHub (novas contas / botão na UI): meta **25**d, lead **12**d, período **15**d; WhatsApp com ruptura+crítico (parado off). Ver `full-recommended-settings.ts`.
-
-### Mensagem WhatsApp (nó Formatar mensagem)
-
-Formatação WhatsApp (`*negrito*`, `_itálico_`) + emojis por tipo:
+### Mensagem WhatsApp (Full)
 
 - 🔴 RUPTURA · 🟠 CRÍTICO · ⚪ PARADO
-- Negrito em: tipo, SKU, estoque, vendas/dia, cobertura, qtd e data de envio
-- Data `sendBy` em `DD/MM/AAAA`; até 25 alertas por mensagem
+- Até 25 alertas por mensagem
+
+---
+
+## kind = `question` (Nova pergunta)
+
+| Campo | Tipo | Obrigatório | Descrição |
+| --- | --- | --- | --- |
+| `question` | object | sim | Dados da pergunta |
+
+### `question`
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `id` | string | ID ML da pergunta |
+| `fromNickname` | string \| null | Comprador |
+| `text` | string | Texto da pergunta |
+| `itemId` | string \| null | MLB do anúncio |
+| `permalink` | string \| null | Link do anúncio |
+
+### Exemplo Pergunta
+
+```json
+{
+  "kind": "question",
+  "accountId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "accountNickname": "LOJA_EXEMPLO",
+  "phone": "5511999999999",
+  "generatedAt": "2026-08-04T22:00:00.000Z",
+  "question": {
+    "id": "1234567890",
+    "fromNickname": "COMPRADOR123",
+    "text": "Tem na cor azul?",
+    "itemId": "MLB123",
+    "permalink": "https://produto.mercadolivre.com.br/MLB-123"
+  }
+}
+```
+
+Ack: HTTP `2xx` rápido.
+
+Defaults recomendados no iHub: meta **25**d, lead **12**d, período **15**d; WhatsApp com ruptura+crítico (parado off); `alertQuestions` on. Ver `full-recommended-settings.ts`.
 
 Workflow de referência: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)  
-Preview: `node --experimental-strip-types n8n/examples/preview-full-alerts-message.mts`
+Preview Full: `node --experimental-strip-types n8n/examples/preview-full-alerts-message.mts`
 
 ---
 

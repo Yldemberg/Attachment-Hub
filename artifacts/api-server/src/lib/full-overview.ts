@@ -45,6 +45,7 @@ export type FullOverviewResult = {
     alertRuptura: boolean;
     alertCritico: boolean;
     alertParado: boolean;
+    alertQuestions: boolean;
     alertCooldownHours: number;
   };
   kpis: ReturnType<typeof computeFullOverviewKpis>;
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS = {
   alertRuptura: FULL_RECOMMENDED_SETTINGS.alertRuptura,
   alertCritico: FULL_RECOMMENDED_SETTINGS.alertCritico,
   alertParado: FULL_RECOMMENDED_SETTINGS.alertParado,
+  alertQuestions: FULL_RECOMMENDED_SETTINGS.alertQuestions,
   alertCooldownHours: FULL_RECOMMENDED_SETTINGS.alertCooldownHours,
 };
 
@@ -78,6 +80,7 @@ function settingsFromRow(row: FullSettings | null | undefined) {
     alertRuptura: row.alertRuptura,
     alertCritico: row.alertCritico,
     alertParado: row.alertParado,
+    alertQuestions: row.alertQuestions,
     alertCooldownHours: row.alertCooldownHours,
   };
 }
@@ -107,6 +110,7 @@ export async function getOrCreateFullSettings(
       alertRuptura: FULL_RECOMMENDED_SETTINGS.alertRuptura,
       alertCritico: FULL_RECOMMENDED_SETTINGS.alertCritico,
       alertParado: FULL_RECOMMENDED_SETTINGS.alertParado,
+      alertQuestions: FULL_RECOMMENDED_SETTINGS.alertQuestions,
       alertCooldownHours: FULL_RECOMMENDED_SETTINGS.alertCooldownHours,
     })
     .onConflictDoNothing()
@@ -321,6 +325,7 @@ export async function updateFullSettings(
     alertRuptura: boolean;
     alertCritico: boolean;
     alertParado: boolean;
+    alertQuestions: boolean;
     alertCooldownHours: number;
   }>,
 ): Promise<FullSettings> {

@@ -82,6 +82,7 @@ router.get("/full/settings", ...auth, async (req, res) => {
       alertRuptura: row.alertRuptura,
       alertCritico: row.alertCritico,
       alertParado: row.alertParado,
+      alertQuestions: row.alertQuestions,
       alertCooldownHours: row.alertCooldownHours,
     });
   } catch (err) {
@@ -153,6 +154,7 @@ router.put("/full/settings", ...auth, async (req, res) => {
     if (typeof body.alertRuptura === "boolean") patch.alertRuptura = body.alertRuptura;
     if (typeof body.alertCritico === "boolean") patch.alertCritico = body.alertCritico;
     if (typeof body.alertParado === "boolean") patch.alertParado = body.alertParado;
+    if (typeof body.alertQuestions === "boolean") patch.alertQuestions = body.alertQuestions;
     if (body.alertCooldownHours != null) {
       const n = Number(body.alertCooldownHours);
       if (!Number.isFinite(n) || n < 1 || n > 168) {
@@ -174,6 +176,7 @@ router.put("/full/settings", ...auth, async (req, res) => {
       alertRuptura: row.alertRuptura,
       alertCritico: row.alertCritico,
       alertParado: row.alertParado,
+      alertQuestions: row.alertQuestions,
       alertCooldownHours: row.alertCooldownHours,
     });
   } catch (err) {

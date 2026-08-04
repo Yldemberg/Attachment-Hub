@@ -1,18 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useListQuestions,
   useListAccounts,
   useAnswerQuestion,
+  useGetFullSettings,
+  useUpdateFullSettings,
   getListQuestionsQueryKey,
   getGetQuestionQueryKey,
+  getGetFullSettingsQueryKey,
   ListQuestionsStatus,
 } from "@workspace/api-client-react";
 import type { Question as ApiQuestion } from "@workspace/api-client-react";
 import { formatDateTime } from "@/lib/utils";
-import { MessageSquare, Send, ChevronDown, ChevronRight, ChevronLeft, ExternalLink, Package } from "lucide-react";
+import {
+  MessageSquare,
+  Send,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  ExternalLink,
+  Package,
+  Settings2,
+  Loader2,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -20,6 +35,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "@/hooks/use-toast";
 
 type Question = ApiQuestion;
 
@@ -146,6 +169,12 @@ export default function Questions() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("unanswered");
   const [accountId, setAccountId] = useState("all");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsAccountId, setSettingsAccountId] = useState("");
+  const [draftPhone, setDraftPhone] = useState("");
+  const [draftAlertQuestions, setDraftAlertQuestions] = useState(true);
+
+  const queryClient = useQueryClient();
 
   const params = {
     page,
@@ -164,14 +193,76 @@ export default function Questions() {
   const { data: accountsData } = useListAccounts();
   const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const preferred = accountId !== "all" ? accountId : accounts[0]?.id ?? "";
+    setSettingsAccountId((prev) => prev || preferred);
+  }, [settingsOpen, accountId, accounts]);
+
+  const settingsParams = { account_id: settingsAccountId };
+  const { data: settings } = useGetFullSettings(settingsParams, {
+    query: {
+      enabled: Boolean(settingsAccountId) && settingsOpen,
+      queryKey: getGetFullSettingsQueryKey(settingsParams),
+    },
+  });
+  const updateSettings = useUpdateFullSettings();
+
+  useEffect(() => {
+    if (!settings) return;
+    setDraftPhone(settings.whatsappPhone ?? "");
+    setDraftAlertQuestions(settings.alertQuestions ?? true);
+  }, [settings]);
+
+  const onSaveWhatsApp = async () => {
+    if (!settingsAccountId) return;
+    try {
+      await updateSettings.mutateAsync({
+        data: {
+          accountId: settingsAccountId,
+          whatsappPhone: draftPhone.trim() || null,
+          alertQuestions: draftAlertQuestions,
+        },
+      });
+      toast({
+        title: "WhatsApp de perguntas salvo",
+        description: "Mesmo número e workflow N8N da Gestão Full.",
+      });
+      setSettingsOpen(false);
+      void queryClient.invalidateQueries({
+        queryKey: getGetFullSettingsQueryKey({ account_id: settingsAccountId }),
+      });
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: "Verifique o telefone (DDI+DDD+número) e tente novamente.",
+      });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       <div className="sticky top-0 z-10 bg-background border-b border-border flex-shrink-0 px-4 py-3 space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div>
             <h1 className="text-base font-bold text-foreground">Perguntas</h1>
             <p className="text-muted-foreground text-xs">{pagination?.total ?? 0} perguntas encontradas</p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            onClick={() => {
+              const preferred = accountId !== "all" ? accountId : accounts[0]?.id ?? "";
+              setSettingsAccountId(preferred);
+              setSettingsOpen(true);
+            }}
+            disabled={accounts.length === 0}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            WhatsApp
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -245,6 +336,67 @@ export default function Questions() {
           </div>
         )}
       </div>
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>WhatsApp · Perguntas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {accounts.length > 1 && (
+              <div className="space-y-1.5">
+                <Label>Conta</Label>
+                <Select
+                  value={settingsAccountId}
+                  onValueChange={setSettingsAccountId}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.mlNickname ?? a.id.slice(0, 8)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Configuração por conta (mesmo cadastro da Gestão Full).
+                </p>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>WhatsApp (DDI+DDD+número)</Label>
+              <Input
+                placeholder="5511999999999"
+                value={draftPhone}
+                onChange={(e) => setDraftPhone(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Mesmo telefone e workflow N8N + Evolution da Gestão Full.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draftAlertQuestions}
+                onChange={(e) => setDraftAlertQuestions(e.target.checked)}
+              />
+              Notificar novas perguntas no WhatsApp
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void onSaveWhatsApp()} disabled={updateSettings.isPending || !settingsAccountId}>
+              {updateSettings.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

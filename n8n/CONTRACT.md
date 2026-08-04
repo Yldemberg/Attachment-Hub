@@ -125,10 +125,10 @@ Publicação no iHub: `createAmazonListing` / SP-API com os atributos revisados.
 
 ---
 
-## 5. Alertas Gestão Full (WhatsApp)
+## 5. Alertas WhatsApp (Gestão Full + Perguntas)
 
 Ver contrato dedicado: [`FULL_ALERTS_CONTRACT.md`](FULL_ALERTS_CONTRACT.md)  
-Workflow: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json)  
+Workflow: [`workflows/full_alerts_whatsapp.json`](workflows/full_alerts_whatsapp.json) (`kind`: `full` | `question`)  
 Env: `N8N_FULL_ALERTS_WEBHOOK_URL`
 
 ---

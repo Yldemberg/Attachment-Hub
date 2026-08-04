@@ -23,12 +23,30 @@ export type FullAlertPayloadItem = {
 };
 
 export type FullAlertWebhookPayload = {
+  kind?: "full";
   accountId: string;
   accountNickname: string | null;
   phone: string;
   alerts: FullAlertPayloadItem[];
   generatedAt: string;
 };
+
+export type QuestionAlertWebhookPayload = {
+  kind: "question";
+  accountId: string;
+  accountNickname: string | null;
+  phone: string;
+  generatedAt: string;
+  question: {
+    id: string;
+    fromNickname: string | null;
+    text: string;
+    itemId: string | null;
+    permalink: string | null;
+  };
+};
+
+export type WhatsAppN8nPayload = FullAlertWebhookPayload | QuestionAlertWebhookPayload;
 
 async function wasAlertedRecently(
   userId: string,
@@ -55,10 +73,11 @@ async function wasAlertedRecently(
   return Boolean(row);
 }
 
-async function dispatchFullAlertsToN8n(payload: FullAlertWebhookPayload): Promise<boolean> {
+/** POST para o mesmo webhook N8N da Gestão Full (Evolution sendText). */
+export async function dispatchWhatsAppAlertToN8n(payload: WhatsAppN8nPayload): Promise<boolean> {
   const url = process.env.N8N_FULL_ALERTS_WEBHOOK_URL?.trim();
   if (!url) {
-    logger.warn("N8N_FULL_ALERTS_WEBHOOK_URL not set — skipping Full WhatsApp alerts");
+    logger.warn("N8N_FULL_ALERTS_WEBHOOK_URL not set — skipping WhatsApp alert");
     return false;
   }
 
@@ -78,16 +97,93 @@ async function dispatchFullAlertsToN8n(payload: FullAlertWebhookPayload): Promis
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, text }, "N8N Full alerts webhook failed");
+      logger.warn({ status: res.status, text, kind: payload.kind ?? "full" }, "N8N WhatsApp webhook failed");
       return false;
     }
     return true;
   } catch (err) {
-    logger.warn({ err }, "N8N Full alerts webhook error");
+    logger.warn({ err, kind: payload.kind ?? "full" }, "N8N WhatsApp webhook error");
     return false;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Quando chega notificação de nova pergunta: envia WhatsApp se a conta tiver
+ * telefone + alertQuestions (mesmo número / workflow N8N da Gestão Full).
+ */
+export async function notifyNewQuestionWhatsApp(opts: {
+  userId: string;
+  accountId: string;
+  accountNickname: string | null;
+  question: {
+    id: string;
+    fromNickname: string | null;
+    text: string;
+    itemId: string | null;
+    permalink: string | null;
+  };
+}): Promise<boolean> {
+  const db = getDb();
+  const [settings] = await db
+    .select()
+    .from(fullSettingsTable)
+    .where(
+      and(
+        eq(fullSettingsTable.userId, opts.userId),
+        eq(fullSettingsTable.accountId, opts.accountId),
+      ),
+    )
+    .limit(1);
+
+  if (!settings?.alertQuestions) return false;
+
+  const phone = settings.whatsappPhone?.replace(/\D/g, "") ?? "";
+  if (phone.length < 10) {
+    logger.info(
+      { accountId: opts.accountId },
+      "Question WhatsApp skipped — no valid phone in Full settings",
+    );
+    return false;
+  }
+
+  const questionKey = opts.question.id;
+  const recent = await wasAlertedRecently(
+    opts.userId,
+    opts.accountId,
+    questionKey,
+    "question",
+    Math.min(settings.alertCooldownHours, 6),
+  );
+  if (recent) return false;
+
+  const ok = await dispatchWhatsAppAlertToN8n({
+    kind: "question",
+    accountId: opts.accountId,
+    accountNickname: opts.accountNickname,
+    phone,
+    generatedAt: new Date().toISOString(),
+    question: {
+      id: opts.question.id,
+      fromNickname: opts.question.fromNickname,
+      text: opts.question.text.slice(0, 500),
+      itemId: opts.question.itemId,
+      permalink: opts.question.permalink,
+    },
+  });
+
+  if (!ok) return false;
+
+  await db.insert(fullAlertLogTable).values({
+    userId: opts.userId,
+    accountId: opts.accountId,
+    sku: questionKey,
+    alertType: "question",
+    sentAt: new Date(),
+  });
+
+  return true;
 }
 
 /**
@@ -152,7 +248,8 @@ export async function runFullAlertsJob(): Promise<{ accounts: number; alertsSent
         .where(eq(accountsTable.id, settings.accountId))
         .limit(1);
 
-      const ok = await dispatchFullAlertsToN8n({
+      const ok = await dispatchWhatsAppAlertToN8n({
+        kind: "full",
         accountId: settings.accountId,
         accountNickname: account?.mlNickname ?? null,
         phone,

@@ -1,5 +1,5 @@
 {
-  "name": "Gestão Full — Alertas WhatsApp (Evolution)",
+  "name": "iHub — Alertas WhatsApp (Full + Perguntas / Evolution)",
   "nodes": [
     {
       "parameters": {
@@ -11,19 +11,25 @@
       "name": "Webhook Full Alerts",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "full-alerts-webhook",
-      "notes": "Recebe POST do iHub: accountId, phone, alerts[]. Ver n8n/FULL_ALERTS_CONTRACT.md"
+      "notes": "Recebe POST do iHub: kind full|question. Ver n8n/FULL_ALERTS_CONTRACT.md"
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst body = raw.body || raw;\nconst phone = String(body.phone || '').replace(/\\D/g, '');\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst nick = body.accountNickname || 'ML';\nif (!phone || alerts.length === 0) {\n  return [{ json: { skip: true, reason: 'phone ou alerts vazios' } }];\n}\n\nconst TYPE_META = {\n  ruptura: { emoji: '🔴', label: 'RUPTURA' },\n  critico: { emoji: '🟠', label: 'CRÍTICO' },\n  parado: { emoji: '⚪', label: 'PARADO' },\n  saudavel: { emoji: '🟢', label: 'SAUDÁVEL' },\n};\n\nfunction fmtDate(ymd) {\n  if (!ymd || typeof ymd !== 'string') return '—';\n  const m = ymd.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\n  if (!m) return ymd;\n  return `${m[3]}/${m[2]}/${m[1]}`;\n}\n\nfunction fmtNum(n) {\n  if (n == null || n === '') return '—';\n  const x = Number(n);\n  if (!Number.isFinite(x)) return String(n);\n  return Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10);\n}\n\nconst shown = alerts.slice(0, 25);\nconst lines = shown.map((a, i) => {\n  const key = String(a.type || '').toLowerCase();\n  const meta = TYPE_META[key] || { emoji: '📦', label: String(a.type || 'ALERTA').toUpperCase() };\n  const sku = String(a.sku || '—');\n  const title = String(a.title || '').trim();\n  const titleLine = title ? `_${title.slice(0, 80)}${title.length > 80 ? '…' : ''}_\\n` : '';\n  const cov = a.coverageDays != null ? `${fmtNum(a.coverageDays)}d` : '—';\n  const qty = fmtNum(a.suggestedQty || 0);\n  const send = fmtDate(a.sendBy);\n  return [\n    `${meta.emoji} *${i + 1}. ${meta.label}* · *${sku}*`,\n    titleLine + `📦 Estoque: *${fmtNum(a.stockFull)}*`,\n    `📈 Vendas/dia: *${fmtNum(a.salesPerDay)}*`,\n    `⏱ Cobertura: *${cov}*`,\n    `🚚 Enviar: *${qty} un.* até *${send}*`,\n  ].join('\\n');\n});\n\nconst more = alerts.length > shown.length\n  ? `\\n\\n_…e mais ${alerts.length - shown.length} alerta(s) na Gestão Full_`\n  : '';\n\nconst text = [\n  `📦 *iHub · Gestão Full*`,\n  `🏪 Conta: *${nick}*`,\n  `🔔 *${alerts.length}* alerta(s) precisando de atenção`,\n  `────────────────`,\n  lines.join('\\n\\n'),\n  more,\n  `\\n✅ Abra a *Gestão Full* no iHub para sync e envio.`,\n].join('\\n');\n\nreturn [{ json: { skip: false, phone, text, alertCount: alerts.length } }];"
+        "jsCode": "const raw = $input.first().json;\nconst body = raw.body || raw;\nconst phone = String(body.phone || '').replace(/\\D/g, '');\nconst nick = body.accountNickname || 'ML';\nconst kind = String(body.kind || 'full').toLowerCase();\n\nif (!phone) {\n  return [{ json: { skip: true, reason: 'phone vazio' } }];\n}\n\nif (kind === 'question') {\n  const q = body.question || {};\n  const from = String(q.fromNickname || 'Comprador');\n  const textQ = String(q.text || '').trim();\n  const itemId = q.itemId ? String(q.itemId) : null;\n  const permalink = q.permalink ? String(q.permalink) : null;\n  if (!textQ) {\n    return [{ json: { skip: true, reason: 'pergunta vazia' } }];\n  }\n  const lines = [\n    `💬 *iHub · Nova pergunta*`,\n    `🏪 Conta: *${nick}*`,\n    `👤 De: *${from}*`,\n    `────────────────`,\n    textQ.slice(0, 400) + (textQ.length > 400 ? '…' : ''),\n  ];\n  if (itemId) lines.push('\\n📦 Anúncio: *' + itemId + '*');\n  if (permalink) lines.push('🔗 ' + permalink);\n  lines.push('\\n✅ Abra *Perguntas* no iHub para responder.');\n  return [{ json: { skip: false, phone, text: lines.join('\\n'), alertCount: 1 } }];\n}\n\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nif (alerts.length === 0) {\n  return [{ json: { skip: true, reason: 'phone ou alerts vazios' } }];\n}\n\nconst TYPE_META = {\n  ruptura: { emoji: '🔴', label: 'RUPTURA' },\n  critico: { emoji: '🟠', label: 'CRÍTICO' },\n  parado: { emoji: '⚪', label: 'PARADO' },\n  saudavel: { emoji: '🟢', label: 'SAUDÁVEL' },\n};\n\nfunction fmtDate(ymd) {\n  if (!ymd || typeof ymd !== 'string') return '—';\n  const m = ymd.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\n  if (!m) return ymd;\n  return `${m[3]}/${m[2]}/${m[1]}`;\n}\n\nfunction fmtNum(n) {\n  if (n == null || n === '') return '—';\n  const x = Number(n);\n  if (!Number.isFinite(x)) return String(n);\n  return Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10);\n}\n\nconst shown = alerts.slice(0, 25);\nconst lines = shown.map((a, i) => {\n  const key = String(a.type || '').toLowerCase();\n  const meta = TYPE_META[key] || { emoji: '📦', label: String(a.type || 'ALERTA').toUpperCase() };\n  const sku = String(a.sku || '—');\n  const title = String(a.title || '').trim();\n  const titleLine = title ? `_${title.slice(0, 80)}${title.length > 80 ? '…' : ''}_\\n` : '';\n  const cov = a.coverageDays != null ? `${fmtNum(a.coverageDays)}d` : '—';\n  const qty = fmtNum(a.suggestedQty || 0);\n  const send = fmtDate(a.sendBy);\n  return [\n    `${meta.emoji} *${i + 1}. ${meta.label}* · *${sku}*`,\n    titleLine + `📦 Estoque: *${fmtNum(a.stockFull)}*`,\n    `📈 Vendas/dia: *${fmtNum(a.salesPerDay)}*`,\n    `⏱ Cobertura: *${cov}*`,\n    `🚚 Enviar: *${qty} un.* até *${send}*`,\n  ].join('\\n');\n});\n\nconst more = alerts.length > shown.length\n  ? `\\n\\n_…e mais ${alerts.length - shown.length} alerta(s) na Gestão Full_`\n  : '';\n\nconst text = [\n  `📦 *iHub · Gestão Full*`,\n  `🏪 Conta: *${nick}*`,\n  `🔔 *${alerts.length}* alerta(s) precisando de atenção`,\n  `────────────────`,\n  lines.join('\\n\\n'),\n  more,\n  `\\n✅ Abra a *Gestão Full* no iHub para sync e envio.`,\n].join('\\n');\n\nreturn [{ json: { skip: false, phone, text, alertCount: alerts.length } }];"
       },
       "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
       "name": "Formatar mensagem",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
@@ -40,7 +46,10 @@
       "name": "Tem alertas?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [700, 300]
+      "position": [
+        700,
+        300
+      ]
     },
     {
       "parameters": {
@@ -68,7 +77,10 @@
       "name": "Evolution sendText",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [940, 220],
+      "position": [
+        940,
+        220
+      ],
       "notes": "Defina no N8N: EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE"
     },
     {
@@ -80,7 +92,10 @@
       "name": "Respond skipped",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [940, 400]
+      "position": [
+        940,
+        400
+      ]
     },
     {
       "parameters": {
@@ -91,24 +106,63 @@
       "name": "Respond ok",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1180, 220]
+      "position": [
+        1180,
+        220
+      ]
     }
   ],
   "connections": {
     "Webhook Full Alerts": {
-      "main": [[{ "node": "Formatar mensagem", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Formatar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Formatar mensagem": {
-      "main": [[{ "node": "Tem alertas?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Tem alertas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Tem alertas?": {
       "main": [
-        [{ "node": "Evolution sendText", "type": "main", "index": 0 }],
-        [{ "node": "Respond skipped", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Evolution sendText",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Evolution sendText": {
-      "main": [[{ "node": "Respond ok", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

@@ -1187,6 +1187,8 @@ export interface FullSettings {
   alertRuptura: boolean;
   alertCritico: boolean;
   alertParado: boolean;
+  /** Nova pergunta (webhook ML) → WhatsApp via N8N Full Alerts */
+  alertQuestions: boolean;
   alertCooldownHours: number;
 }
 
@@ -1211,6 +1213,7 @@ export interface FullSettingsUpdateRequest {
   alertRuptura?: boolean;
   alertCritico?: boolean;
   alertParado?: boolean;
+  alertQuestions?: boolean;
   alertCooldownHours?: number;
 }
 
@@ -1252,6 +1255,7 @@ export type FullOverviewResponseSettings = {
   alertRuptura: boolean;
   alertCritico: boolean;
   alertParado: boolean;
+  alertQuestions: boolean;
   alertCooldownHours: number;
 };
 

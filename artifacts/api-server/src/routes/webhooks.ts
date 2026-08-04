@@ -34,6 +34,7 @@ import { verifyN8nWebhookSecret } from "../lib/n8n-listings";
 import { completeListingPrepareJobFromWebhook } from "../lib/listing-prepare-jobs";
 import { getMlItemDescription } from "../lib/ml-listings";
 import { upsertListingTemplateFromMlItem } from "../lib/listing-templates";
+import { notifyNewQuestionWhatsApp } from "../lib/full-alerts";
 
 const router = Router();
 
@@ -180,6 +181,21 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             listingThumbnailUrl,
             listingPermalink,
           });
+
+          void notifyNewQuestionWhatsApp({
+            userId: account.userId,
+            accountId: account.id,
+            accountNickname: account.mlNickname ?? null,
+            question: {
+              id: q.id.toString(),
+              fromNickname: q.from?.nickname ?? null,
+              text: q.text ?? "",
+              itemId: q.item_id ?? null,
+              permalink: listingPermalink,
+            },
+          }).catch((err) => {
+            logger.warn({ err, questionId: q.id }, "Question WhatsApp notify failed");
+          });
         }
       } else if (topic === "orders_v2") {
         const orderId = resource.split("/").pop();
@@ -224,7 +240,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
           accountId: account.id,
           type: "new_order",
           title: "Novo pedido",
-          message: `Pedido #${order.id} de ${order.buyer.nickname} ù R$ ${order.total_amount}`,
+          message: `Pedido #${order.id} de ${order.buyer.nickname} ? R$ ${order.total_amount}`,
           isRead: false,
           resourceType: "order",
           resourceId: order.id.toString(),
@@ -333,7 +349,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "low_stock",
-            title: "Estoque crùtico",
+            title: "Estoque cr?tico",
             message: `"${item.title}" tem apenas ${item.available_quantity} unidade(s)`,
             isRead: false,
             resourceType: "product",
@@ -379,7 +395,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             userId: account.userId,
             accountId: account.id,
             type: "promotion_candidate",
-            title: "Produto elegùvel para promoùùo",
+            title: "Produto eleg?vel para promo??o",
             message: `${productTitle ?? candidate.item_id} pode participar de ${typeLabel}`,
             isRead: false,
             resourceType: "promotion",
@@ -430,7 +446,7 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
               userId: account.userId,
               accountId: account.id,
               type: "promotion_active",
-              title: "Promoùùo ativada",
+              title: "Promo??o ativada",
               message: `${productTitle ?? offer.item_id} entrou em ${typeLabel}`,
               isRead: false,
               resourceType: "promotion",
