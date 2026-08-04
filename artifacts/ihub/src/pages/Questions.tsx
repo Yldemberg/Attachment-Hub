@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useListQuestions,
   useListAccounts,
   useAnswerQuestion,
-  useGetFullSettings,
   useUpdateFullSettings,
+  getFullSettings,
   getListQuestionsQueryKey,
   getGetQuestionQueryKey,
   getGetFullSettingsQueryKey,
@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
+import { MlAccountMultiSelect } from "@/pages/products/components/MlAccountMultiSelect";
 
 type Question = ApiQuestion;
 
@@ -165,14 +166,24 @@ function QuestionCard({ q }: { q: Question }) {
   );
 }
 
+function mlAccountLabel(a: {
+  id: string;
+  mlNickname?: string | null;
+  mlUserId?: string | null;
+}): string {
+  return a.mlNickname ?? a.mlUserId ?? a.id.slice(0, 8);
+}
+
 export default function Questions() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("unanswered");
   const [accountId, setAccountId] = useState("all");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsAccountId, setSettingsAccountId] = useState("");
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [draftPhone, setDraftPhone] = useState("");
   const [draftAlertQuestions, setDraftAlertQuestions] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -191,53 +202,137 @@ export default function Questions() {
   const totalPages = pagination?.totalPages ?? 1;
 
   const { data: accountsData } = useListAccounts();
-  const accounts = (accountsData as { data?: { id: string; mlNickname?: string | null }[] } | null)?.data ?? [];
+  const mlAccounts = useMemo(
+    () =>
+      (accountsData?.data ?? []).filter(
+        (a) => (a.platform ?? "mercadolivre") === "mercadolivre" && a.isActive !== false,
+      ),
+    [accountsData],
+  );
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const preferred = accountId !== "all" ? accountId : accounts[0]?.id ?? "";
-    setSettingsAccountId((prev) => prev || preferred);
-  }, [settingsOpen, accountId, accounts]);
-
-  const settingsParams = { account_id: settingsAccountId };
-  const { data: settings } = useGetFullSettings(settingsParams, {
-    query: {
-      enabled: Boolean(settingsAccountId) && settingsOpen,
-      queryKey: getGetFullSettingsQueryKey(settingsParams),
-    },
-  });
   const updateSettings = useUpdateFullSettings();
 
   useEffect(() => {
-    if (!settings) return;
-    setDraftPhone(settings.whatsappPhone ?? "");
-    setDraftAlertQuestions(settings.alertQuestions ?? true);
-  }, [settings]);
+    if (!settingsOpen || mlAccounts.length === 0) return;
+
+    let cancelled = false;
+    setSettingsLoading(true);
+
+    void (async () => {
+      try {
+        const rows = await Promise.all(
+          mlAccounts.map(async (a) => {
+            const settings = await getFullSettings({ account_id: a.id });
+            return { accountId: a.id, settings };
+          }),
+        );
+        if (cancelled) return;
+
+        const enabledIds = rows
+          .filter((r) => r.settings.alertQuestions)
+          .map((r) => r.accountId);
+
+        const phoneFromEnabled =
+          rows.find((r) => r.settings.alertQuestions && r.settings.whatsappPhone)?.settings
+            .whatsappPhone ??
+          rows.find((r) => r.settings.whatsappPhone)?.settings.whatsappPhone ??
+          "";
+
+        const preferred =
+          accountId !== "all" && mlAccounts.some((a) => a.id === accountId)
+            ? [accountId]
+            : enabledIds.length > 0
+              ? enabledIds
+              : mlAccounts.map((a) => a.id);
+
+        setSelectedAccountIds(preferred);
+        setDraftPhone(phoneFromEnabled);
+        setDraftAlertQuestions(enabledIds.length > 0 || preferred.length > 0);
+      } catch {
+        if (!cancelled) {
+          toast({
+            variant: "destructive",
+            title: "Falha ao carregar WhatsApp",
+            description: "Não foi possível ler as configurações das contas ML.",
+          });
+        }
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen, mlAccounts, accountId]);
 
   const onSaveWhatsApp = async () => {
-    if (!settingsAccountId) return;
-    try {
-      await updateSettings.mutateAsync({
-        data: {
-          accountId: settingsAccountId,
-          whatsappPhone: draftPhone.trim() || null,
-          alertQuestions: draftAlertQuestions,
-        },
+    if (mlAccounts.length === 0) return;
+
+    const phone = draftPhone.trim().replace(/\D/g, "");
+    const notify = draftAlertQuestions && selectedAccountIds.length > 0;
+    if (notify && phone.length < 10) {
+      toast({
+        variant: "destructive",
+        title: "Telefone inválido",
+        description: "Informe DDI+DDD+número (ex.: 5511999999999).",
       });
+      return;
+    }
+    if (draftAlertQuestions && selectedAccountIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Selecione contas",
+        description: "Escolha ao menos uma conta ML ou desative as notificações.",
+      });
+      return;
+    }
+
+    const selected = new Set(selectedAccountIds);
+    setSaving(true);
+    try {
+      await Promise.all(
+        mlAccounts.map((a) => {
+          const isSelected = selected.has(a.id);
+          if (notify && isSelected) {
+            return updateSettings.mutateAsync({
+              data: {
+                accountId: a.id,
+                whatsappPhone: phone,
+                alertQuestions: true,
+              },
+            });
+          }
+          return updateSettings.mutateAsync({
+            data: {
+              accountId: a.id,
+              alertQuestions: false,
+            },
+          });
+        }),
+      );
+
+      const count = notify ? selectedAccountIds.length : 0;
       toast({
         title: "WhatsApp de perguntas salvo",
-        description: "Mesmo número e workflow N8N da Gestão Full.",
+        description: notify
+          ? `${count} conta(s) ML receberão alertas no mesmo workflow N8N.`
+          : "Notificações de perguntas desativadas em todas as contas.",
       });
       setSettingsOpen(false);
-      void queryClient.invalidateQueries({
-        queryKey: getGetFullSettingsQueryKey({ account_id: settingsAccountId }),
-      });
+      for (const a of mlAccounts) {
+        void queryClient.invalidateQueries({
+          queryKey: getGetFullSettingsQueryKey({ account_id: a.id }),
+        });
+      }
     } catch {
       toast({
         variant: "destructive",
         title: "Erro ao salvar",
-        description: "Verifique o telefone (DDI+DDD+número) e tente novamente.",
+        description: "Verifique o telefone e as contas selecionadas.",
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -253,12 +348,8 @@ export default function Questions() {
             variant="outline"
             size="sm"
             className="h-7 text-xs gap-1.5"
-            onClick={() => {
-              const preferred = accountId !== "all" ? accountId : accounts[0]?.id ?? "";
-              setSettingsAccountId(preferred);
-              setSettingsOpen(true);
-            }}
-            disabled={accounts.length === 0}
+            onClick={() => setSettingsOpen(true)}
+            disabled={mlAccounts.length === 0}
           >
             <Settings2 className="w-3.5 h-3.5" />
             WhatsApp
@@ -278,16 +369,16 @@ export default function Questions() {
             </SelectContent>
           </Select>
 
-          {accounts.length > 0 && (
+          {mlAccounts.length > 0 && (
             <Select value={accountId} onValueChange={(v) => { setAccountId(v); setPage(1); }}>
-              <SelectTrigger className="w-36 text-xs h-7">
+              <SelectTrigger className="w-44 text-xs h-7">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as contas</SelectItem>
-                {accounts.map((a) => (
+                {mlAccounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
-                    {a.mlNickname ?? a.id.slice(0, 8)}
+                    {mlAccountLabel(a)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -343,55 +434,56 @@ export default function Questions() {
             <DialogTitle>WhatsApp · Perguntas</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-1">
-            {accounts.length > 1 && (
-              <div className="space-y-1.5">
-                <Label>Conta</Label>
-                <Select
-                  value={settingsAccountId}
-                  onValueChange={setSettingsAccountId}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.mlNickname ?? a.id.slice(0, 8)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Configuração por conta (mesmo cadastro da Gestão Full).
-                </p>
+            {settingsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Carregando contas ML…
               </div>
+            ) : (
+              <>
+                <MlAccountMultiSelect
+                  accounts={mlAccounts}
+                  selectedIds={selectedAccountIds}
+                  onChange={setSelectedAccountIds}
+                  disabled={!draftAlertQuestions || saving}
+                  hint="Contas do Mercado Livre que enviam alerta no WhatsApp quando chegar pergunta."
+                  multiSelectedHint="contas selecionadas — o mesmo número será aplicado a todas."
+                />
+
+                <div className="space-y-1.5">
+                  <Label>WhatsApp (DDI+DDD+número)</Label>
+                  <Input
+                    placeholder="5511999999999"
+                    value={draftPhone}
+                    onChange={(e) => setDraftPhone(e.target.value)}
+                    disabled={!draftAlertQuestions || saving}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Mesmo telefone e workflow N8N + Evolution da Gestão Full.
+                  </p>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draftAlertQuestions}
+                    onChange={(e) => setDraftAlertQuestions(e.target.checked)}
+                    disabled={saving}
+                  />
+                  Notificar novas perguntas no WhatsApp
+                </label>
+              </>
             )}
-            <div className="space-y-1.5">
-              <Label>WhatsApp (DDI+DDD+número)</Label>
-              <Input
-                placeholder="5511999999999"
-                value={draftPhone}
-                onChange={(e) => setDraftPhone(e.target.value)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Mesmo telefone e workflow N8N + Evolution da Gestão Full.
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={draftAlertQuestions}
-                onChange={(e) => setDraftAlertQuestions(e.target.checked)}
-              />
-              Notificar novas perguntas no WhatsApp
-            </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+            <Button variant="outline" onClick={() => setSettingsOpen(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={() => void onSaveWhatsApp()} disabled={updateSettings.isPending || !settingsAccountId}>
-              {updateSettings.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+            <Button
+              onClick={() => void onSaveWhatsApp()}
+              disabled={saving || settingsLoading || mlAccounts.length === 0}
+            >
+              {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
               Salvar
             </Button>
           </DialogFooter>

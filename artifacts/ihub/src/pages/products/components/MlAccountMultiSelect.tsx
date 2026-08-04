@@ -17,6 +17,12 @@ type MlAccountMultiSelectProps = {
   disabled?: boolean;
   /** Texto auxiliar abaixo do label */
   hint?: string;
+  /**
+   * Texto quando há 2+ contas selecionadas.
+   * Passe `null` para ocultar (ex.: fluxos que não são publicação).
+   * Default: mensagem de publicação de anúncio.
+   */
+  multiSelectedHint?: string | null;
 };
 
 function accountLabel(account: MlAccountOption): string {
@@ -34,6 +40,7 @@ export function MlAccountMultiSelect({
   onChange,
   disabled = false,
   hint = "Selecione uma ou mais contas para publicar o anúncio.",
+  multiSelectedHint = "contas selecionadas — o anúncio será criado em cada uma.",
 }: MlAccountMultiSelectProps) {
   const selected = new Set(selectedIds);
 
@@ -106,9 +113,9 @@ export function MlAccountMultiSelect({
       )}
 
       {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
-      {selectedIds.length > 1 ? (
+      {multiSelectedHint != null && selectedIds.length > 1 ? (
         <p className="text-[11px] text-muted-foreground">
-          {selectedIds.length} contas selecionadas — o anúncio será criado em cada uma.
+          {selectedIds.length} {multiSelectedHint}
         </p>
       ) : null}
     </div>
