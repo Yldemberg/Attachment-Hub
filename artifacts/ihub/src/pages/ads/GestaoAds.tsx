@@ -76,30 +76,40 @@ function formatRoas(n: number | null | undefined): string {
 
 function formatDelta(delta: number | null | undefined): { text: string; className: string } {
   if (delta == null || !Number.isFinite(delta)) {
-    return { text: "—", className: "text-muted-foreground" };
+    return { text: "Sem base ant.", className: "text-muted-foreground" };
   }
   const sign = delta > 0 ? "+" : "";
-  const text = `${sign}${delta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  const text = `${sign}${delta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% vs ant.`;
   if (delta > 0) return { text, className: "text-emerald-600" };
   if (delta < 0) return { text, className: "text-red-600" };
-  return { text, className: "text-muted-foreground" };
+  return { text: "0% vs ant.", className: "text-muted-foreground" };
 }
 
-const ALERT_STYLES: Record<
-  string,
-  { row: string; dot: string }
-> = {
+function statusLabel(status: string | null | undefined): string {
+  if (!status) return "—";
+  const map: Record<string, string> = {
+    active: "Ativa",
+    paused: "Pausada",
+    inactive: "Inativa",
+  };
+  return map[status.toLowerCase()] ?? status;
+}
+
+const ALERT_STYLES: Record<string, { card: string; dot: string; label: string }> = {
   spent_no_sales: {
-    row: "bg-red-50/70",
+    card: "border-red-200 bg-red-50/80",
     dot: "bg-red-500",
+    label: "text-red-800",
   },
   below_target: {
-    row: "bg-amber-50/70",
+    card: "border-amber-200 bg-amber-50/80",
     dot: "bg-amber-500",
+    label: "text-amber-900",
   },
   on_track: {
-    row: "bg-emerald-50/70",
+    card: "border-emerald-200 bg-emerald-50/80",
     dot: "bg-emerald-500",
+    label: "text-emerald-900",
   },
 };
 
@@ -142,6 +152,64 @@ function monthOptions(): Array<{ key: string; label: string; from: string; to: s
     });
   }
   return options;
+}
+
+function AlertCards({ alerts, loading }: { alerts: AdsAlertRow[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-muted/30 h-28 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {alerts.map((alert) => {
+        const style = ALERT_STYLES[alert.id] ?? ALERT_STYLES.on_track;
+        return (
+          <div key={alert.id} className={`rounded-xl border p-3.5 ${style.card}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`size-2.5 rounded-full shrink-0 ${style.dot}`} />
+              <p className={`text-sm font-semibold leading-tight ${style.label}`}>{alert.label}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+              <div>
+                <p className="text-muted-foreground">Qtd</p>
+                <p className="font-semibold text-foreground tabular-nums text-sm">{alert.quantity}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">% do custo</p>
+                <p className="font-semibold text-foreground tabular-nums text-sm">
+                  {alert.costSharePct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Custo</p>
+                <p className="font-semibold text-foreground tabular-nums text-sm">
+                  {formatCurrency(alert.cost)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Faturamento</p>
+                <p className="font-semibold text-foreground tabular-nums text-sm">
+                  {formatCurrency(alert.revenue)}
+                </p>
+              </div>
+              <div className="col-span-2 pt-1 border-t border-black/5">
+                <p className="text-muted-foreground">ROAS</p>
+                <p className="font-bold text-foreground tabular-nums text-base">
+                  {formatRoas(alert.roas)}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function GestaoAds() {
@@ -213,34 +281,40 @@ export default function GestaoAds() {
     },
   ];
 
-  const chartData =
-    overview?.daily?.map((d) => ({
+  const chartData = useMemo(() => {
+    const daily = overview?.daily ?? [];
+    const mapped = daily.map((d) => ({
       date: d.date,
       label: formatIsoDatePtBr(d.date).slice(0, 5),
-      gasto: d.cost,
-      faturamento: d.revenue,
-    })) ?? [];
+      gasto: d.cost ?? 0,
+      faturamento: d.revenue ?? 0,
+    }));
+    const hasSignal = mapped.some((d) => d.gasto > 0 || d.faturamento > 0);
+    return { points: mapped, hasSignal };
+  }, [overview?.daily]);
 
   const campaigns: AdsCampaignRow[] = overview?.campaigns ?? [];
   const alerts: AdsAlertRow[] = overview?.alerts ?? [];
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+      <div className="p-4 sm:p-6 space-y-5 max-w-[1400px]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
             <h1 className="text-xl font-bold text-foreground">Gestão Ads</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Product Ads do Mercado Livre — campanhas, custo e ROAS do período
+              Product Ads · {formatIsoDatePtBr(overview?.dateFrom ?? dateFrom)} –{" "}
+              {formatIsoDatePtBr(overview?.dateTo ?? dateTo)}
+              {isFetching && !isLoading ? " · atualizando…" : ""}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {mlAccounts.length > 0 && (
               <Select
                 value={accountId ?? "all"}
                 onValueChange={(v) => setAccountId(v === "all" ? undefined : v)}
               >
-                <SelectTrigger className="w-44 text-sm h-8">
+                <SelectTrigger className="w-[160px] text-sm h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -254,7 +328,7 @@ export default function GestaoAds() {
               </Select>
             )}
             <Select value={periodKey} onValueChange={setPeriodKey}>
-              <SelectTrigger className="w-48 text-sm h-8">
+              <SelectTrigger className="w-[180px] text-sm h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -266,7 +340,7 @@ export default function GestaoAds() {
               </SelectContent>
             </Select>
             {overview?.manageUrl && (
-              <Button asChild size="sm" className="h-8 gap-1.5">
+              <Button asChild size="sm" className="h-9 gap-1.5">
                 <a href={overview.manageUrl} target="_blank" rel="noopener noreferrer">
                   Gerenciar no ML
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -288,114 +362,57 @@ export default function GestaoAds() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <section className="bg-card border border-card-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Megaphone className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Alertas de Performance</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
-                    <th className="py-2 pr-2 font-medium">Status</th>
-                    <th className="py-2 px-2 font-medium text-right">Qtd</th>
-                    <th className="py-2 px-2 font-medium text-right">% Custo</th>
-                    <th className="py-2 px-2 font-medium text-right">Custo</th>
-                    <th className="py-2 px-2 font-medium text-right">Faturamento</th>
-                    <th className="py-2 pl-2 font-medium text-right">ROAS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading
-                    ? Array.from({ length: 3 }).map((_, i) => (
-                        <tr key={i} className="border-b border-border/60">
-                          <td className="py-2.5 text-muted-foreground" colSpan={6}>
-                            Carregando…
-                          </td>
-                        </tr>
-                      ))
-                    : alerts.map((alert) => {
-                        const style = ALERT_STYLES[alert.id] ?? ALERT_STYLES.on_track;
-                        return (
-                          <tr key={alert.id} className={`${style.row} border-b border-border/40`}>
-                            <td className="py-2.5 pr-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`size-2 rounded-full ${style.dot}`} />
-                                <span className="font-medium text-foreground">{alert.label}</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-2 text-right tabular-nums">{alert.quantity}</td>
-                            <td className="py-2.5 px-2 text-right tabular-nums">
-                              {alert.costSharePct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
-                            </td>
-                            <td className="py-2.5 px-2 text-right tabular-nums">
-                              {formatCurrency(alert.cost)}
-                            </td>
-                            <td className="py-2.5 px-2 text-right tabular-nums">
-                              {formatCurrency(alert.revenue)}
-                            </td>
-                            <td className="py-2.5 pl-2 text-right tabular-nums font-medium">
-                              {formatRoas(alert.roas)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="bg-card border border-card-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground">Métricas do Período</h2>
-              <p className="text-[11px] text-muted-foreground">
-                {formatIsoDatePtBr(overview?.dateFrom ?? dateFrom)} –{" "}
-                {formatIsoDatePtBr(overview?.dateTo ?? dateTo)}
-                {isFetching && !isLoading ? " · atualizando…" : ""}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {kpiCards.map((kpi) => {
-                const Icon = kpi.icon;
-                const delta = formatDelta(kpi.delta);
-                return (
-                  <div
-                    key={kpi.label}
-                    className="rounded-lg border border-border/80 bg-muted/20 px-3 py-2.5"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[11px] text-muted-foreground font-medium">{kpi.label}</p>
-                      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                    </div>
-                    <p className="text-lg font-bold text-foreground tabular-nums leading-tight">
-                      {isLoading ? "—" : kpi.value}
-                    </p>
-                    <p className={`text-[11px] mt-0.5 font-medium ${delta.className}`}>
-                      {isLoading ? "—" : delta.text}
-                      <span className="text-muted-foreground font-normal"> vs ant.</span>
-                    </p>
+        <section>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            {kpiCards.map((kpi) => {
+              const Icon = kpi.icon;
+              const delta = formatDelta(kpi.delta);
+              return (
+                <div
+                  key={kpi.label}
+                  className="rounded-xl border border-card-border bg-card px-3.5 py-3 min-w-0"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs text-muted-foreground font-medium truncate">{kpi.label}</p>
+                    <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
+                  <p className="text-xl font-bold text-foreground tabular-nums leading-none truncate">
+                    {isLoading ? "—" : kpi.value}
+                  </p>
+                  <p className={`text-xs mt-2 font-medium leading-snug ${delta.className}`}>
+                    {isLoading ? "—" : delta.text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Megaphone className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Alertas de Performance</h2>
+          </div>
+          <AlertCards alerts={alerts} loading={isLoading} />
+        </section>
 
         <section className="bg-card border border-card-border rounded-xl p-4">
           <h2 className="text-sm font-semibold text-foreground mb-3">Tendência Diária</h2>
           {isLoading ? (
-            <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+            <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">
               Carregando gráfico…
             </div>
-          ) : chartData.length === 0 ? (
-            <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
-              Sem dados diários no período.
+          ) : !chartData.hasSignal ? (
+            <div className="h-40 flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground text-center px-4">
+              <p>Sem série diária disponível para este período.</p>
+              <p className="text-xs">
+                Os totais acima vêm das campanhas; a tendência diária depende da API de agregação do ML.
+              </p>
             </div>
           ) : (
-            <div className="h-64 w-full">
+            <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData.points} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
                   <defs>
                     <linearGradient id="adsSpend" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
@@ -407,12 +424,17 @@ export default function GestaoAds() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                  <YAxis
+                  <XAxis
+                    dataKey="label"
                     tick={{ fontSize: 11 }}
-                    className="text-muted-foreground"
+                    interval="preserveStartEnd"
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    width={48}
+                    tick={{ fontSize: 11 }}
                     tickFormatter={(v) =>
-                      Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(0)}k` : String(v)
+                      Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(1)}k` : String(v)
                     }
                   />
                   <Tooltip
@@ -426,6 +448,8 @@ export default function GestaoAds() {
                     }}
                   />
                   <Legend
+                    verticalAlign="top"
+                    height={28}
                     formatter={(value) => (value === "gasto" ? "Gasto" : "Faturamento")}
                   />
                   <Area
@@ -448,62 +472,88 @@ export default function GestaoAds() {
           )}
         </section>
 
-        <section className="bg-card border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
+        <section className="bg-card border border-card-border rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">Campanhas</h2>
-            <p className="text-[11px] text-muted-foreground">
-              {campaigns.length} campanha{campaigns.length === 1 ? "" : "s"} · ordenadas por gasto
+            <p className="text-xs text-muted-foreground shrink-0">
+              {campaigns.length} · ordenadas por gasto
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[720px]">
+            <table className="w-full text-sm table-fixed min-w-[760px]">
+              <colgroup>
+                <col className="w-[34%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+              </colgroup>
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
-                  <th className="py-2 pr-3 font-medium">Campanha</th>
-                  <th className="py-2 px-2 font-medium">Status</th>
-                  <th className="py-2 px-2 font-medium text-right">Gasto</th>
-                  <th className="py-2 px-2 font-medium text-right">Faturamento</th>
-                  <th className="py-2 px-2 font-medium text-right">ROAS</th>
-                  <th className="py-2 px-2 font-medium text-right">Cliques</th>
-                  <th className="py-2 pl-2 font-medium text-right">Impressões</th>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground bg-muted/40">
+                  <th className="py-2.5 pl-4 pr-2 font-medium">Campanha</th>
+                  <th className="py-2.5 px-2 font-medium">Status</th>
+                  <th className="py-2.5 px-2 font-medium text-right">Gasto</th>
+                  <th className="py-2.5 px-2 font-medium text-right">Faturamento</th>
+                  <th className="py-2.5 px-2 font-medium text-right">ROAS</th>
+                  <th className="py-2.5 px-2 font-medium text-right">Cliques</th>
+                  <th className="py-2.5 pl-2 pr-4 font-medium text-right">Impr.</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-10 text-center text-muted-foreground">
                       Carregando campanhas…
                     </td>
                   </tr>
                 ) : campaigns.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-10 text-center text-muted-foreground">
                       Nenhuma campanha com métricas no período.
                     </td>
                   </tr>
                 ) : (
                   campaigns.map((c) => (
-                    <tr key={`${c.accountId}-${c.id}`} className="border-b border-border/50 hover:bg-muted/30">
-                      <td className="py-2.5 pr-3">
-                        <p className="font-medium text-foreground leading-snug">{c.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{c.id}</p>
+                    <tr
+                      key={`${c.accountId}-${c.id}`}
+                      className="border-t border-border/60 hover:bg-muted/25"
+                    >
+                      <td className="py-2.5 pl-4 pr-2 min-w-0">
+                        <p className="font-medium text-foreground leading-snug truncate" title={c.name}>
+                          {c.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
+                          #{c.id}
+                        </p>
                       </td>
                       <td className="py-2.5 px-2">
                         {c.status ? (
                           <span
-                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md border ${statusBadgeClass(c.status)}`}
+                            className={`inline-flex text-[11px] font-medium px-2 py-0.5 rounded-md border whitespace-nowrap ${statusBadgeClass(c.status)}`}
                           >
-                            {c.status}
+                            {statusLabel(c.status)}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(c.cost)}</td>
-                      <td className="py-2.5 px-2 text-right tabular-nums">{formatCurrency(c.revenue)}</td>
-                      <td className="py-2.5 px-2 text-right tabular-nums font-medium">{formatRoas(c.roas)}</td>
-                      <td className="py-2.5 px-2 text-right tabular-nums">{formatNumber(c.clicks)}</td>
-                      <td className="py-2.5 pl-2 text-right tabular-nums">{formatNumber(c.impressions)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                        {formatCurrency(c.cost)}
+                      </td>
+                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                        {formatCurrency(c.revenue)}
+                      </td>
+                      <td className="py-2.5 px-2 text-right tabular-nums font-medium whitespace-nowrap">
+                        {formatRoas(c.roas)}
+                      </td>
+                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                        {formatNumber(c.clicks)}
+                      </td>
+                      <td className="py-2.5 pl-2 pr-4 text-right tabular-nums whitespace-nowrap">
+                        {formatNumber(c.impressions)}
+                      </td>
                     </tr>
                   ))
                 )}

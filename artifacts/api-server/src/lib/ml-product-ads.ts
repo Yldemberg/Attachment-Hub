@@ -328,9 +328,33 @@ async function fetchAllCampaigns(
   return all;
 }
 
+function normalizeDailyDate(raw: unknown): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return null;
+}
+
+function accumulateDailyRow(
+  byDate: Map<string, { cost: number; revenue: number }>,
+  row: MlDailyRow & Record<string, unknown>,
+): void {
+  const date =
+    normalizeDailyDate(row.date) ??
+    normalizeDailyDate(row.day) ??
+    normalizeDailyDate((row as { date_from?: string }).date_from);
+  if (!date) return;
+  const cost = num(row.cost ?? row.spend ?? row.metrics?.cost ?? row.metrics?.spend);
+  const revenue = num(row.total_amount ?? row.metrics?.total_amount);
+  if (cost === 0 && revenue === 0) return;
+  const prev = byDate.get(date) ?? { cost: 0, revenue: 0 };
+  byDate.set(date, { cost: prev.cost + cost, revenue: prev.revenue + revenue });
+}
+
 async function fetchMetricsSummary(
   accountId: string,
   advertiserId: number,
+  siteId: string,
   dateFrom: string,
   dateTo: string,
 ): Promise<AdsKpis> {
@@ -358,48 +382,93 @@ async function fetchMetricsSummary(
   } catch (err) {
     logger.warn({ err, accountId, advertiserId }, "ML Product Ads metrics_summary failed");
   }
+
+  // Fallback: soma das campanhas do período anterior
+  try {
+    const rows = await fetchAllCampaigns(accountId, advertiserId, siteId, dateFrom, dateTo);
+    return finalizeKpis(
+      rows.reduce(
+        (acc, row) => {
+          const m = metricsToPartial(row.metrics ?? row.metrics_summary);
+          return {
+            impressions: acc.impressions + m.impressions,
+            clicks: acc.clicks + m.clicks,
+            cost: acc.cost + m.cost,
+            revenue: acc.revenue + m.revenue,
+          };
+        },
+        { impressions: 0, clicks: 0, cost: 0, revenue: 0 },
+      ),
+    );
+  } catch (err) {
+    logger.warn({ err, accountId, advertiserId }, "ML Product Ads previous-period campaigns failed");
+  }
   return emptyKpis();
 }
 
 async function fetchDailySeries(
   accountId: string,
   advertiserId: number,
+  siteId: string,
   dateFrom: string,
   dateTo: string,
 ): Promise<Map<string, { cost: number; revenue: number }>> {
   const byDate = new Map<string, { cost: number; revenue: number }>();
-  const qs = new URLSearchParams({
+  const qsBase = {
     date_from: dateFrom,
     date_to: dateTo,
-    metrics: "cost,total_amount",
+    metrics: "cost,total_amount,clicks,prints",
     aggregation_type: "DAILY",
     limit: String(CAMPAIGN_PAGE_LIMIT),
-    offset: "0",
-  });
+  };
 
-  try {
-    for (let page = 0; page < MAX_CAMPAIGN_PAGES; page++) {
-      qs.set("offset", String(page * CAMPAIGN_PAGE_LIMIT));
-      const data = await ml.getWithHeaders<MlCampaignsResponse>(
-        accountId,
-        `/advertising/advertisers/${advertiserId}/product_ads/campaigns?${qs.toString()}`,
-        { "api-version": "2" },
-      );
-      const rows = data.results ?? [];
-      for (const row of rows) {
-        const daily = row as MlDailyRow;
-        const date = daily.date;
-        if (!date) continue;
-        const cost = num(daily.cost ?? daily.spend ?? daily.metrics?.cost ?? daily.metrics?.spend);
-        const revenue = num(daily.total_amount ?? daily.metrics?.total_amount);
-        const prev = byDate.get(date) ?? { cost: 0, revenue: 0 };
-        byDate.set(date, { cost: prev.cost + cost, revenue: prev.revenue + revenue });
+  const paths = [
+    (offset: number) => {
+      const qs = new URLSearchParams({ ...qsBase, offset: String(offset) });
+      return {
+        path: `/advertising/advertisers/${advertiserId}/product_ads/campaigns?${qs.toString()}`,
+        headers: { "api-version": "2" } as Record<string, string>,
+      };
+    },
+    (offset: number) => {
+      const qs = new URLSearchParams({ ...qsBase, offset: String(offset) });
+      return {
+        path: `/marketplace/advertising/${encodeURIComponent(siteId)}/advertisers/${advertiserId}/product_ads/campaigns/search?${qs.toString()}`,
+        headers: {} as Record<string, string>,
+      };
+    },
+  ];
+
+  for (const build of paths) {
+    byDate.clear();
+    try {
+      for (let page = 0; page < MAX_CAMPAIGN_PAGES; page++) {
+        const offset = page * CAMPAIGN_PAGE_LIMIT;
+        const { path, headers } = build(offset);
+        const data =
+          Object.keys(headers).length > 0
+            ? await ml.getWithHeaders<MlCampaignsResponse>(accountId, path, headers)
+            : await ml.get<MlCampaignsResponse>(accountId, path);
+        const rows = data.results ?? [];
+        for (const row of rows) {
+          accumulateDailyRow(byDate, row as MlDailyRow & Record<string, unknown>);
+          // Alguns payloads aninham série diária em `metrics`/`values`
+          const nested = (row as { values?: unknown[]; metrics?: unknown }).values;
+          if (Array.isArray(nested)) {
+            for (const point of nested) {
+              if (point && typeof point === "object") {
+                accumulateDailyRow(byDate, point as MlDailyRow & Record<string, unknown>);
+              }
+            }
+          }
+        }
+        const total = data.paging?.total ?? rows.length;
+        if ((page + 1) * CAMPAIGN_PAGE_LIMIT >= total || rows.length < CAMPAIGN_PAGE_LIMIT) break;
       }
-      const total = data.paging?.total ?? rows.length;
-      if ((page + 1) * CAMPAIGN_PAGE_LIMIT >= total || rows.length < CAMPAIGN_PAGE_LIMIT) break;
+      if (byDate.size > 0) return byDate;
+    } catch (err) {
+      logger.warn({ err, accountId, advertiserId }, "ML Product Ads daily metrics attempt failed");
     }
-  } catch (err) {
-    logger.warn({ err, accountId, advertiserId }, "ML Product Ads daily metrics failed");
   }
 
   return byDate;
@@ -478,8 +547,8 @@ async function fetchOverviewForAccount(
   try {
     const [campaignRows, previousKpis, daily] = await Promise.all([
       fetchAllCampaigns(accountId, advertiserId, siteId, dateFrom, dateTo),
-      fetchMetricsSummary(accountId, advertiserId, previousDateFrom, previousDateTo),
-      fetchDailySeries(accountId, advertiserId, dateFrom, dateTo),
+      fetchMetricsSummary(accountId, advertiserId, siteId, previousDateFrom, previousDateTo),
+      fetchDailySeries(accountId, advertiserId, siteId, dateFrom, dateTo),
     ]);
 
     const campaigns = mapCampaigns(accountId, campaignRows);
