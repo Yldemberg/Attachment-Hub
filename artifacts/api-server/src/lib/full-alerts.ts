@@ -220,6 +220,7 @@ export async function runFullAlertsJob(): Promise<{ accounts: number; alertsSent
       const toSend: FullAlertPayloadItem[] = [];
 
       for (const it of candidates) {
+        if ((it.inTransitQty ?? 0) > 0) continue;
         const recent = await wasAlertedRecently(
           settings.userId,
           settings.accountId,

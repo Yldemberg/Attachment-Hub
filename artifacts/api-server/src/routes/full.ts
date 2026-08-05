@@ -9,6 +9,13 @@ import {
 } from "../lib/full-overview";
 import { syncFullStockForAccount } from "../lib/full-sync";
 import { runFullAlertsJob } from "../lib/full-alerts";
+import {
+  cancelFullInboundShipment,
+  createFullInboundShipment,
+  listFullInboundShipments,
+  receiveFullInboundShipment,
+  serializeInboundShipment,
+} from "../lib/full-inbound";
 import type { FullSkuStatus } from "../lib/full-engine";
 import { logger } from "../lib/logger";
 
@@ -219,6 +226,137 @@ router.post("/full/alerts/run", ...auth, async (req, res) => {
   } catch (err) {
     logger.error({ err }, "POST /full/alerts/run failed");
     res.status(500).json({ error: "Failed to run Full alerts" });
+  }
+});
+
+router.get("/full/inbounds", ...auth, async (req, res) => {
+  try {
+    const accountId = typeof req.query.account_id === "string" ? req.query.account_id : "";
+    if (!accountId) {
+      res.status(400).json({ error: "account_id is required" });
+      return;
+    }
+    const owns = await assertUserOwnsAccount(req.user!.id, accountId);
+    if (!owns) {
+      res.status(404).json({ error: "Account not found" });
+      return;
+    }
+    const rows = await listFullInboundShipments({
+      userId: req.user!.id,
+      accountId,
+    });
+    res.json({ data: rows.map(serializeInboundShipment) });
+  } catch (err) {
+    logger.error({ err }, "GET /full/inbounds failed");
+    res.status(500).json({ error: "Failed to list Full inbounds" });
+  }
+});
+
+router.post("/full/inbounds", ...auth, async (req, res) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const accountId = typeof body.accountId === "string" ? body.accountId : "";
+    if (!accountId) {
+      res.status(400).json({ error: "accountId is required" });
+      return;
+    }
+    const owns = await assertUserOwnsAccount(req.user!.id, accountId);
+    if (!owns) {
+      res.status(404).json({ error: "Account not found" });
+      return;
+    }
+
+    const scheduledDate =
+      typeof body.scheduledDate === "string" ? body.scheduledDate : "";
+    const notes =
+      body.notes == null || body.notes === ""
+        ? null
+        : typeof body.notes === "string"
+          ? body.notes
+          : null;
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    const items = rawItems.map((it) => {
+      const row = it as Record<string, unknown>;
+      return {
+        productId: typeof row.productId === "string" ? row.productId : null,
+        mlItemId: typeof row.mlItemId === "string" ? row.mlItemId : null,
+        sku: typeof row.sku === "string" ? row.sku : "",
+        quantity: Number(row.quantity),
+      };
+    });
+
+    try {
+      const created = await createFullInboundShipment({
+        userId: req.user!.id,
+        accountId,
+        scheduledDate,
+        notes,
+        items,
+      });
+      res.status(201).json(serializeInboundShipment(created));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "INVALID_SCHEDULED_DATE") {
+        res.status(400).json({ error: "scheduledDate must be YYYY-MM-DD" });
+        return;
+      }
+      if (msg === "NO_ITEMS") {
+        res.status(400).json({ error: "items with sku and quantity >= 1 are required" });
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    logger.error({ err }, "POST /full/inbounds failed");
+    res.status(500).json({ error: "Failed to create Full inbound" });
+  }
+});
+
+router.post("/full/inbounds/:id/receive", ...auth, async (req, res) => {
+  try {
+    const id = typeof req.params.id === "string" ? req.params.id : "";
+    if (!id) {
+      res.status(400).json({ error: "id is required" });
+      return;
+    }
+    const updated = await receiveFullInboundShipment(req.user!.id, id);
+    if (!updated) {
+      res.status(404).json({ error: "Inbound not found" });
+      return;
+    }
+    const owns = await assertUserOwnsAccount(req.user!.id, updated.accountId);
+    if (!owns) {
+      res.status(404).json({ error: "Inbound not found" });
+      return;
+    }
+    res.json(serializeInboundShipment(updated));
+  } catch (err) {
+    logger.error({ err }, "POST /full/inbounds/:id/receive failed");
+    res.status(500).json({ error: "Failed to receive Full inbound" });
+  }
+});
+
+router.post("/full/inbounds/:id/cancel", ...auth, async (req, res) => {
+  try {
+    const id = typeof req.params.id === "string" ? req.params.id : "";
+    if (!id) {
+      res.status(400).json({ error: "id is required" });
+      return;
+    }
+    const updated = await cancelFullInboundShipment(req.user!.id, id);
+    if (!updated) {
+      res.status(404).json({ error: "Inbound not found" });
+      return;
+    }
+    const owns = await assertUserOwnsAccount(req.user!.id, updated.accountId);
+    if (!owns) {
+      res.status(404).json({ error: "Inbound not found" });
+      return;
+    }
+    res.json(serializeInboundShipment(updated));
+  } catch (err) {
+    logger.error({ err }, "POST /full/inbounds/:id/cancel failed");
+    res.status(500).json({ error: "Failed to cancel Full inbound" });
   }
 });
 

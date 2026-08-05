@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   timestamp,
+  date,
   uuid,
   integer,
   boolean,
@@ -125,3 +126,56 @@ export const insertFullAlertLogSchema = createInsertSchema(fullAlertLogTable).om
 export const selectFullAlertLogSchema = createSelectSchema(fullAlertLogTable);
 export type InsertFullAlertLog = z.infer<typeof insertFullAlertLogSchema>;
 export type FullAlertLog = typeof fullAlertLogTable.$inferSelect;
+
+export const FULL_INBOUND_STATUSES = ["planned", "in_transit", "received", "cancelled"] as const;
+export type FullInboundStatus = (typeof FULL_INBOUND_STATUSES)[number];
+
+/**
+ * Envio Full planejado (registro manual): data de agendamento + itens.
+ * Usado como em_transito e para silenciar WhatsApp enquanto aberto.
+ */
+export const fullInboundShipmentTable = pgTable(
+  "full_inbound_shipment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profilesTable.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accountsTable.id, { onDelete: "cascade" }),
+    scheduledDate: date("scheduled_date").notNull(),
+    status: text("status").notNull().default("planned"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("full_inbound_shipment_account_status_idx").on(t.accountId, t.status),
+    index("full_inbound_shipment_user_account_idx").on(t.userId, t.accountId, t.createdAt),
+  ],
+);
+
+export const fullInboundShipmentItemTable = pgTable(
+  "full_inbound_shipment_item",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shipmentId: uuid("shipment_id")
+      .notNull()
+      .references(() => fullInboundShipmentTable.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").references(() => productsTable.id, { onDelete: "set null" }),
+    mlItemId: text("ml_item_id"),
+    sku: text("sku").notNull(),
+    quantity: integer("quantity").notNull(),
+    quantityRemaining: integer("quantity_remaining").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("full_inbound_shipment_item_shipment_idx").on(t.shipmentId),
+    index("full_inbound_shipment_item_sku_idx").on(t.sku),
+  ],
+);
+
+export type FullInboundShipment = typeof fullInboundShipmentTable.$inferSelect;
+export type FullInboundShipmentItem = typeof fullInboundShipmentItemTable.$inferSelect;

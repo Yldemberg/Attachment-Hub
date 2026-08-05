@@ -6,13 +6,19 @@ import {
   useUpdateFullSettings,
   useSyncFullStock,
   useRunFullAlerts,
+  useListFullInbounds,
+  useCreateFullInbound,
+  useReceiveFullInbound,
+  useCancelFullInbound,
   getGetFullOverviewQueryKey,
   getGetFullSettingsQueryKey,
+  getListFullInboundsQueryKey,
   GetFullOverviewStatus,
   GetFullOverviewPeriodDays,
   type FullOverviewItem,
   type FullSkuStatus,
   type GetFullOverviewParams,
+  type FullInboundShipment,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -47,10 +53,28 @@ import {
   Settings2,
   MessageCircle,
   Truck,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | FullSkuStatus;
+
+type InboundDraftLine = {
+  key: string;
+  sku: string;
+  title: string;
+  productId: string | null;
+  mlItemId: string | null;
+  quantity: number;
+};
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 /** Critérios recomendados (lead ~9d + folga, promo A/B). */
 const FULL_RECOMMENDED = {
@@ -156,6 +180,11 @@ export default function GestaoFull() {
   const [searchDebounced, setSearchDebounced] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [inboundsOpen, setInboundsOpen] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(todayYmd);
+  const [inboundNotes, setInboundNotes] = useState("");
+  const [draftLines, setDraftLines] = useState<InboundDraftLine[]>([]);
 
   useEffect(() => {
     if (!accountId && mlAccounts.length > 0) {
@@ -183,6 +212,7 @@ export default function GestaoFull() {
     query: {
       queryKey: getGetFullOverviewQueryKey(overviewParams),
       enabled: Boolean(accountId),
+      refetchInterval: 60_000,
     },
   });
 
@@ -197,6 +227,20 @@ export default function GestaoFull() {
   const syncMutation = useSyncFullStock();
   const updateSettings = useUpdateFullSettings();
   const runAlerts = useRunFullAlerts();
+  const createInbound = useCreateFullInbound();
+  const receiveInbound = useReceiveFullInbound();
+  const cancelInbound = useCancelFullInbound();
+
+  const inboundsParams = { account_id: accountId };
+  const { data: inboundsData, isLoading: inboundsLoading } = useListFullInbounds(
+    inboundsParams,
+    {
+      query: {
+        queryKey: getListFullInboundsQueryKey(inboundsParams),
+        enabled: Boolean(accountId) && inboundsOpen,
+      },
+    },
+  );
 
   const [draftCoverage, setDraftCoverage] = useState(FULL_RECOMMENDED.coverageTargetDays);
   const [draftLead, setDraftLead] = useState(FULL_RECOMMENDED.leadTimeDays);
@@ -232,6 +276,9 @@ export default function GestaoFull() {
     void queryClient.invalidateQueries({ queryKey: getGetFullOverviewQueryKey(overviewParams) });
     void queryClient.invalidateQueries({
       queryKey: getGetFullSettingsQueryKey({ account_id: accountId }),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: getListFullInboundsQueryKey({ account_id: accountId }),
     });
   }, [queryClient, overviewParams, accountId]);
 
@@ -350,6 +397,99 @@ export default function GestaoFull() {
     return qty;
   }, [items, selectedKeys]);
 
+  const openRegisterDialog = () => {
+    const lines: InboundDraftLine[] = [];
+    for (const it of items) {
+      const key = rowKey(it);
+      if (!selectedKeys.has(key)) continue;
+      lines.push({
+        key,
+        sku: it.sku,
+        title: it.title,
+        productId: it.productId ?? null,
+        mlItemId: it.mlItemId ?? null,
+        quantity: Math.max(1, it.suggestedQty || 1),
+      });
+    }
+    if (lines.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Nada selecionado",
+        description: "Selecione anúncios na lista para registrar o envio.",
+      });
+      return;
+    }
+    setDraftLines(lines);
+    setScheduledDate(todayYmd());
+    setInboundNotes("");
+    setRegisterOpen(true);
+  };
+
+  const onCreateInbound = async () => {
+    if (!accountId) return;
+    try {
+      await createInbound.mutateAsync({
+        data: {
+          accountId,
+          scheduledDate,
+          notes: inboundNotes.trim() || null,
+          items: draftLines.map((l) => ({
+            sku: l.sku,
+            quantity: Math.max(1, Math.round(l.quantity)),
+            productId: l.productId,
+            mlItemId: l.mlItemId,
+          })),
+        },
+      });
+      toast({
+        title: "Envio Full registrado",
+        description: `${draftLines.length} SKU(s) · WhatsApp silenciado enquanto o inbound estiver aberto.`,
+      });
+      setRegisterOpen(false);
+      setSelectedKeys(new Set());
+      invalidate();
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Falha ao registrar",
+        description: "Não foi possível salvar o envio Full no iHub.",
+      });
+    }
+  };
+
+  const onReceiveInbound = async (id: string) => {
+    try {
+      await receiveInbound.mutateAsync({ id });
+      toast({ title: "Marcado como recebido", description: "SKU volta a poder alertar no WhatsApp." });
+      invalidate();
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Falha",
+        description: "Não foi possível marcar como recebido.",
+      });
+    }
+  };
+
+  const onCancelInbound = async (id: string) => {
+    try {
+      await cancelInbound.mutateAsync({ id });
+      toast({ title: "Envio cancelado", description: "SKU volta a poder alertar no WhatsApp." });
+      invalidate();
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Falha",
+        description: "Não foi possível cancelar o envio.",
+      });
+    }
+  };
+
+  const openInbounds = inboundsData?.data?.filter(
+    (s) => s.status === "planned" || s.status === "in_transit",
+  ) ?? [];
+  const recentInbounds = inboundsData?.data ?? [];
+
   if (accountsLoading) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
@@ -385,6 +525,16 @@ export default function GestaoFull() {
             <Button variant="outline" size="sm" className="h-8" onClick={() => setSettingsOpen(true)}>
               <Settings2 className="w-3.5 h-3.5 mr-1.5" />
               Configurar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setInboundsOpen(true)}
+              disabled={!accountId}
+            >
+              <ClipboardList className="w-3.5 h-3.5 mr-1.5" />
+              Envios
             </Button>
             <Button
               variant="outline"
@@ -512,13 +662,19 @@ export default function GestaoFull() {
             )}
           </p>
           {selectedKeys.size > 0 && (
-            <button
-              type="button"
-              className="text-primary hover:underline"
-              onClick={() => setSelectedKeys(new Set())}
-            >
-              Limpar seleção ({selectedKeys.size} · enviar {selectedSuggested} un.)
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" className="h-7 text-xs" onClick={openRegisterDialog}>
+                <Truck className="w-3.5 h-3.5 mr-1" />
+                Registrar envio Full
+              </Button>
+              <button
+                type="button"
+                className="text-primary hover:underline text-xs"
+                onClick={() => setSelectedKeys(new Set())}
+              >
+                Limpar seleção ({selectedKeys.size} · enviar {selectedSuggested} un.)
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -693,6 +849,153 @@ export default function GestaoFull() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Registrar envio Full</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground leading-snug">
+            Espelha no iHub o envio que você criou no Seller Center (data + SKUs). Enquanto o
+            inbound estiver aberto, esses SKUs não disparam alerta WhatsApp e entram como em
+            trânsito na sugestão de envio.
+          </p>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Data de agendamento</Label>
+              <Input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notas (opcional)</Label>
+              <Input
+                value={inboundNotes}
+                onChange={(e) => setInboundNotes(e.target.value)}
+                placeholder="Ex.: coleta ML, NF…"
+                maxLength={500}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Itens</Label>
+              {draftLines.map((line) => (
+                <div
+                  key={line.key}
+                  className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-mono text-muted-foreground truncate">{line.sku}</p>
+                    <p className="text-xs text-foreground line-clamp-1">{line.title}</p>
+                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    className="h-8 w-20 text-sm"
+                    value={line.quantity}
+                    onChange={(e) => {
+                      const n = Math.max(1, Number(e.target.value) || 1);
+                      setDraftLines((prev) =>
+                        prev.map((l) => (l.key === line.key ? { ...l, quantity: n } : l)),
+                      );
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegisterOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void onCreateInbound()}
+              disabled={createInbound.isPending || draftLines.length === 0}
+            >
+              {createInbound.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={inboundsOpen} onOpenChange={setInboundsOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Envios Full registrados</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            {openInbounds.length} aberto(s). Marque recebido quando o CD disponibilizar o estoque.
+          </p>
+          {inboundsLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Carregando…
+            </div>
+          ) : recentInbounds.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Nenhum envio registrado. Selecione anúncios e use “Registrar envio Full”.
+            </p>
+          ) : (
+            <div className="space-y-2 py-1">
+              {recentInbounds.map((ship: FullInboundShipment) => {
+                const open = ship.status === "planned" || ship.status === "in_transit";
+                const totalQty = ship.items.reduce((s, it) => s + it.quantity, 0);
+                return (
+                  <div
+                    key={ship.id}
+                    className="rounded-lg border border-border px-3 py-2.5 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                          {formatSendBy(ship.scheduledDate)} · {ship.items.length} SKU · {totalQty}{" "}
+                          un.
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {ship.status}
+                          {ship.notes ? ` · ${ship.notes}` : ""}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
+                          {ship.items.map((it) => `${it.sku}×${it.quantityRemaining}`).join(" · ")}
+                        </p>
+                      </div>
+                      {open ? (
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 text-xs"
+                            disabled={receiveInbound.isPending}
+                            onClick={() => void onReceiveInbound(ship.id)}
+                          >
+                            Recebido
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-muted-foreground"
+                            disabled={cancelInbound.isPending}
+                            onClick={() => void onCancelInbound(ship.id)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInboundsOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -763,6 +1066,14 @@ function FullListingCard({
             >
               {STATUS_LABEL[item.status]}
             </span>
+            {item.inTransitQty > 0 ? (
+              <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                Em envio · {item.inTransitQty} un.
+                {item.inboundScheduledDate
+                  ? ` · ${formatSendBy(item.inboundScheduledDate)}`
+                  : ""}
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
               Cobertura {formatCoverage(item.coverageDays)}
             </span>

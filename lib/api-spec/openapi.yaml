@@ -1695,6 +1695,108 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /full/inbounds:
+    get:
+      operationId: listFullInbounds
+      tags: [full]
+      summary: Listar envios Full registrados no iHub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de inbounds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullInboundListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createFullInbound
+      tags: [full]
+      summary: Registrar envio Full planejado (SKU, qtd, data)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFullInboundBody"
+      responses:
+        "201":
+          description: Inbound criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullInboundShipment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /full/inbounds/{id}/receive:
+    post:
+      operationId: receiveFullInbound
+      tags: [full]
+      summary: Marcar envio Full como recebido no CD
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inbound atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullInboundShipment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /full/inbounds/{id}/cancel:
+    post:
+      operationId: cancelFullInbound
+      tags: [full]
+      summary: Cancelar envio Full registrado
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inbound cancelado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullInboundShipment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ---------------------------------------------------------------------------
   # Promotions
   # ---------------------------------------------------------------------------
@@ -4712,6 +4814,13 @@ components:
           type: string
           format: date-time
           nullable: true
+        inTransitQty:
+          type: integer
+          description: Unidades em envios Full abertos (planned/in_transit)
+        inboundScheduledDate:
+          type: string
+          nullable: true
+          description: Próxima data de agendamento de inbound aberto (YYYY-MM-DD)
       required:
         - sku
         - title
@@ -4722,6 +4831,7 @@ components:
         - daysWithoutSales
         - suggestedQty
         - status
+        - inTransitQty
 
     FullOverviewKpis:
       type: object
@@ -4806,6 +4916,95 @@ components:
           items:
             type: string
       required: [synced, skipped, failed, errors]
+
+    FullInboundStatus:
+      type: string
+      enum: [planned, in_transit, received, cancelled]
+
+    FullInboundShipmentItem:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+          nullable: true
+        mlItemId:
+          type: string
+          nullable: true
+        sku:
+          type: string
+        quantity:
+          type: integer
+        quantityRemaining:
+          type: integer
+      required: [id, sku, quantity, quantityRemaining]
+
+    FullInboundShipment:
+      type: object
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        scheduledDate:
+          type: string
+          description: YYYY-MM-DD
+        status:
+          $ref: "#/components/schemas/FullInboundStatus"
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FullInboundShipmentItem"
+      required: [id, accountId, scheduledDate, status, items, createdAt, updatedAt]
+
+    FullInboundListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FullInboundShipment"
+      required: [data]
+
+    CreateFullInboundBody:
+      type: object
+      properties:
+        accountId:
+          type: string
+        scheduledDate:
+          type: string
+          description: YYYY-MM-DD
+        notes:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+                nullable: true
+              mlItemId:
+                type: string
+                nullable: true
+              sku:
+                type: string
+              quantity:
+                type: integer
+                minimum: 1
+            required: [sku, quantity]
+      required: [accountId, scheduledDate, items]
 
     # --------------------------------------------------------------------------
     # Webhooks

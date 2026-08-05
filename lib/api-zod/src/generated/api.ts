@@ -1949,6 +1949,13 @@ export const GetFullOverviewResponse = zod.object({
       sendBy: zod.string().nullish(),
       status: zod.enum(["ruptura", "critico", "saudavel", "parado"]),
       lastSyncedAt: zod.coerce.date().nullish(),
+      inTransitQty: zod
+        .number()
+        .describe("Unidades em envios Full abertos (planned\/in_transit)"),
+      inboundScheduledDate: zod
+        .string()
+        .nullish()
+        .describe("Próxima data de agendamento de inbound aberto (YYYY-MM-DD)"),
     }),
   ),
   totalFullListings: zod
@@ -2037,6 +2044,109 @@ export const SyncFullStockResponse = zod.object({
 export const RunFullAlertsResponse = zod.object({
   accounts: zod.number(),
   alertsSent: zod.number(),
+});
+
+/**
+ * @summary Listar envios Full registrados no iHub
+ */
+export const ListFullInboundsQueryParams = zod.object({
+  account_id: zod.coerce.string(),
+});
+
+export const ListFullInboundsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string(),
+      accountId: zod.string(),
+      scheduledDate: zod.string().describe("YYYY-MM-DD"),
+      status: zod.enum(["planned", "in_transit", "received", "cancelled"]),
+      notes: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+      items: zod.array(
+        zod.object({
+          id: zod.string(),
+          productId: zod.string().nullish(),
+          mlItemId: zod.string().nullish(),
+          sku: zod.string(),
+          quantity: zod.number(),
+          quantityRemaining: zod.number(),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * @summary Registrar envio Full planejado (SKU, qtd, data)
+ */
+
+export const CreateFullInboundBody = zod.object({
+  accountId: zod.string(),
+  scheduledDate: zod.string().describe("YYYY-MM-DD"),
+  notes: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      productId: zod.string().nullish(),
+      mlItemId: zod.string().nullish(),
+      sku: zod.string(),
+      quantity: zod.number().min(1),
+    }),
+  ),
+});
+
+/**
+ * @summary Marcar envio Full como recebido no CD
+ */
+export const ReceiveFullInboundParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ReceiveFullInboundResponse = zod.object({
+  id: zod.string(),
+  accountId: zod.string(),
+  scheduledDate: zod.string().describe("YYYY-MM-DD"),
+  status: zod.enum(["planned", "in_transit", "received", "cancelled"]),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      productId: zod.string().nullish(),
+      mlItemId: zod.string().nullish(),
+      sku: zod.string(),
+      quantity: zod.number(),
+      quantityRemaining: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Cancelar envio Full registrado
+ */
+export const CancelFullInboundParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CancelFullInboundResponse = zod.object({
+  id: zod.string(),
+  accountId: zod.string(),
+  scheduledDate: zod.string().describe("YYYY-MM-DD"),
+  status: zod.enum(["planned", "in_transit", "received", "cancelled"]),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      productId: zod.string().nullish(),
+      mlItemId: zod.string().nullish(),
+      sku: zod.string(),
+      quantity: zod.number(),
+      quantityRemaining: zod.number(),
+    }),
+  ),
 });
 
 /**

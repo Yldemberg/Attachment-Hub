@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startFullAlertsScheduler } from "./lib/full-alerts";
+import { startFullStockSyncScheduler } from "./lib/full-stock-scheduler";
 
 /** Replit / production usually set PORT; local `pnpm run dev` defaults to 8080. */
 const rawPort = process.env.PORT?.trim() || "8080";
@@ -19,4 +20,5 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startFullAlertsScheduler();
+  startFullStockSyncScheduler();
 });

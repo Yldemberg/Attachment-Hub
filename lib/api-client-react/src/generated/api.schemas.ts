@@ -1235,6 +1235,10 @@ export interface FullOverviewItem {
   sendBy?: string | null;
   status: FullSkuStatus;
   lastSyncedAt?: string | null;
+  /** Unidades em envios Full abertos (planned/in_transit) */
+  inTransitQty: number;
+  /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD) */
+  inboundScheduledDate?: string | null;
 }
 
 export interface FullOverviewKpis {
@@ -1273,6 +1277,57 @@ export interface FullStockSyncResponse {
   skipped: number;
   failed: number;
   errors: string[];
+}
+
+export type FullInboundStatus =
+  (typeof FullInboundStatus)[keyof typeof FullInboundStatus];
+
+export const FullInboundStatus = {
+  planned: "planned",
+  in_transit: "in_transit",
+  received: "received",
+  cancelled: "cancelled",
+} as const;
+
+export interface FullInboundShipmentItem {
+  id: string;
+  productId?: string | null;
+  mlItemId?: string | null;
+  sku: string;
+  quantity: number;
+  quantityRemaining: number;
+}
+
+export interface FullInboundShipment {
+  id: string;
+  accountId: string;
+  /** YYYY-MM-DD */
+  scheduledDate: string;
+  status: FullInboundStatus;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: FullInboundShipmentItem[];
+}
+
+export interface FullInboundListResponse {
+  data: FullInboundShipment[];
+}
+
+export type CreateFullInboundBodyItemsItem = {
+  productId?: string | null;
+  mlItemId?: string | null;
+  sku: string;
+  /** @minimum 1 */
+  quantity: number;
+};
+
+export interface CreateFullInboundBody {
+  accountId: string;
+  /** YYYY-MM-DD */
+  scheduledDate: string;
+  notes?: string | null;
+  items: CreateFullInboundBodyItemsItem[];
 }
 
 export interface MercadoLivreWebhookPayload {
@@ -1567,6 +1622,10 @@ export type SyncFullStockBody = {
 export type RunFullAlerts200 = {
   accounts: number;
   alertsSent: number;
+};
+
+export type ListFullInboundsParams = {
+  account_id: string;
 };
 
 export type GetPromotionsSummaryParams = {

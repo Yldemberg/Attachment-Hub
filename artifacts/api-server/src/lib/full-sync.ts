@@ -84,128 +84,214 @@ export type FullStockSyncResult = {
   errors: string[];
 };
 
-/**
- * Atualiza full_stock_snapshot para anúncios Full da conta via API ML.
- */
-export async function syncFullStockForAccount(accountId: string): Promise<FullStockSyncResult> {
-  const db = getDb();
-  const products = await db
-    .select()
-    .from(productsTable)
-    .where(
-      and(
-        eq(productsTable.accountId, accountId),
-        eq(productsTable.isFull, true),
-      ),
-    );
+const emptyResult = (): FullStockSyncResult => ({
+  synced: 0,
+  skipped: 0,
+  failed: 0,
+  errors: [],
+});
 
-  let synced = 0;
-  let skipped = 0;
-  let failed = 0;
-  const errors: string[] = [];
+function mergeResults(into: FullStockSyncResult, part: FullStockSyncResult): void {
+  into.synced += part.synced;
+  into.skipped += part.skipped;
+  into.failed += part.failed;
+  into.errors.push(...part.errors);
+}
+
+type ProductStockRow = {
+  id: string;
+  mlItemId: string | null;
+  sku: string | null;
+  availableQuantity: number | null;
+};
+
+/**
+ * Atualiza full_stock_snapshot para um anúncio Full via API ML fulfillment.
+ */
+export async function syncFullStockForMlItem(
+  accountId: string,
+  mlItemId: string,
+  productHint?: ProductStockRow | null,
+): Promise<FullStockSyncResult> {
+  const result = emptyResult();
+  const db = getDb();
   const now = new Date();
 
-  for (const product of products) {
-    if (!product.mlItemId) {
-      skipped += 1;
-      continue;
+  let product = productHint ?? null;
+  if (!product || product.mlItemId !== mlItemId) {
+    const [row] = await db
+      .select({
+        id: productsTable.id,
+        mlItemId: productsTable.mlItemId,
+        sku: productsTable.sku,
+        availableQuantity: productsTable.availableQuantity,
+      })
+      .from(productsTable)
+      .where(and(eq(productsTable.accountId, accountId), eq(productsTable.mlItemId, mlItemId)))
+      .limit(1);
+    product = row ?? null;
+  }
+
+  if (!product?.mlItemId) {
+    result.skipped += 1;
+    return result;
+  }
+
+  try {
+    const item = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(product.mlItemId)}`);
+    const targets = collectInventoryTargets(product.id, item, trimSku(product.sku));
+
+    if (targets.length === 0) {
+      const sku = trimSku(product.sku) ?? product.mlItemId;
+      await db
+        .insert(fullStockSnapshotTable)
+        .values({
+          accountId,
+          productId: product.id,
+          mlItemId: product.mlItemId,
+          sku,
+          inventoryId: `local:${product.mlItemId}`,
+          availableQuantity: product.availableQuantity ?? 0,
+          notAvailableQuantity: 0,
+          syncedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [fullStockSnapshotTable.accountId, fullStockSnapshotTable.inventoryId],
+          set: {
+            productId: product.id,
+            mlItemId: product.mlItemId,
+            sku,
+            availableQuantity: product.availableQuantity ?? 0,
+            notAvailableQuantity: 0,
+            syncedAt: now,
+            updatedAt: now,
+          },
+        });
+      result.synced += 1;
+      return result;
     }
 
-    try {
-      const item = await ml.get<MlItem>(
-        accountId,
-        `/items/${encodeURIComponent(product.mlItemId)}`,
-      );
-      const targets = collectInventoryTargets(product.id, item, trimSku(product.sku));
-      if (targets.length === 0) {
-        // Fallback: grava snapshot com estoque do anúncio e inventory_id sintético
-        const sku = trimSku(product.sku) ?? product.mlItemId;
+    for (const t of targets) {
+      try {
+        let available = 0;
+        let notAvailable = 0;
+        if (t.inventoryId.startsWith("local:")) {
+          available = product.availableQuantity ?? 0;
+        } else {
+          const stock = await fetchMlFulfillmentStock(accountId, t.inventoryId);
+          available = Number(stock.available_quantity ?? 0);
+          notAvailable = Number(stock.not_available_quantity ?? 0);
+        }
+
         await db
           .insert(fullStockSnapshotTable)
           .values({
             accountId,
-            productId: product.id,
-            mlItemId: product.mlItemId,
-            sku,
-            inventoryId: `local:${product.mlItemId}`,
-            availableQuantity: product.availableQuantity ?? 0,
-            notAvailableQuantity: 0,
+            productId: t.productId,
+            mlItemId: t.mlItemId,
+            sku: t.sku,
+            inventoryId: t.inventoryId,
+            availableQuantity: available,
+            notAvailableQuantity: notAvailable,
             syncedAt: now,
             updatedAt: now,
           })
           .onConflictDoUpdate({
             target: [fullStockSnapshotTable.accountId, fullStockSnapshotTable.inventoryId],
             set: {
-              productId: product.id,
-              mlItemId: product.mlItemId,
-              sku,
-              availableQuantity: product.availableQuantity ?? 0,
-              notAvailableQuantity: 0,
-              syncedAt: now,
-              updatedAt: now,
-            },
-          });
-        synced += 1;
-        continue;
-      }
-
-      for (const t of targets) {
-        try {
-          let available = 0;
-          let notAvailable = 0;
-          if (t.inventoryId.startsWith("local:")) {
-            available = product.availableQuantity ?? 0;
-          } else {
-            const stock = await fetchMlFulfillmentStock(accountId, t.inventoryId);
-            available = Number(stock.available_quantity ?? 0);
-            notAvailable = Number(stock.not_available_quantity ?? 0);
-          }
-
-          await db
-            .insert(fullStockSnapshotTable)
-            .values({
-              accountId,
               productId: t.productId,
               mlItemId: t.mlItemId,
               sku: t.sku,
-              inventoryId: t.inventoryId,
               availableQuantity: available,
               notAvailableQuantity: notAvailable,
               syncedAt: now,
               updatedAt: now,
-            })
-            .onConflictDoUpdate({
-              target: [fullStockSnapshotTable.accountId, fullStockSnapshotTable.inventoryId],
-              set: {
-                productId: t.productId,
-                mlItemId: t.mlItemId,
-                sku: t.sku,
-                availableQuantity: available,
-                notAvailableQuantity: notAvailable,
-                syncedAt: now,
-                updatedAt: now,
-              },
-            });
-          synced += 1;
-        } catch (err) {
-          failed += 1;
-          const msg = err instanceof Error ? err.message : String(err);
-          errors.push(`${t.mlItemId}/${t.inventoryId}: ${msg}`);
-          logger.warn({ err, accountId, inventoryId: t.inventoryId }, "Full stock fetch failed");
-        }
+            },
+          });
+        result.synced += 1;
+      } catch (err) {
+        result.failed += 1;
+        const msg = err instanceof Error ? err.message : String(err);
+        result.errors.push(`${t.mlItemId}/${t.inventoryId}: ${msg}`);
+        logger.warn({ err, accountId, inventoryId: t.inventoryId }, "Full stock fetch failed");
       }
-    } catch (err) {
-      failed += 1;
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`${product.mlItemId}: ${msg}`);
-      logger.warn({ err, accountId, mlItemId: product.mlItemId }, "Full item fetch failed");
     }
+  } catch (err) {
+    result.failed += 1;
+    const msg = err instanceof Error ? err.message : String(err);
+    result.errors.push(`${product.mlItemId}: ${msg}`);
+    logger.warn({ err, accountId, mlItemId: product.mlItemId }, "Full item fetch failed");
   }
 
-  return { synced, skipped, failed, errors: errors.slice(0, 20) };
+  return result;
 }
 
-function isFullLogistic(logistic: string | null | undefined): boolean {
+/**
+ * Atualiza full_stock_snapshot para anúncios Full da conta via API ML.
+ */
+export async function syncFullStockForAccount(accountId: string): Promise<FullStockSyncResult> {
+  const db = getDb();
+  const products = await db
+    .select({
+      id: productsTable.id,
+      mlItemId: productsTable.mlItemId,
+      sku: productsTable.sku,
+      availableQuantity: productsTable.availableQuantity,
+    })
+    .from(productsTable)
+    .where(and(eq(productsTable.accountId, accountId), eq(productsTable.isFull, true)));
+
+  const result = emptyResult();
+
+  for (const product of products) {
+    if (!product.mlItemId) {
+      result.skipped += 1;
+      continue;
+    }
+    const part = await syncFullStockForMlItem(accountId, product.mlItemId, product);
+    mergeResults(result, part);
+  }
+
+  return {
+    ...result,
+    errors: result.errors.slice(0, 20),
+  };
+}
+
+const ITEM_SYNC_DEBOUNCE_MS = 12_000;
+const pendingItemSync = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Agenda sync de estoque Full por item com debounce (coalesce rajadas de webhook).
+ */
+export function scheduleFullStockItemSync(accountId: string, mlItemId: string): void {
+  const id = trimSku(mlItemId);
+  if (!id) return;
+  const key = `${accountId}:${id}`;
+  const existing = pendingItemSync.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    pendingItemSync.delete(key);
+    void syncFullStockForMlItem(accountId, id)
+      .then((r) => {
+        if (r.failed > 0 || r.synced > 0) {
+          logger.info(
+            { accountId, mlItemId: id, synced: r.synced, failed: r.failed, skipped: r.skipped },
+            "Debounced Full stock item sync done",
+          );
+        }
+      })
+      .catch((err) => {
+        logger.warn({ err, accountId, mlItemId: id }, "Debounced Full stock item sync failed");
+      });
+  }, ITEM_SYNC_DEBOUNCE_MS);
+  timer.unref?.();
+  pendingItemSync.set(key, timer);
+}
+
+export function isFullLogistic(logistic: string | null | undefined): boolean {
   if (!logistic) return false;
   return logistic
     .split(",")

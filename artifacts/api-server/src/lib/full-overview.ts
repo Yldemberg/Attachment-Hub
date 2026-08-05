@@ -13,6 +13,7 @@ import {
 } from "./full-engine";
 import { FULL_RECOMMENDED_SETTINGS } from "./full-recommended-settings";
 import { sumFullSalesMaps } from "./full-sync";
+import { getOpenInboundAggByAccount } from "./full-inbound";
 
 export type FullOverviewItem = {
   sku: string;
@@ -31,6 +32,10 @@ export type FullOverviewItem = {
   sendBy: string | null;
   status: FullSkuStatus;
   lastSyncedAt: string | null;
+  /** Unidades em envios Full abertos (planned/in_transit). */
+  inTransitQty: number;
+  /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD). */
+  inboundScheduledDate: string | null;
 };
 
 export type FullOverviewResult = {
@@ -208,13 +213,8 @@ export async function buildFullOverviewForAccount(opts: {
     settings.salesPeriodDays,
   );
 
-  const engineParams = {
-    coverageTargetDays: settings.coverageTargetDays,
-    leadTimeDays: settings.leadTimeDays,
-    salesPeriodDays: settings.salesPeriodDays,
-    stuckMultiplier: settings.stuckMultiplier,
-    inTransit: 0,
-  };
+  const { bySku: inboundBySku, byMlItemId: inboundByMlItemId } =
+    await getOpenInboundAggByAccount(opts.accountId);
 
   const nowMs = Date.now();
   const MS_PER_DAY = 86_400_000;
@@ -247,9 +247,22 @@ export async function buildFullOverviewForAccount(opts: {
         ? Math.max(0, Math.floor((nowMs - lastSaleAt.getTime()) / MS_PER_DAY))
         : null;
 
+    const inboundAgg =
+      (sku ? inboundBySku.get(sku) : undefined) ??
+      (p.mlItemId ? inboundByMlItemId.get(p.mlItemId) : undefined) ??
+      inboundBySku.get(displaySku);
+    const inTransitQty = inboundAgg?.qty ?? 0;
+    const inboundScheduledDate = inboundAgg?.nextScheduledDate ?? null;
+
     const metrics = computeFullSkuMetrics(
       { stockFull, unitsSoldPeriod },
-      engineParams,
+      {
+        coverageTargetDays: settings.coverageTargetDays,
+        leadTimeDays: settings.leadTimeDays,
+        salesPeriodDays: settings.salesPeriodDays,
+        stuckMultiplier: settings.stuckMultiplier,
+        inTransit: inTransitQty,
+      },
     );
 
     items.push({
@@ -269,6 +282,8 @@ export async function buildFullOverviewForAccount(opts: {
       sendBy: metrics.sendBy,
       status: metrics.status,
       lastSyncedAt: lastSyncedAt ? lastSyncedAt.toISOString() : null,
+      inTransitQty,
+      inboundScheduledDate,
     });
   }
 

@@ -27,6 +27,7 @@ import type {
   BulkUpdateProductListingStatusRequest,
   BulkUpdateProductListingStatusResponse,
   ConnectAmazonAccountBody,
+  CreateFullInboundBody,
   CreatePriceDiscount200,
   CreatePriceDiscountRequest,
   CreateProductRequest,
@@ -36,6 +37,8 @@ import type {
   DuplicateProductRequest,
   DuplicateProductResponse,
   ErrorResponse,
+  FullInboundListResponse,
+  FullInboundShipment,
   FullOverviewResponse,
   FullSettings,
   FullSettingsUpdateRequest,
@@ -67,6 +70,7 @@ import type {
   InventorySkuFinancialsResponse,
   ListAccounts200,
   ListCriticalAdsParams,
+  ListFullInboundsParams,
   ListListingTemplatesParams,
   ListNotificationsParams,
   ListOrdersParams,
@@ -5084,6 +5088,373 @@ export const useRunFullAlerts = <
   TContext
 > => {
   return useMutation(getRunFullAlertsMutationOptions(options));
+};
+
+/**
+ * @summary Listar envios Full registrados no iHub
+ */
+export const getListFullInboundsUrl = (params: ListFullInboundsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/full/inbounds?${stringifiedParams}`
+    : `/api/full/inbounds`;
+};
+
+export const listFullInbounds = async (
+  params: ListFullInboundsParams,
+  options?: RequestInit,
+): Promise<FullInboundListResponse> => {
+  return customFetch<FullInboundListResponse>(getListFullInboundsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListFullInboundsQueryKey = (
+  params?: ListFullInboundsParams,
+) => {
+  return [`/api/full/inbounds`, ...(params ? [params] : [])] as const;
+};
+
+export const getListFullInboundsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFullInbounds>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: ListFullInboundsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFullInbounds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListFullInboundsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFullInbounds>>
+  > = ({ signal }) => listFullInbounds(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFullInbounds>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFullInboundsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFullInbounds>>
+>;
+export type ListFullInboundsQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Listar envios Full registrados no iHub
+ */
+
+export function useListFullInbounds<
+  TData = Awaited<ReturnType<typeof listFullInbounds>>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+>(
+  params: ListFullInboundsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFullInbounds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFullInboundsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Registrar envio Full planejado (SKU, qtd, data)
+ */
+export const getCreateFullInboundUrl = () => {
+  return `/api/full/inbounds`;
+};
+
+export const createFullInbound = async (
+  createFullInboundBody: CreateFullInboundBody,
+  options?: RequestInit,
+): Promise<FullInboundShipment> => {
+  return customFetch<FullInboundShipment>(getCreateFullInboundUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFullInboundBody),
+  });
+};
+
+export const getCreateFullInboundMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFullInbound>>,
+    TError,
+    { data: BodyType<CreateFullInboundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFullInbound>>,
+  TError,
+  { data: BodyType<CreateFullInboundBody> },
+  TContext
+> => {
+  const mutationKey = ["createFullInbound"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFullInbound>>,
+    { data: BodyType<CreateFullInboundBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createFullInbound(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFullInboundMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFullInbound>>
+>;
+export type CreateFullInboundMutationBody = BodyType<CreateFullInboundBody>;
+export type CreateFullInboundMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Registrar envio Full planejado (SKU, qtd, data)
+ */
+export const useCreateFullInbound = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFullInbound>>,
+    TError,
+    { data: BodyType<CreateFullInboundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFullInbound>>,
+  TError,
+  { data: BodyType<CreateFullInboundBody> },
+  TContext
+> => {
+  return useMutation(getCreateFullInboundMutationOptions(options));
+};
+
+/**
+ * @summary Marcar envio Full como recebido no CD
+ */
+export const getReceiveFullInboundUrl = (id: string) => {
+  return `/api/full/inbounds/${id}/receive`;
+};
+
+export const receiveFullInbound = async (
+  id: string,
+  options?: RequestInit,
+): Promise<FullInboundShipment> => {
+  return customFetch<FullInboundShipment>(getReceiveFullInboundUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getReceiveFullInboundMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveFullInbound>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof receiveFullInbound>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["receiveFullInbound"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof receiveFullInbound>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return receiveFullInbound(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReceiveFullInboundMutationResult = NonNullable<
+  Awaited<ReturnType<typeof receiveFullInbound>>
+>;
+
+export type ReceiveFullInboundMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Marcar envio Full como recebido no CD
+ */
+export const useReceiveFullInbound = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveFullInbound>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof receiveFullInbound>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getReceiveFullInboundMutationOptions(options));
+};
+
+/**
+ * @summary Cancelar envio Full registrado
+ */
+export const getCancelFullInboundUrl = (id: string) => {
+  return `/api/full/inbounds/${id}/cancel`;
+};
+
+export const cancelFullInbound = async (
+  id: string,
+  options?: RequestInit,
+): Promise<FullInboundShipment> => {
+  return customFetch<FullInboundShipment>(getCancelFullInboundUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCancelFullInboundMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelFullInbound>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelFullInbound>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["cancelFullInbound"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelFullInbound>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelFullInbound(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelFullInboundMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelFullInbound>>
+>;
+
+export type CancelFullInboundMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Cancelar envio Full registrado
+ */
+export const useCancelFullInbound = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelFullInbound>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelFullInbound>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCancelFullInboundMutationOptions(options));
 };
 
 /**

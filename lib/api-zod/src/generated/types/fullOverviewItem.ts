@@ -25,4 +25,8 @@ export interface FullOverviewItem {
   sendBy?: string | null;
   status: FullSkuStatus;
   lastSyncedAt?: Date | null;
+  /** Unidades em envios Full abertos (planned/in_transit) */
+  inTransitQty: number;
+  /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD) */
+  inboundScheduledDate?: string | null;
 }

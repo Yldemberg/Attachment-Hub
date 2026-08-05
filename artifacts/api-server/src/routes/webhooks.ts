@@ -29,12 +29,16 @@ import {
   invalidatePromotionsCache,
   PROMOTION_TYPE_LABELS,
 } from "../lib/ml-promotions";
-import { buildMlOrderStoredPayload } from "../lib/ml-order-payload";
+import { buildMlOrderStoredPayload, type StoredMlOrderItemsJsonRow } from "../lib/ml-order-payload";
 import { verifyN8nWebhookSecret } from "../lib/n8n-listings";
 import { completeListingPrepareJobFromWebhook } from "../lib/listing-prepare-jobs";
 import { getMlItemDescription } from "../lib/ml-listings";
 import { upsertListingTemplateFromMlItem } from "../lib/listing-templates";
 import { notifyNewQuestionWhatsApp } from "../lib/full-alerts";
+import {
+  isFullLogistic,
+  scheduleFullStockItemSync,
+} from "../lib/full-sync";
 
 const router = Router();
 
@@ -247,6 +251,18 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
         });
 
         await applyMandateStockFromWebhookOrder(account.id, order);
+
+        if (Array.isArray(itemsJson)) {
+          const seen = new Set<string>();
+          for (const it of itemsJson as StoredMlOrderItemsJsonRow[]) {
+            const logistic = it.sale_logistic_type ?? it.logistic_type;
+            if (!isFullLogistic(logistic)) continue;
+            const fullItemId = typeof it.item_id === "string" ? it.item_id.trim() : "";
+            if (!fullItemId || seen.has(fullItemId)) continue;
+            seen.add(fullItemId);
+            scheduleFullStockItemSync(account.id, fullItemId);
+          }
+        }
       } else if (topic === "items") {
         const itemId = resource.split("/").pop();
         if (!itemId) return;
@@ -355,6 +371,10 @@ router.post("/webhooks/mercadolivre", mlWebhookRateLimit, async (req, res) => {
             resourceType: "product",
             resourceId: item.id,
           });
+        }
+
+        if (isFull) {
+          scheduleFullStockItemSync(account.id, itemId);
         }
       } else if (topic === "public_candidates" || topic === "candidates") {
         const candidateId = resource.split("/").pop();
