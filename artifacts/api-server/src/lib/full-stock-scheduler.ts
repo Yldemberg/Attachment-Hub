@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { productsTable } from "@workspace/db/schema";
 import { getDb } from "./db";
 import { syncFullStockForAccount } from "./full-sync";
@@ -19,7 +19,12 @@ export async function runFullStockSyncJob(): Promise<FullStockSyncJobResult> {
   const rows = await db
     .selectDistinct({ accountId: productsTable.accountId })
     .from(productsTable)
-    .where(eq(productsTable.isFull, true));
+    .where(
+      or(
+        eq(productsTable.isFull, true),
+        sql`${productsTable.logisticType} ILIKE '%fulfillment%'`,
+      )!,
+    );
 
   let synced = 0;
   let failed = 0;

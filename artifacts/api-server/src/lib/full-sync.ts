@@ -4,7 +4,7 @@ import {
   fullStockSnapshotTable,
   ordersTable,
 } from "@workspace/db/schema";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
 import {
   ml,
   fetchMlFulfillmentStock,
@@ -240,7 +240,15 @@ export async function syncFullStockForAccount(accountId: string): Promise<FullSt
       availableQuantity: productsTable.availableQuantity,
     })
     .from(productsTable)
-    .where(and(eq(productsTable.accountId, accountId), eq(productsTable.isFull, true)));
+    .where(
+      and(
+        eq(productsTable.accountId, accountId),
+        or(
+          eq(productsTable.isFull, true),
+          sql`${productsTable.logisticType} ILIKE '%fulfillment%'`,
+        )!,
+      ),
+    );
 
   const result = emptyResult();
 

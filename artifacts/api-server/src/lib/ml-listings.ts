@@ -10,6 +10,7 @@ import {
   fetchMlItemPricesBatch,
   getMlEffectiveLogisticType,
   getMlOriginalListPrice,
+  itemIsMlFull,
 } from "./mercadolivre";
 import { logger } from "./logger";
 
@@ -919,7 +920,7 @@ export async function closeMlItem(accountId: string, itemId: string): Promise<Ml
 
 export async function upsertProductFromMlItem(accountId: string, item: MlItem): Promise<string> {
   const db = getDb();
-  const isFull = item.shipping?.logistic_type === "fulfillment";
+  const isFull = itemIsMlFull(item);
   const isFlex = Array.isArray(item.shipping?.tags) && item.shipping.tags!.includes("self_service_in");
   const logisticType = getMlEffectiveLogisticType(item);
 

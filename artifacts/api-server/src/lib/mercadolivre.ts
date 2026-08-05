@@ -730,19 +730,32 @@ export async function enrichMlItemCatalogListing(accountId: string, item: MlItem
  */
 export async function enrichMlItem(accountId: string, item: MlItem): Promise<MlItem> {
   const needsTags = !Array.isArray(item.shipping?.tags);
+  const needsLogisticType = !item.shipping?.logistic_type;
   const needsCatalog = item.catalog_listing !== true;
-  if (!needsTags && !needsCatalog) return item;
+  if (!needsTags && !needsLogisticType && !needsCatalog) return item;
   try {
     const full = await ml.get<MlItem>(accountId, `/items/${encodeURIComponent(item.id)}`);
+    const needsShipping = needsTags || needsLogisticType;
     return {
       ...item,
-      ...(needsTags ? { shipping: full.shipping } : {}),
+      ...(needsShipping ? { shipping: full.shipping ?? item.shipping } : {}),
       ...(needsCatalog ? { catalog_listing: full.catalog_listing } : {}),
     };
   } catch (err) {
     logger.warn({ err, itemId: item.id }, "ML fetch full item for enrichment failed");
     return item;
   }
+}
+
+/** True when shipping logistic includes Mercado Envios Full (fulfillment). */
+export function itemIsMlFull(item: MlItem): boolean {
+  if (item.shipping?.logistic_type === "fulfillment") return true;
+  const effective = getMlEffectiveLogisticType(item);
+  if (!effective) return false;
+  return effective
+    .split(",")
+    .map((s) => s.trim())
+    .includes("fulfillment");
 }
 
 /**

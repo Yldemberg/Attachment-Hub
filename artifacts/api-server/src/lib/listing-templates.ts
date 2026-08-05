@@ -5,7 +5,7 @@ import {
   accountsTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { ml, type MlItem, type MlVariation } from "./mercadolivre";
+import { ml, type MlItem, type MlVariation, itemIsMlFull } from "./mercadolivre";
 import {
   getMlItemDescription,
   createMlItem,
@@ -167,7 +167,7 @@ export async function upsertListingTemplateFromMlItem(params: {
   const { userId, accountId, productId, item, description } = params;
   const db = getDb();
   const payload = buildTemplatePayloadFromMlItem(item, description);
-  const isFull = item.shipping?.logistic_type === "fulfillment";
+  const isFull = itemIsMlFull(item);
   const isCatalog = item.catalog_listing === true;
   const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
   const now = new Date();

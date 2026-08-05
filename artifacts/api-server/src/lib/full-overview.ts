@@ -5,7 +5,7 @@ import {
   fullSettingsTable,
   type FullSettings,
 } from "@workspace/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import {
   computeFullSkuMetrics,
   computeFullOverviewKpis,
@@ -158,14 +158,17 @@ export async function buildFullOverviewForAccount(opts: {
     settings.salesPeriodDays = opts.periodDaysOverride;
   }
 
-  // Todos os anúncios Full da conta (com ou sem SKU).
+  // Anúncios Full: is_full OU logistic_type com fulfillment (legado com flag errada no sync).
   const fullProducts = await db
     .select()
     .from(productsTable)
     .where(
       and(
         eq(productsTable.accountId, opts.accountId),
-        eq(productsTable.isFull, true),
+        or(
+          eq(productsTable.isFull, true),
+          sql`${productsTable.logisticType} ILIKE '%fulfillment%'`,
+        )!,
       ),
     );
 

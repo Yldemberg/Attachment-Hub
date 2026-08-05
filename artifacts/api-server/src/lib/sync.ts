@@ -12,6 +12,7 @@ import {
   getMlItemRepresentativeSku,
   getMlOriginalListPrice,
   getMlVariationSku,
+  itemIsMlFull,
   mergeMlVariation,
 } from "./mercadolivre";
 import { buildMlOrderStoredPayload } from "./ml-order-payload";
@@ -64,7 +65,6 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
 
     for (const { code, body: item } of items) {
       if (code !== 200 || !item) continue;
-      const isFull = item.shipping?.logistic_type === "fulfillment";
 
       const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
 
@@ -82,9 +82,10 @@ async function syncProducts(accountId: string, mlUserId: string): Promise<void> 
         }
       }
 
-      // Batch endpoint may omit shipping.tags and catalog_listing; enrich from GET /items/{id}.
+      // Batch endpoint may omit shipping.tags, logistic_type and catalog_listing; enrich from GET /items/{id}.
       // Single fetch covers both fields to avoid duplicate API calls.
       const mlItemForDb = await enrichMlItem(accountId, workItem);
+      const isFull = itemIsMlFull(mlItemForDb);
       const isFlex =
         Array.isArray(mlItemForDb.shipping?.tags) && mlItemForDb.shipping.tags!.includes("self_service_in");
       const logisticType = getMlEffectiveLogisticType(mlItemForDb);
