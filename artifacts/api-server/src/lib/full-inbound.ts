@@ -51,58 +51,74 @@ function parseScheduledDate(raw: string): string | null {
 
 /**
  * Soma quantityRemaining de inbounds abertos por SKU e por mlItemId.
+ * Se as tabelas ainda não existirem (migration pendente), retorna vazio sem derrubar o overview.
  */
 export async function getOpenInboundAggByAccount(accountId: string): Promise<{
   bySku: Map<string, OpenInboundAgg>;
   byMlItemId: Map<string, OpenInboundAgg>;
 }> {
-  const db = getDb();
-  const rows = await db
-    .select({
-      sku: fullInboundShipmentItemTable.sku,
-      mlItemId: fullInboundShipmentItemTable.mlItemId,
-      quantityRemaining: fullInboundShipmentItemTable.quantityRemaining,
-      scheduledDate: fullInboundShipmentTable.scheduledDate,
-    })
-    .from(fullInboundShipmentItemTable)
-    .innerJoin(
-      fullInboundShipmentTable,
-      eq(fullInboundShipmentItemTable.shipmentId, fullInboundShipmentTable.id),
-    )
-    .where(
-      and(
-        eq(fullInboundShipmentTable.accountId, accountId),
-        inArray(fullInboundShipmentTable.status, [...OPEN_STATUSES]),
-        sql`${fullInboundShipmentItemTable.quantityRemaining} > 0`,
-      ),
-    );
-
-  const bySku = new Map<string, OpenInboundAgg>();
-  const byMlItemId = new Map<string, OpenInboundAgg>();
-
-  const bump = (map: Map<string, OpenInboundAgg>, key: string, qty: number, scheduled: string) => {
-    const prev = map.get(key);
-    if (!prev) {
-      map.set(key, { qty, nextScheduledDate: scheduled });
-      return;
-    }
-    prev.qty += qty;
-    if (!prev.nextScheduledDate || scheduled < prev.nextScheduledDate) {
-      prev.nextScheduledDate = scheduled;
-    }
+  const empty = {
+    bySku: new Map<string, OpenInboundAgg>(),
+    byMlItemId: new Map<string, OpenInboundAgg>(),
   };
 
-  for (const row of rows) {
-    const qty = Math.max(0, Number(row.quantityRemaining) || 0);
-    if (qty <= 0) continue;
-    const scheduled = ymdFromDate(row.scheduledDate as string | Date);
-    const sku = trimSku(row.sku);
-    if (sku) bump(bySku, sku, qty, scheduled);
-    const mlItemId = trimSku(row.mlItemId);
-    if (mlItemId) bump(byMlItemId, mlItemId, qty, scheduled);
-  }
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({
+        sku: fullInboundShipmentItemTable.sku,
+        mlItemId: fullInboundShipmentItemTable.mlItemId,
+        quantityRemaining: fullInboundShipmentItemTable.quantityRemaining,
+        scheduledDate: fullInboundShipmentTable.scheduledDate,
+      })
+      .from(fullInboundShipmentItemTable)
+      .innerJoin(
+        fullInboundShipmentTable,
+        eq(fullInboundShipmentItemTable.shipmentId, fullInboundShipmentTable.id),
+      )
+      .where(
+        and(
+          eq(fullInboundShipmentTable.accountId, accountId),
+          inArray(fullInboundShipmentTable.status, [...OPEN_STATUSES]),
+          sql`${fullInboundShipmentItemTable.quantityRemaining} > 0`,
+        ),
+      );
 
-  return { bySku, byMlItemId };
+    const bySku = new Map<string, OpenInboundAgg>();
+    const byMlItemId = new Map<string, OpenInboundAgg>();
+
+    const bump = (map: Map<string, OpenInboundAgg>, key: string, qty: number, scheduled: string) => {
+      const prev = map.get(key);
+      if (!prev) {
+        map.set(key, { qty, nextScheduledDate: scheduled });
+        return;
+      }
+      prev.qty += qty;
+      if (!prev.nextScheduledDate || scheduled < prev.nextScheduledDate) {
+        prev.nextScheduledDate = scheduled;
+      }
+    };
+
+    for (const row of rows) {
+      const qty = Math.max(0, Number(row.quantityRemaining) || 0);
+      if (qty <= 0) continue;
+      const scheduled = ymdFromDate(row.scheduledDate as string | Date);
+      const sku = trimSku(row.sku);
+      if (sku) bump(bySku, sku, qty, scheduled);
+      const mlItemId = trimSku(row.mlItemId);
+      if (mlItemId) bump(byMlItemId, mlItemId, qty, scheduled);
+    }
+
+    return { bySku, byMlItemId };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/full_inbound|does not exist|relation/i.test(msg)) {
+      const { logger } = await import("./logger");
+      logger.warn({ err, accountId }, "full_inbound tables missing — overview without inTransit");
+      return empty;
+    }
+    throw err;
+  }
 }
 
 export async function createFullInboundShipment(opts: {

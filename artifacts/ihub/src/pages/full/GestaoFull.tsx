@@ -208,6 +208,9 @@ export default function GestaoFull() {
     data: overview,
     isLoading: overviewLoading,
     isFetching,
+    isError: overviewError,
+    error: overviewErrorDetail,
+    refetch: refetchOverview,
   } = useGetFullOverview(overviewParams, {
     query: {
       queryKey: getGetFullOverviewQueryKey(overviewParams),
@@ -680,10 +683,32 @@ export default function GestaoFull() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4">
-        {overviewLoading || (isFetching && items.length === 0) ? (
+        {overviewLoading || (isFetching && items.length === 0 && !overviewError) ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
             Calculando cobertura…
+          </div>
+        ) : overviewError ? (
+          <div className="py-8 space-y-3 max-w-lg">
+            <p className="text-sm text-destructive font-medium">
+              Não foi possível carregar a Gestão Full.
+            </p>
+            <p className="text-xs text-muted-foreground leading-snug">
+              O sync de estoque pode ter funcionado, mas o painel falhou ao montar a lista. Confira se
+              as migrations Full (018 inbound) foram aplicadas no banco.
+              {overviewErrorDetail instanceof Error && overviewErrorDetail.message
+                ? ` Detalhe: ${overviewErrorDetail.message}`
+                : null}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => void refetchOverview()}
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              Tentar de novo
+            </Button>
           </div>
         ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8">
