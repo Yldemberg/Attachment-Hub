@@ -14,6 +14,7 @@ import criticalAdsRouter from "./critical-ads";
 import listingTemplatesRouter from "./listing-templates";
 import webhooksRouter from "./webhooks";
 import fullRouter from "./full";
+import adsRouter from "./ads";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(promotionsRouter);
 router.use(criticalAdsRouter);
 router.use(listingTemplatesRouter);
 router.use(fullRouter);
+router.use(adsRouter);
 
 export default router;

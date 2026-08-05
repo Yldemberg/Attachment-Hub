@@ -1708,6 +1708,92 @@ export const AnswerQuestionResponse = zod.object({
 });
 
 /**
+ * Retorna visão consolidada de Product Ads (PADS) para as contas ML do usuário: KPIs do período com variação vs período anterior, alertas de performance, série diária (gasto × faturamento) e lista de campanhas. Período padrão: mês calendário atual até hoje (America/Sao_Paulo), máximo 90 dias.
+ * @summary Dashboard de Product Ads (KPIs, alertas, tendência e campanhas)
+ */
+export const GetAdsOverviewQueryParams = zod.object({
+  account_id: zod.coerce.string().optional(),
+  date_from: zod
+    .date()
+    .optional()
+    .describe("Início do período (YYYY-MM-DD). Padrão = 1º dia do mês atual."),
+  date_to: zod
+    .date()
+    .optional()
+    .describe(
+      "Fim do período (YYYY-MM-DD). Padrão = hoje (America\/Sao_Paulo).",
+    ),
+});
+
+export const GetAdsOverviewResponse = zod.object({
+  available: zod.boolean(),
+  message: zod.string().nullish(),
+  dateFrom: zod.coerce.date(),
+  dateTo: zod.coerce.date(),
+  previousDateFrom: zod.coerce.date(),
+  previousDateTo: zod.coerce.date(),
+  kpis: zod.object({
+    impressions: zod.number(),
+    clicks: zod.number(),
+    cost: zod.number(),
+    revenue: zod.number(),
+    cpc: zod.number(),
+    roas: zod.number(),
+  }),
+  previousKpis: zod.object({
+    impressions: zod.number(),
+    clicks: zod.number(),
+    cost: zod.number(),
+    revenue: zod.number(),
+    cpc: zod.number(),
+    roas: zod.number(),
+  }),
+  kpiDeltas: zod.object({
+    impressions: zod.number().nullable(),
+    clicks: zod.number().nullable(),
+    cost: zod.number().nullable(),
+    revenue: zod.number().nullable(),
+    cpc: zod.number().nullable(),
+    roas: zod.number().nullable(),
+  }),
+  alerts: zod.array(
+    zod.object({
+      id: zod.enum(["spent_no_sales", "below_target", "on_track"]),
+      label: zod.string(),
+      quantity: zod.number(),
+      costSharePct: zod.number(),
+      cost: zod.number(),
+      revenue: zod.number(),
+      roas: zod.number(),
+    }),
+  ),
+  daily: zod.array(
+    zod.object({
+      date: zod.coerce.date(),
+      cost: zod.number(),
+      revenue: zod.number(),
+    }),
+  ),
+  campaigns: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      status: zod.string().nullish(),
+      accountId: zod.string(),
+      cost: zod.number(),
+      revenue: zod.number(),
+      roas: zod.number(),
+      clicks: zod.number(),
+      impressions: zod.number(),
+      cpc: zod.number(),
+      roasTarget: zod.number().nullish(),
+      alertBucket: zod.enum(["spent_no_sales", "below_target", "on_track"]),
+    }),
+  ),
+  manageUrl: zod.string(),
+});
+
+/**
  * @summary List critical listing diagnostics
  */
 export const listCriticalAdsQueryPageDefault = 1;

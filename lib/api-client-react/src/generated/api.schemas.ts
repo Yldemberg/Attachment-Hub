@@ -1330,6 +1330,88 @@ export interface CreateFullInboundBody {
   items: CreateFullInboundBodyItemsItem[];
 }
 
+export interface AdsKpis {
+  impressions: number;
+  clicks: number;
+  cost: number;
+  revenue: number;
+  cpc: number;
+  roas: number;
+}
+
+export interface AdsKpiDeltas {
+  impressions: number | null;
+  clicks: number | null;
+  cost: number | null;
+  revenue: number | null;
+  cpc: number | null;
+  roas: number | null;
+}
+
+export type AdsAlertRowId = (typeof AdsAlertRowId)[keyof typeof AdsAlertRowId];
+
+export const AdsAlertRowId = {
+  spent_no_sales: "spent_no_sales",
+  below_target: "below_target",
+  on_track: "on_track",
+} as const;
+
+export interface AdsAlertRow {
+  id: AdsAlertRowId;
+  label: string;
+  quantity: number;
+  costSharePct: number;
+  cost: number;
+  revenue: number;
+  roas: number;
+}
+
+export interface AdsDailyPoint {
+  date: string;
+  cost: number;
+  revenue: number;
+}
+
+export type AdsCampaignRowAlertBucket =
+  (typeof AdsCampaignRowAlertBucket)[keyof typeof AdsCampaignRowAlertBucket];
+
+export const AdsCampaignRowAlertBucket = {
+  spent_no_sales: "spent_no_sales",
+  below_target: "below_target",
+  on_track: "on_track",
+} as const;
+
+export interface AdsCampaignRow {
+  id: string;
+  name: string;
+  status?: string | null;
+  accountId: string;
+  cost: number;
+  revenue: number;
+  roas: number;
+  clicks: number;
+  impressions: number;
+  cpc: number;
+  roasTarget?: number | null;
+  alertBucket: AdsCampaignRowAlertBucket;
+}
+
+export interface AdsOverview {
+  available: boolean;
+  message?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  previousDateFrom: string;
+  previousDateTo: string;
+  kpis: AdsKpis;
+  previousKpis: AdsKpis;
+  kpiDeltas: AdsKpiDeltas;
+  alerts: AdsAlertRow[];
+  daily: AdsDailyPoint[];
+  campaigns: AdsCampaignRow[];
+  manageUrl: string;
+}
+
 export interface MercadoLivreWebhookPayload {
   _id?: string;
   resource: string;
@@ -1547,6 +1629,18 @@ export const ListQuestionsStatus = {
   closed_unanswered: "closed_unanswered",
   under_review: "under_review",
 } as const;
+
+export type GetAdsOverviewParams = {
+  account_id?: string;
+  /**
+   * Início do período (YYYY-MM-DD). Padrão = 1º dia do mês atual.
+   */
+  date_from?: string;
+  /**
+   * Fim do período (YYYY-MM-DD). Padrão = hoje (America/Sao_Paulo).
+   */
+  date_to?: string;
+};
 
 export type ListCriticalAdsParams = {
   /**

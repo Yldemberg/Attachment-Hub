@@ -20,6 +20,7 @@ import type {
   Account,
   ActivatePromotionItem200,
   ActivatePromotionItemRequest,
+  AdsOverview,
   AnswerQuestionRequest,
   BadRequestResponse,
   BulkActivatePromotionItemsRequest,
@@ -43,6 +44,7 @@ import type {
   FullSettings,
   FullSettingsUpdateRequest,
   FullStockSyncResponse,
+  GetAdsOverviewParams,
   GetAmazonConnectUrl200,
   GetConnectUrl200,
   GetDashboardSummaryParams,
@@ -3980,6 +3982,101 @@ export const useAnswerQuestion = <
 > => {
   return useMutation(getAnswerQuestionMutationOptions(options));
 };
+
+/**
+ * Retorna visão consolidada de Product Ads (PADS) para as contas ML do usuário: KPIs do período com variação vs período anterior, alertas de performance, série diária (gasto × faturamento) e lista de campanhas. Período padrão: mês calendário atual até hoje (America/Sao_Paulo), máximo 90 dias.
+ * @summary Dashboard de Product Ads (KPIs, alertas, tendência e campanhas)
+ */
+export const getGetAdsOverviewUrl = (params?: GetAdsOverviewParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ads/overview?${stringifiedParams}`
+    : `/api/ads/overview`;
+};
+
+export const getAdsOverview = async (
+  params?: GetAdsOverviewParams,
+  options?: RequestInit,
+): Promise<AdsOverview> => {
+  return customFetch<AdsOverview>(getGetAdsOverviewUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdsOverviewQueryKey = (params?: GetAdsOverviewParams) => {
+  return [`/api/ads/overview`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAdsOverviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdsOverview>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetAdsOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdsOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdsOverviewQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdsOverview>>> = ({
+    signal,
+  }) => getAdsOverview(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdsOverview>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdsOverviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdsOverview>>
+>;
+export type GetAdsOverviewQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Dashboard de Product Ads (KPIs, alertas, tendência e campanhas)
+ */
+
+export function useGetAdsOverview<
+  TData = Awaited<ReturnType<typeof getAdsOverview>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  params?: GetAdsOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdsOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdsOverviewQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List critical listing diagnostics

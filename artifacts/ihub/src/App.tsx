@@ -27,6 +27,7 @@ import CriticalAds from "@/pages/CriticalAds";
 import ListingTemplates from "@/pages/templates/ListingTemplates";
 import ListingTemplateDetail from "@/pages/templates/ListingTemplateDetail";
 import GestaoFull from "@/pages/full/GestaoFull";
+import GestaoAds from "@/pages/ads/GestaoAds";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -147,6 +148,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <GestaoFull />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ads">
+        <ProtectedRoute>
+          <AppLayout>
+            <GestaoAds />
           </AppLayout>
         </ProtectedRoute>
       </Route>
