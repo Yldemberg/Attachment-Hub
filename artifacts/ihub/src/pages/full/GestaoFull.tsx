@@ -720,7 +720,7 @@ export default function GestaoFull() {
             e confira se os anúncios estão com logística Full no Mercado Livre.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-col gap-2">
             {items.map((it) => {
               const key = rowKey(it);
               const selected = selectedKeys.has(key);
@@ -1042,11 +1042,11 @@ function FullListingCard({
   return (
     <div
       className={cn(
-        "text-left rounded-xl border bg-card p-3 transition-colors",
+        "text-left rounded-xl border bg-card px-3 py-2.5 transition-colors",
         selected ? "border-primary/50 bg-primary/5" : "border-border hover:border-primary/40",
       )}
     >
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3 sm:items-center">
         <button
           type="button"
           onClick={onToggle}
@@ -1058,11 +1058,11 @@ function FullListingCard({
             <img
               src={item.thumbnail}
               alt=""
-              className="size-14 rounded-lg object-cover border border-border bg-muted"
+              className="size-12 rounded-lg object-cover border border-border bg-muted sm:size-11"
             />
           ) : (
-            <div className="size-14 rounded-lg border border-border bg-muted flex items-center justify-center">
-              <Package className="w-6 h-6 text-muted-foreground/50" />
+            <div className="size-12 rounded-lg border border-border bg-muted flex items-center justify-center sm:size-11">
+              <Package className="w-5 h-5 text-muted-foreground/50" />
             </div>
           )}
           <span
@@ -1077,21 +1077,23 @@ function FullListingCard({
           </span>
         </button>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-mono text-muted-foreground truncate">{item.sku}</p>
-          <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{item.title}</p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-            {item.mlItemId && item.mlItemId !== item.sku ? (
-              <p className="text-[10px] text-muted-foreground line-clamp-1">{item.mlItemId}</p>
-            ) : null}
-            {(item.listingCount ?? 1) > 1 ? (
-              <span className="text-[10px] text-muted-foreground">
-                · {item.listingCount} anúncios (mesmo estoque)
-              </span>
-            ) : null}
+        <div className="min-w-0 flex-1 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-mono text-muted-foreground truncate">{item.sku}</p>
+            <p className="text-sm font-medium text-foreground line-clamp-1 leading-tight">{item.title}</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+              {item.mlItemId && item.mlItemId !== item.sku ? (
+                <p className="text-[10px] text-muted-foreground truncate">{item.mlItemId}</p>
+              ) : null}
+              {(item.listingCount ?? 1) > 1 ? (
+                <span className="text-[10px] text-muted-foreground">
+                  · {item.listingCount} anúncios (mesmo estoque)
+                </span>
+              ) : null}
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs sm:shrink-0">
             <span className={cn("font-bold tabular-nums", stockColorClass(item.stockFull))}>
               {item.stockFull} un.
             </span>
@@ -1116,7 +1118,7 @@ function FullListingCard({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground sm:shrink-0 sm:justify-end sm:min-w-[12rem]">
             <span className="tabular-nums">Média {item.salesPerDay.toFixed(2)}/dia</span>
             <span className="tabular-nums">{formatDaysWithoutSales(item.daysWithoutSales)}</span>
             {item.suggestedQty > 0 ? (
