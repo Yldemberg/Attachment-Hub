@@ -1239,6 +1239,11 @@ export interface FullOverviewItem {
   inTransitQty: number;
   /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD) */
   inboundScheduledDate?: string | null;
+  /**
+   * Quantidade de anúncios Full que compartilham este SKU/estoque
+   * (clássico + catálogo contam juntos). Sempre >= 1.
+   */
+  listingCount: number;
 }
 
 export interface FullOverviewKpis {
@@ -1268,7 +1273,10 @@ export interface FullOverviewResponse {
   settings: FullOverviewResponseSettings;
   kpis: FullOverviewKpis;
   items: FullOverviewItem[];
-  /** Total de anúncios Full da conta (antes de filtros) */
+  /**
+   * Total de itens na lista (1 por SKU/estoque) antes de filtros.
+   * Anúncios clássico+catálogo do mesmo SKU contam como 1.
+   */
   totalFullListings: number;
 }
 

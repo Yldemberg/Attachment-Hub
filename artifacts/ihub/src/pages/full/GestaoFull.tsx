@@ -157,6 +157,9 @@ function formatSendBy(ymd: string | null | undefined): string {
 }
 
 function rowKey(item: FullOverviewItem): string {
+  // Agrupamento por SKU no backend: chave estável para seleção/envio.
+  const sku = item.sku?.trim();
+  if (sku) return `sku:${sku}`;
   return item.productId ?? item.mlItemId ?? item.sku;
 }
 
@@ -647,9 +650,10 @@ export default function GestaoFull() {
               "Carregando…"
             ) : (
               <>
-                <span className="font-medium text-foreground">{items.length}</span> anúncio(s)
+                <span className="font-medium text-foreground">{items.length}</span>{" "}
+                item(ns) de estoque
                 {totalFull > 0 && items.length !== totalFull ? (
-                  <span> de {totalFull} Full</span>
+                  <span> de {totalFull}</span>
                 ) : null}
                 {overview?.settings ? (
                   <span>
@@ -1076,9 +1080,16 @@ function FullListingCard({
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-mono text-muted-foreground truncate">{item.sku}</p>
           <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{item.title}</p>
-          {item.mlItemId && item.mlItemId !== item.sku ? (
-            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">{item.mlItemId}</p>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+            {item.mlItemId && item.mlItemId !== item.sku ? (
+              <p className="text-[10px] text-muted-foreground line-clamp-1">{item.mlItemId}</p>
+            ) : null}
+            {(item.listingCount ?? 1) > 1 ? (
+              <span className="text-[10px] text-muted-foreground">
+                · {item.listingCount} anúncios (mesmo estoque)
+              </span>
+            ) : null}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
             <span className={cn("font-bold tabular-nums", stockColorClass(item.stockFull))}>

@@ -4865,6 +4865,11 @@ components:
           type: string
           nullable: true
           description: Próxima data de agendamento de inbound aberto (YYYY-MM-DD)
+        listingCount:
+          type: integer
+          description: >
+            Quantidade de anúncios Full que compartilham este SKU/estoque
+            (clássico + catálogo contam juntos). Sempre >= 1.
       required:
         - sku
         - title
@@ -4876,6 +4881,7 @@ components:
         - suggestedQty
         - status
         - inTransitQty
+        - listingCount
 
     FullOverviewKpis:
       type: object
@@ -4943,7 +4949,9 @@ components:
             $ref: "#/components/schemas/FullOverviewItem"
         totalFullListings:
           type: integer
-          description: Total de anúncios Full da conta (antes de filtros)
+          description: >
+            Total de itens na lista (1 por SKU/estoque) antes de filtros.
+            Anúncios clássico+catálogo do mesmo SKU contam como 1.
       required: [accountId, settings, kpis, items, totalFullListings]
 
     FullStockSyncResponse:

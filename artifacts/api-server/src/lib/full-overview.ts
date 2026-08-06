@@ -36,6 +36,11 @@ export type FullOverviewItem = {
   inTransitQty: number;
   /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD). */
   inboundScheduledDate: string | null;
+  /**
+   * Quantidade de anúncios Full que compartilham este SKU/estoque
+   * (ex.: clássico + catálogo). Sempre >= 1.
+   */
+  listingCount: number;
 };
 
 export type FullOverviewResult = {
@@ -55,9 +60,39 @@ export type FullOverviewResult = {
   };
   kpis: ReturnType<typeof computeFullOverviewKpis>;
   items: FullOverviewItem[];
-  /** Total de anúncios Full da conta (antes de filtros de status/busca). */
+  /**
+   * Total de itens na lista (1 por SKU/estoque compartilhado) antes de filtros.
+   * Anúncios clássico+catálogo do mesmo SKU contam como 1.
+   */
   totalFullListings: number;
 };
+
+type ProductRow = typeof productsTable.$inferSelect;
+
+/**
+ * Um card por estoque: agrupa anúncios Full com o mesmo SKU (clássico + catálogo).
+ * Sem SKU, cada anúncio permanece isolado.
+ */
+function fullOverviewGroupKey(p: ProductRow): string {
+  const sku = (p.sku ?? "").trim();
+  if (sku) return `sku:${sku}`;
+  if (p.mlItemId) return `item:${p.mlItemId}`;
+  return `id:${p.id}`;
+}
+
+/** Prefere catálogo (Buy Box), depois mais vendidos / ativos. */
+function pickFullRepresentative(list: ProductRow[]): ProductRow {
+  return list
+    .slice()
+    .sort((a, b) => {
+      if (a.catalogListing !== b.catalogListing) return a.catalogListing ? -1 : 1;
+      if (a.soldQuantity !== b.soldQuantity) return b.soldQuantity - a.soldQuantity;
+      const aActive = a.status === "active" ? 1 : 0;
+      const bActive = b.status === "active" ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      return String(a.id).localeCompare(String(b.id));
+    })[0]!;
+}
 
 const DEFAULT_SETTINGS = {
   coverageTargetDays: FULL_RECOMMENDED_SETTINGS.coverageTargetDays,
@@ -222,29 +257,66 @@ export async function buildFullOverviewForAccount(opts: {
   const nowMs = Date.now();
   const MS_PER_DAY = 86_400_000;
 
+  const groups = new Map<string, ProductRow[]>();
+  for (const p of fullProducts) {
+    const key = fullOverviewGroupKey(p);
+    const list = groups.get(key) ?? [];
+    list.push(p);
+    groups.set(key, list);
+  }
+
   let items: FullOverviewItem[] = [];
 
-  for (const p of fullProducts) {
+  for (const members of groups.values()) {
+    const p = pickFullRepresentative(members);
     const sku = (p.sku ?? "").trim();
     const displaySku = sku || p.mlItemId || p.id;
-    const snap =
-      (p.id ? snapByProductId.get(p.id) : undefined) ??
-      (p.mlItemId ? snapByMlItemId.get(p.mlItemId) : undefined) ??
-      (sku ? snapBySku.get(sku) : undefined);
+    const listingCount = members.length;
 
-    const stockFull = snap ? snap.available : (p.availableQuantity ?? 0);
+    let snap: SnapAgg | undefined;
+    if (sku) {
+      snap = snapBySku.get(sku);
+    }
+    if (!snap) {
+      // Estoque compartilhado: evita somar o mesmo CD em vários anúncios — usa o maior snapshot.
+      for (const m of members) {
+        const mSnap =
+          snapByProductId.get(m.id) ??
+          (m.mlItemId ? snapByMlItemId.get(m.mlItemId) : undefined);
+        if (!mSnap) continue;
+        if (!snap || mSnap.available > snap.available) snap = mSnap;
+      }
+    }
+
+    const fallbackStock = members.reduce(
+      (max, m) => Math.max(max, m.availableQuantity ?? 0),
+      0,
+    );
+    const stockFull = snap ? snap.available : fallbackStock;
     const notAvailable = snap ? snap.notAvailable : 0;
-    const lastSyncedAt = snap?.syncedAt ?? p.lastSyncedAt;
+    const lastSyncedAt =
+      snap?.syncedAt ??
+      members.reduce<Date | null>((best, m) => {
+        if (!m.lastSyncedAt) return best;
+        if (!best || m.lastSyncedAt > best) return m.lastSyncedAt;
+        return best;
+      }, null);
 
     let unitsSoldPeriod = 0;
     if (sku) unitsSoldPeriod = salesBySku.get(sku) ?? 0;
-    if (unitsSoldPeriod === 0 && p.mlItemId) {
-      unitsSoldPeriod = salesByItemId.get(p.mlItemId) ?? 0;
+    if (unitsSoldPeriod === 0) {
+      for (const m of members) {
+        if (m.mlItemId) unitsSoldPeriod += salesByItemId.get(m.mlItemId) ?? 0;
+      }
     }
 
     let lastSaleAt: Date | undefined;
     if (sku) lastSaleAt = lastSaleAtBySku.get(sku);
-    if (!lastSaleAt && p.mlItemId) lastSaleAt = lastSaleAtByItemId.get(p.mlItemId);
+    for (const m of members) {
+      if (!m.mlItemId) continue;
+      const at = lastSaleAtByItemId.get(m.mlItemId);
+      if (at && (!lastSaleAt || at > lastSaleAt)) lastSaleAt = at;
+    }
     const daysWithoutSales =
       lastSaleAt != null
         ? Math.max(0, Math.floor((nowMs - lastSaleAt.getTime()) / MS_PER_DAY))
@@ -287,6 +359,7 @@ export async function buildFullOverviewForAccount(opts: {
       lastSyncedAt: lastSyncedAt ? lastSyncedAt.toISOString() : null,
       inTransitQty,
       inboundScheduledDate,
+      listingCount,
     });
   }
 
@@ -294,12 +367,28 @@ export async function buildFullOverviewForAccount(opts: {
 
   const search = opts.search?.trim().toLowerCase();
   if (search) {
-    items = items.filter(
-      (it) =>
-        it.sku.toLowerCase().includes(search) ||
-        it.title.toLowerCase().includes(search) ||
-        (it.mlItemId?.toLowerCase().includes(search) ?? false),
-    );
+    items = items.filter((it) => {
+      if (it.sku.toLowerCase().includes(search)) return true;
+      if (it.title.toLowerCase().includes(search)) return true;
+      if (it.mlItemId?.toLowerCase().includes(search)) return true;
+      // Busca também MLB dos anúncios agrupados (clássico oculto, etc.).
+      const key = it.sku.trim()
+        ? `sku:${it.sku.trim()}`
+        : it.mlItemId
+          ? `item:${it.mlItemId}`
+          : it.productId
+            ? `id:${it.productId}`
+            : null;
+      if (!key) return false;
+      const members = groups.get(key);
+      if (!members) return false;
+      return members.some(
+        (m) =>
+          (m.title ?? "").toLowerCase().includes(search) ||
+          (m.mlItemId?.toLowerCase().includes(search) ?? false) ||
+          ((m.sku ?? "").toLowerCase().includes(search)),
+      );
+    });
   }
 
   const statusFilter = opts.statusFilter ?? "all";

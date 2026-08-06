@@ -2042,11 +2042,18 @@ export const GetFullOverviewResponse = zod.object({
         .string()
         .nullish()
         .describe("Próxima data de agendamento de inbound aberto (YYYY-MM-DD)"),
+      listingCount: zod
+        .number()
+        .describe(
+          "Quantidade de anúncios Full que compartilham este SKU/estoque (clássico + catálogo contam juntos). Sempre >= 1.",
+        ),
     }),
   ),
   totalFullListings: zod
     .number()
-    .describe("Total de anúncios Full da conta (antes de filtros)"),
+    .describe(
+      "Total de itens na lista (1 por SKU/estoque) antes de filtros. Anúncios clássico+catálogo do mesmo SKU contam como 1.",
+    ),
 });
 
 /**
