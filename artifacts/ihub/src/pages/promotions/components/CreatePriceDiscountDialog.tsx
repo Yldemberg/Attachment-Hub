@@ -153,7 +153,10 @@ export function CreatePriceDiscountDialog({
   );
 
   const products = useMemo(
-    () => (productsData?.data ?? []).filter((p) => !!p.mlItemId),
+    () =>
+      (productsData?.data ?? []).filter(
+        (p) => !!p.mlItemId && (p.availableQuantity ?? 0) > 0,
+      ),
     [productsData?.data],
   );
 

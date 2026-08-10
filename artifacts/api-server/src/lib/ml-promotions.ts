@@ -120,6 +120,13 @@ export function isPromotionItemCandidate(status: string | null | undefined): boo
   return status === "candidate";
 }
 
+/** Só exibe para ativação anúncios com estoque disponível (> 0). */
+export function hasPositiveAvailableQuantity(
+  availableQuantity: number | null | undefined,
+): boolean {
+  return (availableQuantity ?? 0) > 0;
+}
+
 export type MlPromotionItemStock =
   | number
   | {
@@ -1016,6 +1023,7 @@ export async function aggregateInboxForAccount(
           const enriched = await enrichItemsWithProducts(accountId, items);
           for (const item of enriched) {
             if (!isPromotionItemCandidate(item.status)) continue;
+            if (!hasPositiveAvailableQuantity(item.availableQuantity)) continue;
             const suggested = resolveMlSuggestedPrice(item, promo.type);
             const original = item.original_price;
             const stockBounds = parsePromotionStockBounds(item.stock);
@@ -1428,21 +1436,20 @@ export async function buildPromotionSummary(
       const active = promos.filter(isPromotionCurrentlyOpen);
       activeCampaigns += active.length;
 
-      let accCandidates = 0;
       for (const p of active) {
         if (p.deadline_date) {
           const dl = new Date(p.deadline_date);
           if (dl >= todayStart && dl <= todayEnd) expiringToday++;
         }
-        try {
-          const items = await listPromotionItems(acc.id, p.id, p.type, {
-            status: "candidate",
-            bypassCache: options?.bypassCache,
-          });
-          accCandidates += items.length;
-        } catch {
-          // skip
-        }
+      }
+
+      // Conta só candidatos com estoque positivo (mesma regra da inbox / ativação).
+      let accCandidates = 0;
+      try {
+        const inbox = await aggregateInboxForAccount(acc.id, acc.mlUserId, acc.mlNickname, options);
+        accCandidates = inbox.length;
+      } catch {
+        // skip
       }
       candidateItems += accCandidates;
       accountStats.push({

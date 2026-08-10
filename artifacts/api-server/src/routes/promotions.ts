@@ -27,6 +27,7 @@ import {
   findPromotionItemContext,
   matchesPromotionStatusFilter,
   isPromotionItemCandidate,
+  hasPositiveAvailableQuantity,
   enrichInboxEntriesWithItemContext,
   enrichPromotionItemsWithItemContext,
   attachInventorySkuFinancials,
@@ -196,7 +197,11 @@ router.get("/promotions/inbox", ...auth, async (req, res) => {
       );
     }
 
-    inbox = inbox.filter((e) => isPromotionItemCandidate(e.itemStatus));
+    inbox = inbox.filter(
+      (e) =>
+        isPromotionItemCandidate(e.itemStatus) &&
+        hasPositiveAvailableQuantity(e.availableQuantity),
+    );
 
     inbox.sort((a, b) => {
       const da = a.deadlineDate ? new Date(a.deadlineDate).getTime() : Infinity;
@@ -259,7 +264,12 @@ router.get("/promotions", ...auth, async (req, res) => {
                 status: "candidate",
                 bypassCache: refresh === "true",
               });
-              candidateCount = items.length;
+              const enriched = await enrichItemsWithProducts(acc.id, items);
+              candidateCount = enriched.filter(
+                (item) =>
+                  isPromotionItemCandidate(item.status) &&
+                  hasPositiveAvailableQuantity(item.availableQuantity),
+              ).length;
             } catch {
               candidateCount = undefined;
             }
@@ -395,7 +405,11 @@ router.get("/promotions/:promotionId/items", ...auth, async (req, res) => {
     }
 
     if (status === "candidate") {
-      enriched = enriched.filter((e) => isPromotionItemCandidate(e.status));
+      enriched = enriched.filter(
+        (e) =>
+          isPromotionItemCandidate(e.status) &&
+          hasPositiveAvailableQuantity(e.availableQuantity),
+      );
     }
 
     const pageResult = paginate(enriched, pageNum, limitNum);

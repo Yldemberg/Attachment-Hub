@@ -247,7 +247,13 @@ export default function PromotionDetail() {
   const items = itemsData?.data ?? [];
   const pagination = itemsData?.pagination;
   const deadline = promotion ? formatDeadline(promotion.deadlineDate) : null;
-  const candidateItems = items.filter((item) => item.status === "candidate");
+  const candidateItems = items.filter(
+    (item) => item.status === "candidate" && (item.availableQuantity ?? 0) > 0,
+  );
+  const visibleItems =
+    itemStatus === "candidate"
+      ? items.filter((item) => (item.availableQuantity ?? 0) > 0)
+      : items;
   const allPageSelected =
     candidateItems.length > 0 && candidateItems.every((item) => selected.has(item.itemId));
   const somePageSelected = candidateItems.some((item) => selected.has(item.itemId));
@@ -262,7 +268,7 @@ export default function PromotionDetail() {
 
   async function handleBulkActivate() {
     if (!promoId || selected.size === 0 || bulkPending) return;
-    const selectedItems = items.filter((item) => selected.has(item.itemId));
+    const selectedItems = candidateItems.filter((item) => selected.has(item.itemId));
     const payloadItems = buildBulkActivatePayloadItems(selectedItems, promotionType);
 
     setBulkPending(true);
@@ -443,15 +449,15 @@ export default function PromotionDetail() {
               Tentar novamente
             </Button>
           </div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <p className="text-center text-muted-foreground text-sm py-8">
             {itemStatus === "candidate"
-              ? "Nenhum anúncio candidato nesta campanha."
+              ? "Nenhum anúncio candidato com estoque nesta campanha."
               : "Nenhum item nesta campanha."}
           </p>
         ) : (
           <div className="space-y-2">
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <ItemCard
                 key={item.itemId}
                 item={item}
@@ -465,7 +471,11 @@ export default function PromotionDetail() {
                   });
                 }}
                 onActivate={() => setActivateTarget(item)}
-                showActivate={itemStatus === "candidate" || itemStatus === undefined}
+                showActivate={
+                  (itemStatus === "candidate" || itemStatus === undefined) &&
+                  item.status === "candidate" &&
+                  (item.availableQuantity ?? 0) > 0
+                }
               />
             ))}
           </div>

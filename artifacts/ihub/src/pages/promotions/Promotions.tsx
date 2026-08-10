@@ -80,6 +80,10 @@ function isNonActivatedItem(entry: PromotionInboxEntry): boolean {
   return entry.itemStatus === "candidate";
 }
 
+function hasPositiveStock(entry: { availableQuantity?: number | null }): boolean {
+  return (entry.availableQuantity ?? 0) > 0;
+}
+
 function parseCampaignValue(value: string): {
   accountId: string;
   promotionId: string;
@@ -469,7 +473,7 @@ export default function Promotions() {
             promotionItemToInboxEntry(item, selectedCampaignMeta),
           )
         : (inboxData?.data ?? []);
-    return entries.filter(isNonActivatedItem);
+    return entries.filter((e) => isNonActivatedItem(e) && hasPositiveStock(e));
   }, [campaignFilter, selectedCampaignMeta, itemsData?.data, inboxData?.data]);
 
   const pagination = campaignFilter ? itemsData?.pagination : inboxData?.pagination;
