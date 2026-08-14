@@ -52,6 +52,7 @@ export type MlListingAttributeInput = {
   value_id?: string;
   name?: string;
   groupName?: string;
+  value_struct?: { number: number; unit: string };
 };
 
 export type MlListingVariationInput = {
@@ -351,6 +352,100 @@ function hasAttributeValue(attr: MlListingAttributeInput): boolean {
   return Boolean(attr.value_name?.trim() || attr.value_id);
 }
 
+const UNIT_ALIASES: Record<string, string> = {
+  centimetros: "cm",
+  centimetro: "cm",
+  centímetros: "cm",
+  centímetro: "cm",
+  cms: "cm",
+  cm: "cm",
+  milimetros: "mm",
+  milímetros: "mm",
+  milimetro: "mm",
+  mm: "mm",
+  metros: "m",
+  metro: "m",
+  m: "m",
+  litros: "L",
+  litro: "L",
+  l: "L",
+  ml: "ml",
+  gramas: "g",
+  grama: "g",
+  gr: "g",
+  g: "g",
+  kilogramas: "kg",
+  quilogramas: "kg",
+  quilos: "kg",
+  kilos: "kg",
+  kg: "kg",
+};
+
+function canonicalUnit(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  return UNIT_ALIASES[key] ?? raw.trim();
+}
+
+function defaultUnitForAttributeId(id: string, categoryAttr?: MlCategoryAttribute): string | undefined {
+  const fromCat = categoryAttr?.defaultUnit?.trim() || categoryAttr?.allowedUnits?.[0]?.id;
+  if (fromCat) return canonicalUnit(fromCat);
+  if (/HEIGHT|WIDTH|LENGTH|DEPTH/i.test(id)) return "cm";
+  if (/WEIGHT/i.test(id)) return "g";
+  if (/VOLUME|CAPACITY/i.test(id)) return "L";
+  return undefined;
+}
+
+function parseNumberAndUnit(raw: string): { number: number; unit: string | null } | null {
+  const trimmed = raw.trim().replace(",", ".");
+  const match = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*([^\d\s].*)?$/);
+  if (!match) return null;
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return null;
+  const unit = match[2]?.trim() ? canonicalUnit(match[2]) : null;
+  return { number, unit };
+}
+
+function applyNumberUnitStruct(
+  attr: MlListingAttributeInput,
+  categoryAttr?: MlCategoryAttribute,
+): MlListingAttributeInput {
+  const valueType = categoryAttr?.valueType;
+  if (valueType === "number" || valueType === "boolean" || valueType === "list") return attr;
+  const shouldStruct =
+    valueType === "number_unit" ||
+    Boolean(defaultUnitForAttributeId(attr.id, categoryAttr) && parseNumberAndUnit(attr.value_name ?? ""));
+  if (!shouldStruct || !attr.value_name?.trim()) return attr;
+
+  const parsed = parseNumberAndUnit(attr.value_name);
+  if (!parsed) return attr;
+  const unit = parsed.unit || defaultUnitForAttributeId(attr.id, categoryAttr);
+  if (!unit) return attr;
+
+  return {
+    ...attr,
+    value_name: `${parsed.number} ${unit}`,
+    value_struct: { number: parsed.number, unit },
+  };
+}
+
+function toMlWriteAttributes(attributes: MlListingAttributeInput[]): Array<Record<string, unknown>> {
+  return attributes.map((attr) => {
+    const row: Record<string, unknown> = { id: attr.id };
+    if (attr.value_id) row.value_id = attr.value_id;
+    if (attr.value_name?.trim()) row.value_name = attr.value_name.trim();
+    if (attr.value_struct) {
+      row.value_struct = attr.value_struct;
+      row.values = [
+        {
+          name: attr.value_name?.trim() || `${attr.value_struct.number} ${attr.value_struct.unit}`,
+          struct: attr.value_struct,
+        },
+      ];
+    }
+    return row;
+  });
+}
+
 function normalizeAttributeValueForCreate(attr: MlListingAttributeInput): MlListingAttributeInput | null {
   if (!attr.id || ATTRIBUTE_IDS_NEVER_SEND_ON_CREATE.has(attr.id)) return null;
   let valueName = attr.value_name?.trim() ?? "";
@@ -363,6 +458,7 @@ function normalizeAttributeValueForCreate(attr: MlListingAttributeInput): MlList
     id: attr.id,
     value_name: valueName,
     ...(attr.value_id ? { value_id: attr.value_id } : {}),
+    ...(attr.value_struct ? { value_struct: attr.value_struct } : {}),
   };
 }
 
@@ -384,6 +480,7 @@ function resolveListValueId(
   );
   if (!match) return attr;
   return {
+    ...attr,
     id: attr.id,
     value_name: match.name,
     value_id: match.id,
@@ -518,6 +615,8 @@ export async function sanitizeAttributesForCreate(
   options?: {
     hasVariations?: boolean;
     variations?: MlListingVariationInput[];
+    /** No espelhamento, não descarta IDs que a categoria de destino não lista. */
+    keepUnknownIds?: boolean;
   },
 ): Promise<MlListingAttributeInput[]> {
   let categoryAttrs: MlCategoryAttribute[] = [];
@@ -533,22 +632,29 @@ export async function sanitizeAttributesForCreate(
   );
   const hasMeta = categoryAttrs.length > 0;
   const hasVariations = Boolean(options?.hasVariations || options?.variations?.length);
+  const keepUnknownIds = options?.keepUnknownIds === true;
 
   const filtered = stripVariationAxesFromRootAttributes(attributes, options?.variations);
 
   const out: MlListingAttributeInput[] = [];
   for (const raw of filtered) {
+    const cat = categoryById.get(raw.id);
     if (hasMeta) {
-      const cat = categoryById.get(raw.id);
-      if (!cat) continue;
-      const writable = writableIds.has(raw.id);
+      const tags = cat?.tags ?? {};
       const forceKeep =
         BUSINESS_CONDITIONAL_ATTR_IDS.has(raw.id) && hasAttributeValue(raw);
-      if (!writable && !forceKeep) continue;
+      if (keepUnknownIds) {
+        if (cat && (tags.read_only || tags.fixed) && !forceKeep) continue;
+      } else {
+        if (!cat) continue;
+        const writable = writableIds.has(raw.id);
+        if (!writable && !forceKeep) continue;
+      }
     }
     const normalized = normalizeAttributeValueForCreate(raw);
     if (!normalized) continue;
-    out.push(resolveListValueId(normalized, categoryById.get(raw.id)));
+    const withList = resolveListValueId(normalized, cat);
+    out.push(applyNumberUnitStruct(withList, cat));
   }
   return alignSaleFormatAndUnitsPerPack(out, categoryById, { hasVariations });
 }
@@ -736,7 +842,7 @@ function buildCreateItemPayload(
     buying_mode: "buy_it_now",
     condition: input.condition,
     listing_type_id: input.listingTypeId,
-    attributes: input.attributes,
+    attributes: toMlWriteAttributes(input.attributes),
   };
 
   if (input.pictureSources?.length) {
@@ -904,7 +1010,7 @@ export async function updateMlItem(
   } else if (input.pictures !== undefined) {
     payload.pictures = input.pictures.map((id) => ({ id }));
   }
-  if (input.attributes !== undefined) payload.attributes = input.attributes;
+  if (input.attributes !== undefined) payload.attributes = toMlWriteAttributes(input.attributes);
   const saleTerms = mapSaleTermsForWrite(input.saleTerms);
   if (input.saleTerms !== undefined && saleTerms.length > 0) {
     payload.sale_terms = saleTerms;
@@ -925,6 +1031,18 @@ export async function updateMlItem(
     }
     if (input.description !== undefined) {
       await setMlItemDescription(accountId, itemId, input.description);
+    }
+    if (input.attributes?.length && updated.user_product_id) {
+      try {
+        await ml.put(accountId, `/user-products/${encodeURIComponent(updated.user_product_id)}`, {
+          attributes: toMlWriteAttributes(input.attributes),
+        });
+      } catch (err) {
+        logger.warn(
+          { err, accountId, itemId, userProductId: updated.user_product_id },
+          "Item attributes updated but user-product attributes PUT failed",
+        );
+      }
     }
     return updated;
   } catch (err) {

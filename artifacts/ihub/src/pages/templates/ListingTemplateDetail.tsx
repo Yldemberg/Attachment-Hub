@@ -7,9 +7,11 @@ import {
   usePublishListingTemplate,
   usePropagateListingTemplate,
   useSaveListingTemplateFromProduct,
+  useGetProductCategoryAttributes,
   getGetListingTemplateQueryKey,
   getListListingTemplatesQueryKey,
   getListProductsQueryKey,
+  getGetProductCategoryAttributesQueryKey,
   type PropagateListingTemplateField,
   type PropagateListingTemplateResponseData,
 } from "@workspace/api-client-react";
@@ -136,6 +138,18 @@ export default function ListingTemplateDetail() {
     () => (form ? selectionToPropagatePayload(form, selection) : null),
     [form, selection],
   );
+
+  const categoryId = form?.categoryId.trim() || template?.categoryId || "";
+  const categoryAccountId = template?.sourceAccountId ?? "";
+  const categoryAttrParams = { account_id: categoryAccountId };
+  const { data: categoryAttrsData } = useGetProductCategoryAttributes(categoryId, categoryAttrParams, {
+    query: {
+      queryKey: getGetProductCategoryAttributesQueryKey(categoryId, categoryAttrParams),
+      enabled: !!categoryId && !!categoryAccountId,
+      staleTime: 300_000,
+    },
+  });
+  const categoryAttributes = categoryAttrsData?.data ?? [];
 
   const resetFormFromTemplate = () => {
     if (!payload) return;
@@ -508,6 +522,7 @@ export default function ListingTemplateDetail() {
             disabled={isBusy}
             selection={selection}
             onSelectionChange={setSelection}
+            categoryAttributes={categoryAttributes}
           />
           {template.hasVariations && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-4">

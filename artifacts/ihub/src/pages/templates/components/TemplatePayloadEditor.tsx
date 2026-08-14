@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { AttributeValueControl } from "./AttributeValueControl";
+import type { MlCategoryAttribute } from "@workspace/api-client-react";
 import {
   MLB_LISTING_TYPES,
   LISTING_CONDITIONS,
@@ -222,6 +224,7 @@ type Props = {
   disabled?: boolean;
   selection: TemplatePropagateSelection;
   onSelectionChange: (selection: TemplatePropagateSelection) => void;
+  categoryAttributes?: MlCategoryAttribute[];
 };
 
 function FieldCheck({
@@ -285,6 +288,7 @@ function AttrRows({
   idPlaceholder,
   selectedIndexes,
   onSelectedIndexesChange,
+  categoryById,
 }: {
   label: string;
   rows: ListingFormAttribute[];
@@ -293,6 +297,7 @@ function AttrRows({
   idPlaceholder: string;
   selectedIndexes: number[];
   onSelectedIndexesChange: (indexes: number[]) => void;
+  categoryById?: Map<string, MlCategoryAttribute>;
 }) {
   const allChecked = rows.length > 0 && selectedIndexes.length === rows.length;
   const someChecked = selectedIndexes.length > 0 && !allChecked;
@@ -378,29 +383,47 @@ function AttrRows({
                       )}
                       <div className="flex gap-2 items-start">
                         {isNewRow ? (
-                          <Input
-                            value={row.id}
-                            onChange={(e) => {
+                          <>
+                            <Input
+                              value={row.id}
+                              onChange={(e) => {
+                                const next = [...rows];
+                                next[index] = { ...row, id: e.target.value };
+                                onChange(next);
+                              }}
+                              placeholder={idPlaceholder}
+                              className="h-9 font-mono text-xs w-[40%]"
+                              disabled={disabled}
+                            />
+                            <Input
+                              value={row.value_name}
+                              onChange={(e) => {
+                                const next = [...rows];
+                                next[index] = { ...row, value_name: e.target.value };
+                                onChange(next);
+                              }}
+                              placeholder="Valor"
+                              className="h-9 flex-1"
+                              disabled={disabled}
+                            />
+                          </>
+                        ) : (
+                          <AttributeValueControl
+                            meta={categoryById?.get(row.id)}
+                            valueName={row.value_name}
+                            valueId={row.value_id}
+                            disabled={disabled}
+                            placeholder={displayName}
+                            onChange={(value_name, value_id) => {
                               const next = [...rows];
-                              next[index] = { ...row, id: e.target.value };
+                              const updated: ListingFormAttribute = { ...row, value_name };
+                              if (value_id) updated.value_id = value_id;
+                              else delete updated.value_id;
+                              next[index] = updated;
                               onChange(next);
                             }}
-                            placeholder={idPlaceholder}
-                            className="h-9 font-mono text-xs w-[40%]"
-                            disabled={disabled}
                           />
-                        ) : null}
-                        <Input
-                          value={row.value_name}
-                          onChange={(e) => {
-                            const next = [...rows];
-                            next[index] = { ...row, value_name: e.target.value };
-                            onChange(next);
-                          }}
-                          placeholder={displayName && !isNewRow ? displayName : "Valor"}
-                          className="h-9 flex-1"
-                          disabled={disabled}
-                        />
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
@@ -434,6 +457,7 @@ export function TemplatePayloadEditor({
   disabled,
   selection,
   onSelectionChange,
+  categoryAttributes,
 }: Props) {
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60";
@@ -448,6 +472,7 @@ export function TemplatePayloadEditor({
       : selection.fields.filter((f) => f !== field);
     onSelectionChange({ ...selection, fields });
   };
+  const categoryById = new Map((categoryAttributes ?? []).map((attr) => [attr.id, attr]));
 
   return (
     <div className="space-y-5">
@@ -708,6 +733,7 @@ export function TemplatePayloadEditor({
           onSelectedIndexesChange={(attributeIndexes) =>
             onSelectionChange({ ...selection, attributeIndexes })
           }
+          categoryById={categoryById}
         />
         <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
           A lista vem da categoria do ML (principais e secundárias), inclusive campos ainda vazios

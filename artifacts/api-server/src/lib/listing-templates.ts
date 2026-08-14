@@ -1081,10 +1081,11 @@ async function buildPropagatePatch(params: {
     if (filtered.length === 0) {
       notes.push("Nenhum atributo selecionado pôde ser aplicado.");
     } else {
-      const categoryId = params.categoryId || params.payload.categoryId;
-      patch.attributes = categoryId
-        ? await sanitizeAttributesForCreate(params.accountId, categoryId, filtered)
-        : filtered;
+      const categoryId = params.categoryId || params.payload.categoryId || "";
+      patch.attributes = await sanitizeAttributesForCreate(params.accountId, categoryId, filtered, {
+        keepUnknownIds: true,
+        hasVariations: params.hasVariations,
+      });
     }
   }
 
