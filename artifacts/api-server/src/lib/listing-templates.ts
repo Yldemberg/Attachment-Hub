@@ -101,16 +101,79 @@ function isCategoryFormAttribute(attr: MlCategoryAttribute): boolean {
   return true;
 }
 
-function secondaryGroupLabel(groupName?: string, groupId?: string): string | undefined {
+const MAIN_GROUP_TITLE = "Características principais";
+const SECONDARY_GROUP_TITLE = "Características secundárias";
+const PACKAGE_GROUP_TITLE = "Embalagem";
+const OTHER_GROUP_TITLE = "Outros";
+
+const GROUP_DISPLAY_ORDER = [MAIN_GROUP_TITLE, SECONDARY_GROUP_TITLE, PACKAGE_GROUP_TITLE];
+
+function localizeGroupTitle(groupName?: string, groupId?: string): string | undefined {
   const id = (groupId ?? "").toUpperCase();
   const name = (groupName ?? "").trim();
-  if (id === "OTHERS" || /secund/i.test(name) || /^outros$/i.test(name)) {
-    return "Características secundárias";
+  if (id === "MAIN" || /princip/i.test(name)) return MAIN_GROUP_TITLE;
+  if (
+    id === "OTHERS" ||
+    id === "DFLT" ||
+    id === "DMT" ||
+    /secund/i.test(name) ||
+    /outras caracter/i.test(name) ||
+    /otras caracter/i.test(name) ||
+    /^outros$/i.test(name) ||
+    /^otros$/i.test(name)
+  ) {
+    return SECONDARY_GROUP_TITLE;
   }
-  if (id === "MAIN" || id === "DFLT" || /princip/i.test(name)) {
-    return "Características principais";
-  }
+  if (/embalag|package|packing/i.test(name) || /env[ií]o/i.test(name)) return PACKAGE_GROUP_TITLE;
   return name || undefined;
+}
+
+function isGenericOutrosGroup(groupName?: string, groupId?: string): boolean {
+  const name = (groupName ?? "").trim();
+  if (/princip/i.test(name) || /secund/i.test(name) || /outras caracter/i.test(name) || /otras caracter/i.test(name)) {
+    return false;
+  }
+  const id = (groupId ?? "").toUpperCase();
+  return id === "OTHERS" || id === "DFLT" || /^outros$/i.test(name) || /^otros$/i.test(name) || !name;
+}
+
+function inferGroupFromAttributeId(attributeId: string): string {
+  if (/PACKAGE|KELLER_PACKAGE|SHIPMENT_PACKING/i.test(attributeId)) return PACKAGE_GROUP_TITLE;
+  return OTHER_GROUP_TITLE;
+}
+
+function sellerFormGroupTitle(attr: MlCategoryAttribute): string {
+  if (/PACKAGE|KELLER_PACKAGE|SHIPMENT_PACKING/i.test(attr.id)) return PACKAGE_GROUP_TITLE;
+
+  const localized = localizeGroupTitle(attr.groupName, attr.groupId);
+  if (localized && !isGenericOutrosGroup(attr.groupName, attr.groupId)) {
+    return localized;
+  }
+
+  const tags = attr.tags ?? {};
+  if (attr.tags) {
+    if (tags.hidden) return SECONDARY_GROUP_TITLE;
+    return MAIN_GROUP_TITLE;
+  }
+
+  return localized ?? MAIN_GROUP_TITLE;
+}
+
+function sortAttributesByGroup(rows: MlListingAttributeInput[]): MlListingAttributeInput[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const ga = a.row.groupName ?? OTHER_GROUP_TITLE;
+      const gb = b.row.groupName ?? OTHER_GROUP_TITLE;
+      const ra = GROUP_DISPLAY_ORDER.indexOf(ga);
+      const rb = GROUP_DISPLAY_ORDER.indexOf(gb);
+      const oa = ra === -1 ? GROUP_DISPLAY_ORDER.length : ra;
+      const ob = rb === -1 ? GROUP_DISPLAY_ORDER.length : rb;
+      if (oa !== ob) return oa - ob;
+      if (oa === GROUP_DISPLAY_ORDER.length && ga !== gb) return ga.localeCompare(gb, "pt-BR");
+      return a.index - b.index;
+    })
+    .map(({ row }) => row);
 }
 
 function mergeTemplateAttributes(
@@ -130,15 +193,18 @@ function mergeTemplateAttributes(
       value_name: fromItem?.value_name ?? "",
       ...(fromItem?.value_id ? { value_id: fromItem.value_id } : {}),
       name: cat.name,
-      groupName: secondaryGroupLabel(cat.groupName, cat.groupId),
+      groupName: sellerFormGroupTitle(cat),
     });
   }
 
   for (const attr of itemAttrs) {
     if (used.has(attr.id)) continue;
-    merged.push(attr);
+    merged.push({
+      ...attr,
+      groupName: attr.groupName ?? inferGroupFromAttributeId(attr.id),
+    });
   }
-  return merged;
+  return sortAttributesByGroup(merged);
 }
 
 async function fetchUserProductAttributes(

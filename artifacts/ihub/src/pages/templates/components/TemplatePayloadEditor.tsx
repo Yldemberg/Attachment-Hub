@@ -260,6 +260,23 @@ function FieldCheck({
   );
 }
 
+function groupAttributeRows(
+  rows: ListingFormAttribute[],
+): Array<{ title: string; indexes: number[] }> {
+  const hasAnyGroup = rows.some((row) => row.groupName?.trim());
+  const groups: Array<{ title: string; indexes: number[] }> = [];
+  for (let index = 0; index < rows.length; index++) {
+    const title = hasAnyGroup ? (rows[index]?.groupName?.trim() || "Outros") : "";
+    const last = groups[groups.length - 1];
+    if (last && last.title === title) {
+      last.indexes.push(index);
+    } else {
+      groups.push({ title, indexes: [index] });
+    }
+  }
+  return groups;
+}
+
 function AttrRows({
   label,
   rows,
@@ -322,80 +339,89 @@ function AttrRows({
       {rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhum item. Clique em Adicionar.</p>
       ) : (
-        <div className="space-y-3">
-          {rows.map((row, index) => {
-            const prevGroup = index > 0 ? rows[index - 1]?.groupName : undefined;
-            const showGroup = row.groupName && row.groupName !== prevGroup;
-            const isNewRow = !row.id.trim();
-            const displayName = mlAttributeLabel(row);
-            return (
-              <div key={`${row.id}-${index}`} className="space-y-1">
-                {showGroup ? (
-                  <p className="text-[11px] font-medium text-muted-foreground pt-1">{row.groupName}</p>
-                ) : null}
-                <div
-                  className={cn(
-                    "flex gap-2 items-start",
-                    !selectedSet.has(index) && "opacity-55",
-                  )}
-                >
-                  <Checkbox
-                    className="mt-2.5"
-                    checked={selectedSet.has(index)}
-                    disabled={disabled}
-                    onCheckedChange={(value) => toggleRow(index, value === true)}
-                  />
-                  <div className="flex-1 min-w-0 space-y-1">
-                    {isNewRow ? null : (
-                      <div className="leading-tight">
-                        <p className="text-[12px] text-foreground font-medium">{displayName}</p>
-                      </div>
+        <div className="space-y-4">
+          {groupAttributeRows(rows).map((group) => (
+            <div
+              key={group.title || "ungrouped"}
+              className={cn(
+                group.title && "rounded-lg border border-border bg-muted/20 px-3 py-3 space-y-3",
+                !group.title && "space-y-3",
+              )}
+            >
+              {group.title ? (
+                <h3 className="text-sm font-semibold text-foreground tracking-tight">{group.title}</h3>
+              ) : null}
+              {group.indexes.map((index) => {
+                const row = rows[index];
+                if (!row) return null;
+                const isNewRow = !row.id.trim();
+                const displayName = mlAttributeLabel(row);
+                return (
+                  <div
+                    key={`${row.id}-${index}`}
+                    className={cn(
+                      "flex gap-2 items-start",
+                      !selectedSet.has(index) && "opacity-55",
                     )}
-                    <div className="flex gap-2 items-start">
-                      {isNewRow ? (
+                  >
+                    <Checkbox
+                      className="mt-2.5"
+                      checked={selectedSet.has(index)}
+                      disabled={disabled}
+                      onCheckedChange={(value) => toggleRow(index, value === true)}
+                    />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {isNewRow ? null : (
+                        <p className="text-[12px] text-foreground font-medium leading-tight">
+                          {displayName}
+                        </p>
+                      )}
+                      <div className="flex gap-2 items-start">
+                        {isNewRow ? (
+                          <Input
+                            value={row.id}
+                            onChange={(e) => {
+                              const next = [...rows];
+                              next[index] = { ...row, id: e.target.value };
+                              onChange(next);
+                            }}
+                            placeholder={idPlaceholder}
+                            className="h-9 font-mono text-xs w-[40%]"
+                            disabled={disabled}
+                          />
+                        ) : null}
                         <Input
-                          value={row.id}
+                          value={row.value_name}
                           onChange={(e) => {
                             const next = [...rows];
-                            next[index] = { ...row, id: e.target.value };
+                            next[index] = { ...row, value_name: e.target.value };
                             onChange(next);
                           }}
-                          placeholder={idPlaceholder}
-                          className="h-9 font-mono text-xs w-[40%]"
+                          placeholder={displayName && !isNewRow ? displayName : "Valor"}
+                          className="h-9 flex-1"
                           disabled={disabled}
                         />
-                      ) : null}
-                      <Input
-                        value={row.value_name}
-                        onChange={(e) => {
-                          const next = [...rows];
-                          next[index] = { ...row, value_name: e.target.value };
-                          onChange(next);
-                        }}
-                        placeholder={displayName && !isNewRow ? displayName : "Valor"}
-                        className="h-9 flex-1"
-                        disabled={disabled}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 w-9 p-0 text-destructive hover:text-destructive flex-shrink-0"
-                        disabled={disabled}
-                        onClick={() => {
-                          onChange(rows.filter((_, i) => i !== index));
-                          onSelectedIndexesChange(removeIndex(selectedIndexes, index));
-                        }}
-                        title="Remover"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 w-9 p-0 text-destructive hover:text-destructive flex-shrink-0"
+                          disabled={disabled}
+                          onClick={() => {
+                            onChange(rows.filter((_, i) => i !== index));
+                            onSelectedIndexesChange(removeIndex(selectedIndexes, index));
+                          }}
+                          title="Remover"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
