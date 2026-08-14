@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   MLB_LISTING_TYPES,
   LISTING_CONDITIONS,
+  mlAttributeLabel,
   type ListingFormAttribute,
 } from "@/pages/products/components/listing-constants";
 
@@ -325,6 +326,8 @@ function AttrRows({
           {rows.map((row, index) => {
             const prevGroup = index > 0 ? rows[index - 1]?.groupName : undefined;
             const showGroup = row.groupName && row.groupName !== prevGroup;
+            const isNewRow = !row.id.trim();
+            const displayName = mlAttributeLabel(row);
             return (
               <div key={`${row.id}-${index}`} className="space-y-1">
                 {showGroup ? (
@@ -343,21 +346,25 @@ function AttrRows({
                     onCheckedChange={(value) => toggleRow(index, value === true)}
                   />
                   <div className="flex-1 min-w-0 space-y-1">
-                    {row.name ? (
-                      <p className="text-[11px] text-foreground leading-tight">{row.name}</p>
-                    ) : null}
+                    {isNewRow ? null : (
+                      <div className="leading-tight">
+                        <p className="text-[12px] text-foreground font-medium">{displayName}</p>
+                      </div>
+                    )}
                     <div className="flex gap-2 items-start">
-                      <Input
-                        value={row.id}
-                        onChange={(e) => {
-                          const next = [...rows];
-                          next[index] = { ...row, id: e.target.value };
-                          onChange(next);
-                        }}
-                        placeholder={idPlaceholder}
-                        className="h-9 font-mono text-xs w-[40%]"
-                        disabled={disabled}
-                      />
+                      {isNewRow ? (
+                        <Input
+                          value={row.id}
+                          onChange={(e) => {
+                            const next = [...rows];
+                            next[index] = { ...row, id: e.target.value };
+                            onChange(next);
+                          }}
+                          placeholder={idPlaceholder}
+                          className="h-9 font-mono text-xs w-[40%]"
+                          disabled={disabled}
+                        />
+                      ) : null}
                       <Input
                         value={row.value_name}
                         onChange={(e) => {
@@ -365,7 +372,7 @@ function AttrRows({
                           next[index] = { ...row, value_name: e.target.value };
                           onChange(next);
                         }}
-                        placeholder={row.name ? `Valor de ${row.name}` : "Valor"}
+                        placeholder={displayName && !isNewRow ? displayName : "Valor"}
                         className="h-9 flex-1"
                         disabled={disabled}
                       />

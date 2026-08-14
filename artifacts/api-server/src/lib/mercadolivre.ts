@@ -172,6 +172,7 @@ async function mlFetch<T>(
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
           Accept: "application/json",
+          "Accept-Language": "pt-BR",
           ...(options.headers as Record<string, string>),
         },
         signal: controller.signal,
