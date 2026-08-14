@@ -61,8 +61,6 @@ const PROPAGATE_FIELD_OPTIONS: Array<{
   { id: PropagateListingTemplateField.title, label: "Título / família", hint: "Título ou family_name" },
   { id: PropagateListingTemplateField.pictures, label: "Fotos", hint: "URLs públicas" },
   { id: PropagateListingTemplateField.description, label: "Descrição", hint: "Texto do anúncio" },
-  { id: PropagateListingTemplateField.attributes, label: "Atributos", hint: "Marca, modelo, etc." },
-  { id: PropagateListingTemplateField.saleTerms, label: "Garantia", hint: "Condições de venda" },
   { id: PropagateListingTemplateField.price, label: "Preço", hint: "Não aplica em variações" },
   { id: PropagateListingTemplateField.videoId, label: "Video Clip", hint: "Pode falhar em outra conta" },
 ];
@@ -71,7 +69,6 @@ const DEFAULT_PROPAGATE_FIELDS = [
   PropagateListingTemplateField.title,
   PropagateListingTemplateField.pictures,
   PropagateListingTemplateField.description,
-  PropagateListingTemplateField.attributes,
 ] as const;
 
 function publishBlockedReason(flags: {
@@ -83,21 +80,29 @@ function publishBlockedReason(flags: {
   return null;
 }
 
-function sameAttrList(
-  a: Array<{ id: string; value_name: string; value_id?: string }>,
-  b: Array<{ id?: unknown; value_name?: unknown; value_id?: unknown }> | undefined,
-): boolean {
-  const norm = (rows: Array<{ id?: unknown; value_name?: unknown; value_id?: unknown }> | undefined) =>
-    JSON.stringify(
-      (rows ?? [])
-        .map((r) => ({
-          id: String(r.id ?? ""),
-          value_name: String(r.value_name ?? "").trim(),
-          value_id: typeof r.value_id === "string" ? r.value_id : "",
-        }))
-        .filter((r) => r.id),
-    );
-  return norm(a) === norm(b);
+function attrKey(row: { id: string; value_name: string; value_id?: string }): string {
+  return row.id.trim();
+}
+
+function changedItemIds(
+  current: Array<{ id: string; value_name: string; value_id?: string }>,
+  original: Array<{ id: string; value_name: string; value_id?: string }>,
+): string[] {
+  const origById = new Map(original.filter((r) => r.id.trim()).map((r) => [r.id.trim().toLowerCase(), r]));
+  const changed: string[] = [];
+  for (const row of current) {
+    const id = row.id.trim();
+    if (!id) continue;
+    const prev = origById.get(id.toLowerCase());
+    if (
+      !prev ||
+      prev.value_name.trim() !== row.value_name.trim() ||
+      (prev.value_id ?? "") !== (row.value_id ?? "")
+    ) {
+      if (!changed.some((x) => x.toLowerCase() === id.toLowerCase())) changed.push(id);
+    }
+  }
+  return changed;
 }
 
 function changedPropagateFields(
@@ -126,16 +131,105 @@ function changedPropagateFields(
   if (form.description.trim() !== origForm.description.trim()) {
     changed.push(PropagateListingTemplateField.description);
   }
-  if (!sameAttrList(form.attributes, origForm.attributes)) {
-    changed.push(PropagateListingTemplateField.attributes);
-  }
-  if (!sameAttrList(form.saleTerms, origForm.saleTerms)) {
-    changed.push(PropagateListingTemplateField.saleTerms);
-  }
   if (form.videoId.trim() !== origForm.videoId.trim()) {
     changed.push(PropagateListingTemplateField.videoId);
   }
   return changed;
+}
+
+function IdChecklist({
+  title,
+  hint,
+  rows,
+  selectedIds,
+  onChange,
+  changedIds,
+  disabled,
+  emptyLabel,
+}: {
+  title: string;
+  hint: string;
+  rows: Array<{ id: string; value_name: string; value_id?: string }>;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  changedIds: string[];
+  disabled?: boolean;
+  emptyLabel: string;
+}) {
+  const usable = rows.filter((r) => r.id.trim());
+  const allIds = usable.map((r) => r.id.trim());
+  const selectedSet = new Set(selectedIds.map((id) => id.toLowerCase()));
+  const selectedCount = allIds.filter((id) => selectedSet.has(id.toLowerCase())).length;
+  const allChecked = allIds.length > 0 && selectedCount === allIds.length;
+  const someChecked = selectedCount > 0 && !allChecked;
+  const changedSet = new Set(changedIds.map((id) => id.toLowerCase()));
+
+  const toggleOne = (id: string, checked: boolean) => {
+    const key = id.trim();
+    if (!key) return;
+    if (checked) {
+      if (selectedSet.has(key.toLowerCase())) return;
+      onChange([...selectedIds, key]);
+      return;
+    }
+    onChange(selectedIds.filter((x) => x.toLowerCase() !== key.toLowerCase()));
+  };
+
+  return (
+    <div className="rounded-lg border border-border px-3 py-2.5 space-y-2 sm:col-span-2">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <Checkbox
+          checked={allChecked ? true : someChecked ? "indeterminate" : false}
+          disabled={disabled || usable.length === 0}
+          onCheckedChange={(value) => onChange(value === true ? allIds : [])}
+          className="mt-0.5"
+        />
+        <span className="min-w-0">
+          <span className="text-sm text-foreground">{title}</span>
+          <span className="block text-[11px] text-muted-foreground">{hint}</span>
+        </span>
+      </label>
+      {usable.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground pl-6">{emptyLabel}</p>
+      ) : (
+        <div className="pl-6 grid grid-cols-1 gap-1.5">
+          {usable.map((row, index) => {
+            const id = row.id.trim();
+            const checked = selectedSet.has(id.toLowerCase());
+            const edited = changedSet.has(id.toLowerCase());
+            return (
+              <label
+                key={`${id}-${index}`}
+                className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 cursor-pointer"
+              >
+                <Checkbox
+                  checked={checked}
+                  disabled={disabled}
+                  onCheckedChange={(value) => toggleOne(id, value === true)}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="text-xs font-mono text-foreground">
+                    {id}
+                    {edited ? (
+                      <span className="ml-1.5 font-sans text-[10px] text-primary font-medium">
+                        alterado
+                      </span>
+                    ) : null}
+                  </span>
+                  {row.value_name.trim() ? (
+                    <span className="block text-[11px] text-muted-foreground truncate">
+                      {row.value_name.trim()}
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ListingTemplateDetail() {
@@ -150,6 +244,8 @@ export default function ListingTemplateDetail() {
   const [formReadyForId, setFormReadyForId] = useState<string | null>(null);
   const [publishedListings, setPublishedListings] = useState<PublishedListingRef[]>([]);
   const [selectedFields, setSelectedFields] = useState<string[]>([...DEFAULT_PROPAGATE_FIELDS]);
+  const [selectedAttributeIds, setSelectedAttributeIds] = useState<string[]>([]);
+  const [selectedSaleTermIds, setSelectedSaleTermIds] = useState<string[]>([]);
   const [propagateResult, setPropagateResult] = useState<PropagateListingTemplateResponseData | null>(
     null,
   );

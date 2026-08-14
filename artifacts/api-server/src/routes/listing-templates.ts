@@ -215,6 +215,12 @@ router.post("/listing-templates/:id/propagate", ...auth, async (req, res) => {
       userId: req.user!.id,
       templateId: req.params.id as string,
       fields,
+      attributeIds: Array.isArray(req.body?.attributeIds)
+        ? (req.body.attributeIds as unknown[]).filter((f): f is string => typeof f === "string")
+        : undefined,
+      saleTermIds: Array.isArray(req.body?.saleTermIds)
+        ? (req.body.saleTermIds as unknown[]).filter((f): f is string => typeof f === "string")
+        : undefined,
       overrides: req.body?.overrides,
     });
 

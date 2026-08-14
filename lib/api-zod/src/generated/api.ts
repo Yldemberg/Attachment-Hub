@@ -2018,8 +2018,22 @@ export const PropagateListingTemplateBody = zod.object({
           "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",
         ),
     )
-    .min(1)
-    .describe("Campos a aplicar. Nunca inclui estoque."),
+    .optional()
+    .describe(
+      "Campos escalares a aplicar (título, fotos, descrição, preço, vídeo). Para atributos e condições de venda, use attributeIds e saleTermIds.\n",
+    ),
+  attributeIds: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'IDs individuais de atributos a espelhar (ex. BRAND, MODEL). Lista vazia = nenhum atributo. Omitir com fields=[\"attributes\"] aplica todos.\n',
+    ),
+  saleTermIds: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'IDs individuais de condições de venda a espelhar (ex. WARRANTY_TYPE). Lista vazia = nenhuma. Omitir com fields=[\"saleTerms\"] aplica todas as graváveis.\n',
+    ),
   overrides: zod
     .record(zod.string(), zod.unknown())
     .optional()
@@ -2044,6 +2058,8 @@ export const PropagateListingTemplateResponse = zod.object({
           "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",
         ),
     ),
+    attributeIds: zod.array(zod.string()),
+    saleTermIds: zod.array(zod.string()),
     updated: zod.number(),
     skipped: zod.number(),
     failed: zod.number(),

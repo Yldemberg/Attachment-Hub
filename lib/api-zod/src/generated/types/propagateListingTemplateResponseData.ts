@@ -11,6 +11,8 @@ import type { PropagateListingTemplateResultItem } from "./propagateListingTempl
 export type PropagateListingTemplateResponseData = {
   sku: string;
   fields: PropagateListingTemplateField[];
+  attributeIds: string[];
+  saleTermIds: string[];
   updated: number;
   skipped: number;
   failed: number;

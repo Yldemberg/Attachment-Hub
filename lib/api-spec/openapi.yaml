@@ -4813,13 +4813,27 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PropagateListingTemplateField"
-          minItems: 1
-          description: Campos a aplicar. Nunca inclui estoque.
+          description: >
+            Campos escalares a aplicar (título, fotos, descrição, preço, vídeo).
+            Para atributos e condições de venda, use attributeIds e saleTermIds.
+        attributeIds:
+          type: array
+          items:
+            type: string
+          description: >
+            IDs individuais de atributos a espelhar (ex. BRAND, MODEL).
+            Lista vazia = nenhum atributo. Omitir com fields=["attributes"] aplica todos.
+        saleTermIds:
+          type: array
+          items:
+            type: string
+          description: >
+            IDs individuais de condições de venda a espelhar (ex. WARRANTY_TYPE).
+            Lista vazia = nenhuma. Omitir com fields=["saleTerms"] aplica todas as graváveis.
         overrides:
           type: object
           description: Valores a usar no lugar do payload salvo no modelo
           additionalProperties: true
-      required: [fields]
 
     PropagateListingTemplateResultItem:
       type: object
@@ -4855,6 +4869,14 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/PropagateListingTemplateField"
+            attributeIds:
+              type: array
+              items:
+                type: string
+            saleTermIds:
+              type: array
+              items:
+                type: string
             updated:
               type: integer
             skipped:
@@ -4865,7 +4887,7 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/PropagateListingTemplateResultItem"
-          required: [sku, fields, updated, skipped, failed, results]
+          required: [sku, fields, attributeIds, saleTermIds, updated, skipped, failed, results]
       required: [data]
 
     # --------------------------------------------------------------------------

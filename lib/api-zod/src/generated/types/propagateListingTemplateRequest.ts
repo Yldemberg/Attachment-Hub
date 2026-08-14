@@ -9,11 +9,15 @@ import type { PropagateListingTemplateField } from "./propagateListingTemplateFi
 import type { PropagateListingTemplateRequestOverrides } from "./propagateListingTemplateRequestOverrides";
 
 export interface PropagateListingTemplateRequest {
-  /**
-   * Campos a aplicar. Nunca inclui estoque.
-   * @minItems 1
+  /** Campos escalares a aplicar (título, fotos, descrição, preço, vídeo). Para atributos e condições de venda, use attributeIds e saleTermIds.
    */
-  fields: PropagateListingTemplateField[];
+  fields?: PropagateListingTemplateField[];
+  /** IDs individuais de atributos a espelhar (ex. BRAND, MODEL). Lista vazia = nenhum atributo. Omitir com fields=["attributes"] aplica todos.
+   */
+  attributeIds?: string[];
+  /** IDs individuais de condições de venda a espelhar (ex. WARRANTY_TYPE). Lista vazia = nenhuma. Omitir com fields=["saleTerms"] aplica todas as graváveis.
+   */
+  saleTermIds?: string[];
   /** Valores a usar no lugar do payload salvo no modelo */
   overrides?: PropagateListingTemplateRequestOverrides;
 }

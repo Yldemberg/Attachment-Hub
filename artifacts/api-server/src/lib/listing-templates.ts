@@ -569,6 +569,8 @@ export type PropagateListingTemplateResultItem = {
 export type PropagateListingTemplateResult = {
   sku: string;
   fields: ListingTemplatePropagateField[];
+  attributeIds: string[];
+  saleTermIds: string[];
   updated: number;
   skipped: number;
   failed: number;
@@ -597,6 +599,25 @@ function normalizePropagateFields(fields: string[]): ListingTemplatePropagateFie
     if (!unique.includes(field)) unique.push(field);
   }
   return unique;
+}
+
+function normalizeIdList(ids: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(ids)) return undefined;
+  const unique: string[] = [];
+  for (const raw of ids) {
+    const id = raw.trim();
+    if (!id) continue;
+    if (!unique.some((x) => x.toLowerCase() === id.toLowerCase())) unique.push(id);
+  }
+  return unique;
+}
+
+function filterAttrsByIds(
+  rows: MlListingAttributeInput[],
+  ids: string[],
+): MlListingAttributeInput[] {
+  const wanted = new Set(ids.map((id) => id.toLowerCase()));
+  return rows.filter((row) => wanted.has(row.id.toLowerCase()));
 }
 
 function asAttributeInputs(rows: unknown): MlListingAttributeInput[] {
@@ -761,6 +782,8 @@ async function buildPropagatePatch(params: {
   categoryId: string | null;
   payload: ListingTemplatePayload;
   fields: ListingTemplatePropagateField[];
+  attributeIds?: string[];
+  saleTermIds?: string[];
   hasVariations: boolean;
 }): Promise<{ patch: UpdateMlListingInput; notes: string[] }> {
   const notes: string[] = [];
@@ -798,18 +821,33 @@ async function buildPropagatePatch(params: {
     patch.description = params.payload.description?.trim() ?? "";
   }
 
-  if (params.fields.includes("attributes")) {
+  const applyAllAttributes = params.fields.includes("attributes") && params.attributeIds === undefined;
+  const selectedAttrIds = params.attributeIds ?? [];
+  if (applyAllAttributes || selectedAttrIds.length > 0) {
     const raw = asAttributeInputs(params.payload.attributes);
-    const categoryId = params.categoryId || params.payload.categoryId;
-    patch.attributes = categoryId
-      ? await sanitizeAttributesForCreate(params.accountId, categoryId, raw)
-      : raw;
+    const filtered = applyAllAttributes ? raw : filterAttrsByIds(raw, selectedAttrIds);
+    if (filtered.length === 0) {
+      notes.push("Nenhum atributo selecionado pôde ser aplicado.");
+    } else {
+      const categoryId = params.categoryId || params.payload.categoryId;
+      patch.attributes = categoryId
+        ? await sanitizeAttributesForCreate(params.accountId, categoryId, filtered)
+        : filtered;
+    }
   }
 
-  if (params.fields.includes("saleTerms")) {
-    patch.saleTerms = asAttributeInputs(params.payload.saleTerms).filter((t) =>
+  const applyAllSaleTerms = params.fields.includes("saleTerms") && params.saleTermIds === undefined;
+  const selectedSaleIds = params.saleTermIds ?? [];
+  if (applyAllSaleTerms || selectedSaleIds.length > 0) {
+    const raw = asAttributeInputs(params.payload.saleTerms).filter((t) =>
       WRITABLE_SALE_TERM_IDS.has(t.id),
     );
+    const filtered = applyAllSaleTerms ? raw : filterAttrsByIds(raw, selectedSaleIds);
+    if (filtered.length === 0) {
+      notes.push("Nenhuma condição de venda selecionada pôde ser aplicada.");
+    } else {
+      patch.saleTerms = filtered;
+    }
   }
 
   if (params.fields.includes("videoId")) {
@@ -854,15 +892,37 @@ export async function propagateListingTemplate(params: {
   userId: string;
   templateId: string;
   fields: string[];
+  attributeIds?: string[];
+  saleTermIds?: string[];
   overrides?: Partial<CreateMlListingInput>;
 }): Promise<PropagateListingTemplateResult> {
-  const fields = normalizePropagateFields(params.fields);
-  if (fields.length === 0) {
+  const attributeIds = normalizeIdList(params.attributeIds);
+  const saleTermIds = normalizeIdList(params.saleTermIds);
+  const requested = new Set(params.fields);
+  const scalarFields = normalizePropagateFields(params.fields).filter(
+    (field) => field !== "attributes" && field !== "saleTerms",
+  );
+  const applyAllAttributes = requested.has("attributes") && attributeIds === undefined;
+  const applyAllSaleTerms = requested.has("saleTerms") && saleTermIds === undefined;
+  const selectedAttributeIds = attributeIds ?? [];
+  const selectedSaleTermIds = saleTermIds ?? [];
+
+  if (
+    scalarFields.length === 0 &&
+    !applyAllAttributes &&
+    selectedAttributeIds.length === 0 &&
+    !applyAllSaleTerms &&
+    selectedSaleTermIds.length === 0
+  ) {
     throw new MlListingError(
       "Selecione ao menos um campo para espelhar (estoque não é alterado).",
       "MISSING_FIELDS",
     );
   }
+
+  const fields: ListingTemplatePropagateField[] = [...scalarFields];
+  if (applyAllAttributes || selectedAttributeIds.length > 0) fields.push("attributes");
+  if (applyAllSaleTerms || selectedSaleTermIds.length > 0) fields.push("saleTerms");
 
   const found = await getListingTemplateForUser(params.userId, params.templateId);
   if (!found) {
@@ -921,6 +981,8 @@ export async function propagateListingTemplate(params: {
           categoryId: listing.categoryId,
           payload,
           fields,
+          attributeIds: applyAllAttributes ? undefined : selectedAttributeIds,
+          saleTermIds: applyAllSaleTerms ? undefined : selectedSaleTermIds,
           hasVariations: listing.hasVariations,
         });
 
@@ -976,6 +1038,8 @@ export async function propagateListingTemplate(params: {
   return {
     sku,
     fields,
+    attributeIds: selectedAttributeIds,
+    saleTermIds: selectedSaleTermIds,
     updated: results.filter((r) => r.status === "updated").length,
     skipped: results.filter((r) => r.status === "skipped").length,
     failed: results.filter((r) => r.status === "failed").length,
