@@ -1418,7 +1418,8 @@ paths:
       summary: Listar modelos de anúncio salvos
       description: >
         Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.)
-        sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+        sincronizados a partir das contas conectadas, para republicar ou espelhar campos
+        por SKU nos anúncios existentes.
       security:
         - bearerAuth: []
       parameters:
@@ -1574,6 +1575,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublishListingTemplateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Mercado Livre API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /listing-templates/{id}/propagate:
+    post:
+      operationId: propagateListingTemplate
+      tags: [listing-templates]
+      summary: Espelhar campos do modelo em todos os anúncios ML do mesmo SKU
+      description: >
+        Aplica os campos selecionados do modelo (com overrides opcionais) em todos os
+        anúncios Mercado Livre do usuário com o mesmo SKU, em todas as contas, inclusive Full.
+        Nunca altera estoque (`available_quantity`). Catálogo e anúncios encerrados podem
+        ser pulados ou falhar conforme as regras do ML.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropagateListingTemplateRequest"
+      responses:
+        "200":
+          description: Resultado por anúncio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropagateListingTemplateResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -4579,6 +4620,10 @@ components:
           nullable: true
         sourceMlItemId:
           type: string
+        sku:
+          type: string
+          nullable: true
+          description: SKU do anúncio de origem (products.sku)
         name:
           type: string
         thumbnail:
@@ -4685,7 +4730,23 @@ components:
           properties:
             payload:
               $ref: "#/components/schemas/ListingTemplatePayload"
+            skuTargets:
+              $ref: "#/components/schemas/ListingTemplateSkuTargets"
           required: [payload]
+
+    ListingTemplateSkuTargets:
+      type: object
+      description: Anúncios ML do mesmo SKU (todas as contas), incluindo Full.
+      properties:
+        total:
+          type: integer
+        full:
+          type: integer
+        traditional:
+          type: integer
+        closed:
+          type: integer
+      required: [total, full, traditional, closed]
 
     ListingTemplateListResponse:
       type: object
@@ -4731,6 +4792,80 @@ components:
             mlItemId:
               type: string
           required: [productId, mlItemId]
+      required: [data]
+
+    PropagateListingTemplateField:
+      type: string
+      description: Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.
+      enum:
+        - title
+        - price
+        - pictures
+        - description
+        - attributes
+        - saleTerms
+        - videoId
+
+    PropagateListingTemplateRequest:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropagateListingTemplateField"
+          minItems: 1
+          description: Campos a aplicar. Nunca inclui estoque.
+        overrides:
+          type: object
+          description: Valores a usar no lugar do payload salvo no modelo
+          additionalProperties: true
+      required: [fields]
+
+    PropagateListingTemplateResultItem:
+      type: object
+      properties:
+        productId:
+          type: string
+        mlItemId:
+          type: string
+        accountId:
+          type: string
+        accountLabel:
+          type: string
+          nullable: true
+        isFull:
+          type: boolean
+        status:
+          type: string
+          enum: [updated, skipped, failed]
+        reason:
+          type: string
+          nullable: true
+      required: [productId, mlItemId, accountId, isFull, status]
+
+    PropagateListingTemplateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            sku:
+              type: string
+            fields:
+              type: array
+              items:
+                $ref: "#/components/schemas/PropagateListingTemplateField"
+            updated:
+              type: integer
+            skipped:
+              type: integer
+            failed:
+              type: integer
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/PropagateListingTemplateResultItem"
+          required: [sku, fields, updated, skipped, failed, results]
       required: [data]
 
     # --------------------------------------------------------------------------

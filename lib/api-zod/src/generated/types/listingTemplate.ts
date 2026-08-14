@@ -12,6 +12,8 @@ export interface ListingTemplate {
   sourceAccountId?: string | null;
   sourceProductId?: string | null;
   sourceMlItemId: string;
+  /** SKU do anúncio de origem (products.sku) */
+  sku?: string | null;
   name: string;
   thumbnail?: string | null;
   categoryId?: string | null;

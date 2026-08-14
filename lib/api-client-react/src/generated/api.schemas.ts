@@ -1076,6 +1076,8 @@ export interface ListingTemplate {
   sourceAccountId?: string | null;
   sourceProductId?: string | null;
   sourceMlItemId: string;
+  /** SKU do anúncio de origem (products.sku) */
+  sku?: string | null;
   name: string;
   thumbnail?: string | null;
   categoryId?: string | null;
@@ -1130,8 +1132,19 @@ export interface ListingTemplatePayload {
   [key: string]: unknown;
 }
 
+/**
+ * Anúncios ML do mesmo SKU (todas as contas), incluindo Full.
+ */
+export interface ListingTemplateSkuTargets {
+  total: number;
+  full: number;
+  traditional: number;
+  closed: number;
+}
+
 export type ListingTemplateDetail = ListingTemplate & {
   payload: ListingTemplatePayload;
+  skuTargets?: ListingTemplateSkuTargets;
 };
 
 export type ListingTemplateListResponsePagination = {
@@ -1165,6 +1178,71 @@ export type PublishListingTemplateResponseData = {
 
 export interface PublishListingTemplateResponse {
   data: PublishListingTemplateResponseData;
+}
+
+/**
+ * Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.
+ */
+export type PropagateListingTemplateField =
+  (typeof PropagateListingTemplateField)[keyof typeof PropagateListingTemplateField];
+
+export const PropagateListingTemplateField = {
+  title: "title",
+  price: "price",
+  pictures: "pictures",
+  description: "description",
+  attributes: "attributes",
+  saleTerms: "saleTerms",
+  videoId: "videoId",
+} as const;
+
+/**
+ * Valores a usar no lugar do payload salvo no modelo
+ */
+export type PropagateListingTemplateRequestOverrides = {
+  [key: string]: unknown;
+};
+
+export interface PropagateListingTemplateRequest {
+  /**
+   * Campos a aplicar. Nunca inclui estoque.
+   * @minItems 1
+   */
+  fields: PropagateListingTemplateField[];
+  /** Valores a usar no lugar do payload salvo no modelo */
+  overrides?: PropagateListingTemplateRequestOverrides;
+}
+
+export type PropagateListingTemplateResultItemStatus =
+  (typeof PropagateListingTemplateResultItemStatus)[keyof typeof PropagateListingTemplateResultItemStatus];
+
+export const PropagateListingTemplateResultItemStatus = {
+  updated: "updated",
+  skipped: "skipped",
+  failed: "failed",
+} as const;
+
+export interface PropagateListingTemplateResultItem {
+  productId: string;
+  mlItemId: string;
+  accountId: string;
+  accountLabel?: string | null;
+  isFull: boolean;
+  status: PropagateListingTemplateResultItemStatus;
+  reason?: string | null;
+}
+
+export type PropagateListingTemplateResponseData = {
+  sku: string;
+  fields: PropagateListingTemplateField[];
+  updated: number;
+  skipped: number;
+  failed: number;
+  results: PropagateListingTemplateResultItem[];
+};
+
+export interface PropagateListingTemplateResponse {
+  data: PropagateListingTemplateResponseData;
 }
 
 export type FullSkuStatus = (typeof FullSkuStatus)[keyof typeof FullSkuStatus];
@@ -1239,9 +1317,7 @@ export interface FullOverviewItem {
   inTransitQty: number;
   /** Próxima data de agendamento de inbound aberto (YYYY-MM-DD) */
   inboundScheduledDate?: string | null;
-  /**
-   * Quantidade de anúncios Full que compartilham este SKU/estoque
-   * (clássico + catálogo contam juntos). Sempre >= 1.
+  /** Quantidade de anúncios Full que compartilham este SKU/estoque (clássico + catálogo contam juntos). Sempre >= 1.
    */
   listingCount: number;
 }
@@ -1273,9 +1349,7 @@ export interface FullOverviewResponse {
   settings: FullOverviewResponseSettings;
   kpis: FullOverviewKpis;
   items: FullOverviewItem[];
-  /**
-   * Total de itens na lista (1 por SKU/estoque) antes de filtros.
-   * Anúncios clássico+catálogo do mesmo SKU contam como 1.
+  /** Total de itens na lista (1 por SKU/estoque) antes de filtros. Anúncios clássico+catálogo do mesmo SKU contam como 1.
    */
   totalFullListings: number;
 }

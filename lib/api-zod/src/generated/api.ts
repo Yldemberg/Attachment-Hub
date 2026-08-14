@@ -1831,7 +1831,7 @@ export const ListCriticalAdsResponse = zod.object({
 });
 
 /**
- * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+ * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para republicar ou espelhar campos por SKU nos anúncios existentes.
 
  * @summary Listar modelos de anúncio salvos
  */
@@ -1858,6 +1858,10 @@ export const ListListingTemplatesResponse = zod.object({
       sourceAccountId: zod.string().nullish(),
       sourceProductId: zod.string().nullish(),
       sourceMlItemId: zod.string(),
+      sku: zod
+        .string()
+        .nullish()
+        .describe("SKU do anúncio de origem (products.sku)"),
       name: zod.string(),
       thumbnail: zod.string().nullish(),
       categoryId: zod.string().nullish(),
@@ -1902,6 +1906,10 @@ export const GetListingTemplateResponse = zod.object({
       sourceAccountId: zod.string().nullish(),
       sourceProductId: zod.string().nullish(),
       sourceMlItemId: zod.string(),
+      sku: zod
+        .string()
+        .nullish()
+        .describe("SKU do anúncio de origem (products.sku)"),
       name: zod.string(),
       thumbnail: zod.string().nullish(),
       categoryId: zod.string().nullish(),
@@ -1945,6 +1953,17 @@ export const GetListingTemplateResponse = zod.object({
           .describe(
             "Campos completos do anúncio prontos para republicação (CreateMlListingInput-compatible).\n",
           ),
+        skuTargets: zod
+          .object({
+            total: zod.number(),
+            full: zod.number(),
+            traditional: zod.number(),
+            closed: zod.number(),
+          })
+          .optional()
+          .describe(
+            "Anúncios ML do mesmo SKU (todas as contas), incluindo Full.",
+          ),
       }),
     ),
 });
@@ -1971,6 +1990,75 @@ export const PublishListingTemplateBody = zod.object({
     .record(zod.string(), zod.unknown())
     .optional()
     .describe("Campos opcionais para sobrescrever o payload do modelo"),
+});
+
+/**
+ * Aplica os campos selecionados do modelo (com overrides opcionais) em todos os anúncios Mercado Livre do usuário com o mesmo SKU, em todas as contas, inclusive Full. Nunca altera estoque (`available_quantity`). Catálogo e anúncios encerrados podem ser pulados ou falhar conforme as regras do ML.
+
+ * @summary Espelhar campos do modelo em todos os anúncios ML do mesmo SKU
+ */
+export const PropagateListingTemplateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const PropagateListingTemplateBody = zod.object({
+  fields: zod
+    .array(
+      zod
+        .enum([
+          "title",
+          "price",
+          "pictures",
+          "description",
+          "attributes",
+          "saleTerms",
+          "videoId",
+        ])
+        .describe(
+          "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",
+        ),
+    )
+    .min(1)
+    .describe("Campos a aplicar. Nunca inclui estoque."),
+  overrides: zod
+    .record(zod.string(), zod.unknown())
+    .optional()
+    .describe("Valores a usar no lugar do payload salvo no modelo"),
+});
+
+export const PropagateListingTemplateResponse = zod.object({
+  data: zod.object({
+    sku: zod.string(),
+    fields: zod.array(
+      zod
+        .enum([
+          "title",
+          "price",
+          "pictures",
+          "description",
+          "attributes",
+          "saleTerms",
+          "videoId",
+        ])
+        .describe(
+          "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",
+        ),
+    ),
+    updated: zod.number(),
+    skipped: zod.number(),
+    failed: zod.number(),
+    results: zod.array(
+      zod.object({
+        productId: zod.string(),
+        mlItemId: zod.string(),
+        accountId: zod.string(),
+        accountLabel: zod.string().nullish(),
+        isFull: zod.boolean(),
+        status: zod.enum(["updated", "skipped", "failed"]),
+        reason: zod.string().nullish(),
+      }),
+    ),
+  }),
 });
 
 /**
@@ -2045,14 +2133,14 @@ export const GetFullOverviewResponse = zod.object({
       listingCount: zod
         .number()
         .describe(
-          "Quantidade de anúncios Full que compartilham este SKU/estoque (clássico + catálogo contam juntos). Sempre >= 1.",
+          "Quantidade de anúncios Full que compartilham este SKU\/estoque (clássico + catálogo contam juntos). Sempre >= 1.\n",
         ),
     }),
   ),
   totalFullListings: zod
     .number()
     .describe(
-      "Total de itens na lista (1 por SKU/estoque) antes de filtros. Anúncios clássico+catálogo do mesmo SKU contam como 1.",
+      "Total de itens na lista (1 por SKU\/estoque) antes de filtros. Anúncios clássico+catálogo do mesmo SKU contam como 1.\n",
     ),
 });
 

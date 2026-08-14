@@ -96,14 +96,23 @@ type MlItemForDuplicate = MlItem & {
   sale_terms?: Array<{ id: string; value_name?: string | null; value_id?: string | null }>;
 };
 
+export const WRITABLE_SALE_TERM_IDS = new Set([
+  "WARRANTY_TYPE",
+  "WARRANTY_TIME",
+  "MANUFACTURING_TIME",
+]);
+
 export type UpdateMlListingInput = {
   title?: string;
   familyName?: string;
   price?: number;
   availableQuantity?: number;
   pictures?: string[];
+  pictureSources?: string[];
   attributes?: MlListingAttributeInput[];
   description?: string;
+  saleTerms?: MlSaleTermInput[];
+  videoId?: string | null;
 };
 
 export class MlListingError extends Error {
@@ -457,7 +466,7 @@ function isBusinessConditionalMlErrorMessage(msg: string): boolean {
   return /to be added|to be modified|business_conditional|invalid_sale_units/i.test(msg);
 }
 
-function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
+export function extractBlockedFieldIdsFromMlError(err: unknown): string[] {
   const raw = err instanceof Error ? err.message : String(err);
   const ids = new Set<string>();
 
@@ -648,12 +657,7 @@ function buildCreateItemPayload(
   if (input.saleTerms?.length) {
     // Alguns sale_terms vêm no GET do anúncio, mas o ML rejeita no POST/PUT
     // (ex.: PURCHASE_MAX_QUANTITY com tag read_only na categoria).
-    const ALLOWED_ON_CREATE = new Set([
-      "WARRANTY_TYPE",
-      "WARRANTY_TIME",
-      "MANUFACTURING_TIME",
-    ]);
-    const saleTerms = input.saleTerms.filter((term) => ALLOWED_ON_CREATE.has(term.id));
+    const saleTerms = input.saleTerms.filter((term) => WRITABLE_SALE_TERM_IDS.has(term.id));
     if (saleTerms.length) {
       payload.sale_terms = saleTerms.map((term) => {
         const row: Record<string, string> = { id: term.id };
@@ -772,11 +776,22 @@ export async function createMlItem(accountId: string, input: CreateMlListingInpu
   }
 }
 
+function mapSaleTermsForWrite(saleTerms: MlSaleTermInput[] | undefined): Record<string, string>[] {
+  return (saleTerms ?? [])
+    .filter((term) => WRITABLE_SALE_TERM_IDS.has(term.id) && (term.value_name?.trim() || term.value_id))
+    .map((term) => {
+      const row: Record<string, string> = { id: term.id };
+      if (term.value_id) row.value_id = term.value_id;
+      if (term.value_name?.trim()) row.value_name = term.value_name.trim();
+      return row;
+    });
+}
+
 export async function updateMlItem(
   accountId: string,
   itemId: string,
   input: UpdateMlListingInput,
-  options?: { isFull?: boolean; soldQuantity?: number },
+  options?: { isFull?: boolean; soldQuantity?: number; omitStock?: boolean },
 ): Promise<MlItem> {
   const payload: Record<string, unknown> = {};
   if (input.familyName !== undefined) {
@@ -785,13 +800,26 @@ export async function updateMlItem(
     payload.title = input.title.trim();
   }
   if (input.price !== undefined) payload.price = input.price;
-  if (input.availableQuantity !== undefined && !options?.isFull) {
+  if (
+    input.availableQuantity !== undefined &&
+    !options?.omitStock &&
+    !options?.isFull
+  ) {
     payload.available_quantity = input.availableQuantity;
   }
-  if (input.pictures !== undefined) {
+  if (input.pictureSources?.length) {
+    payload.pictures = input.pictureSources.map((source) => ({ source }));
+  } else if (input.pictures !== undefined) {
     payload.pictures = input.pictures.map((id) => ({ id }));
   }
   if (input.attributes !== undefined) payload.attributes = input.attributes;
+  const saleTerms = mapSaleTermsForWrite(input.saleTerms);
+  if (input.saleTerms !== undefined && saleTerms.length > 0) {
+    payload.sale_terms = saleTerms;
+  }
+  if (input.videoId !== undefined) {
+    payload.video_id = input.videoId?.trim() ? input.videoId.trim() : null;
+  }
 
   try {
     let updated: MlItem;

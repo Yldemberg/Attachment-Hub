@@ -7,7 +7,9 @@
  */
 import type { ListingTemplate } from "./listingTemplate";
 import type { ListingTemplatePayload } from "./listingTemplatePayload";
+import type { ListingTemplateSkuTargets } from "./listingTemplateSkuTargets";
 
 export type ListingTemplateDetail = ListingTemplate & {
   payload: ListingTemplatePayload;
+  skuTargets?: ListingTemplateSkuTargets;
 };

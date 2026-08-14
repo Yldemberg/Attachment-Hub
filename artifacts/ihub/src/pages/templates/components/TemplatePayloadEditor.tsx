@@ -319,6 +319,10 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
             className="h-9"
             disabled={disabled}
           />
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Usado só ao <strong>publicar um anúncio novo</strong>. O espelhamento por SKU nunca
+            altera estoque — nem em anúncios tradicionais nem Full.
+          </p>
         </div>
       </div>
 

@@ -108,6 +108,8 @@ import type {
   PromotionItemListResponse,
   PromotionListResponse,
   PromotionSummary,
+  PropagateListingTemplateRequest,
+  PropagateListingTemplateResponse,
   PublishListingTemplateRequest,
   PublishListingTemplateResponse,
   PublishProductDraftRequest,
@@ -4173,7 +4175,7 @@ export function useListCriticalAds<
 }
 
 /**
- * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para uso como modelo ao criar novos anúncios.
+ * Retorna snapshots completos de anúncios ML (título, fotos, atributos, descrição, etc.) sincronizados a partir das contas conectadas, para republicar ou espelhar campos por SKU nos anúncios existentes.
 
  * @summary Listar modelos de anúncio salvos
  */
@@ -4719,6 +4721,105 @@ export const usePublishListingTemplate = <
   TContext
 > => {
   return useMutation(getPublishListingTemplateMutationOptions(options));
+};
+
+/**
+ * Aplica os campos selecionados do modelo (com overrides opcionais) em todos os anúncios Mercado Livre do usuário com o mesmo SKU, em todas as contas, inclusive Full. Nunca altera estoque (`available_quantity`). Catálogo e anúncios encerrados podem ser pulados ou falhar conforme as regras do ML.
+
+ * @summary Espelhar campos do modelo em todos os anúncios ML do mesmo SKU
+ */
+export const getPropagateListingTemplateUrl = (id: string) => {
+  return `/api/listing-templates/${id}/propagate`;
+};
+
+export const propagateListingTemplate = async (
+  id: string,
+  propagateListingTemplateRequest: PropagateListingTemplateRequest,
+  options?: RequestInit,
+): Promise<PropagateListingTemplateResponse> => {
+  return customFetch<PropagateListingTemplateResponse>(
+    getPropagateListingTemplateUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(propagateListingTemplateRequest),
+    },
+  );
+};
+
+export const getPropagateListingTemplateMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof propagateListingTemplate>>,
+    TError,
+    { id: string; data: BodyType<PropagateListingTemplateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof propagateListingTemplate>>,
+  TError,
+  { id: string; data: BodyType<PropagateListingTemplateRequest> },
+  TContext
+> => {
+  const mutationKey = ["propagateListingTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof propagateListingTemplate>>,
+    { id: string; data: BodyType<PropagateListingTemplateRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return propagateListingTemplate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PropagateListingTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof propagateListingTemplate>>
+>;
+export type PropagateListingTemplateMutationBody =
+  BodyType<PropagateListingTemplateRequest>;
+export type PropagateListingTemplateMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Espelhar campos do modelo em todos os anúncios ML do mesmo SKU
+ */
+export const usePropagateListingTemplate = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof propagateListingTemplate>>,
+    TError,
+    { id: string; data: BodyType<PropagateListingTemplateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof propagateListingTemplate>>,
+  TError,
+  { id: string; data: BodyType<PropagateListingTemplateRequest> },
+  TContext
+> => {
+  return useMutation(getPropagateListingTemplateMutationOptions(options));
 };
 
 /**

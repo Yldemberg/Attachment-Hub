@@ -13,6 +13,27 @@ export function productsMatchSellerSku(sku: string): SQL {
   )!;
 }
 
+/**
+ * Same as {@link productsMatchSellerSku}, plus variation rows in `variations_json`.
+ * Used when mirroring listing content: the SKU may live on a child variation.
+ */
+export function productsMatchSellerSkuIncludingVariations(sku: string): SQL {
+  const needle = sku.trim();
+  return or(
+    productsMatchSellerSku(needle),
+    sql`exists (
+      select 1
+      from jsonb_array_elements(
+        case
+          when jsonb_typeof(${productsTable.variationsJson}) = 'array' then ${productsTable.variationsJson}
+          else '[]'::jsonb
+        end
+      ) as v
+      where lower(trim(coalesce(v->>'sku', ''))) = lower(${needle})
+    )`,
+  )!;
+}
+
 export function isAmazonProductRow(row: {
   platform?: string | null;
   amazonSku?: string | null;

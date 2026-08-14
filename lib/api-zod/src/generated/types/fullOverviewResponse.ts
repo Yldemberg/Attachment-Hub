@@ -14,6 +14,7 @@ export interface FullOverviewResponse {
   settings: FullOverviewResponseSettings;
   kpis: FullOverviewKpis;
   items: FullOverviewItem[];
-  /** Total de anúncios Full da conta (antes de filtros) */
+  /** Total de itens na lista (1 por SKU/estoque) antes de filtros. Anúncios clássico+catálogo do mesmo SKU contam como 1.
+   */
   totalFullListings: number;
 }

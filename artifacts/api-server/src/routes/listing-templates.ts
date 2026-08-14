@@ -10,7 +10,10 @@ import {
   getListingTemplateForUser,
   listListingTemplatesForUser,
   publishListingTemplate,
+  propagateListingTemplate,
+  resolveTemplateSku,
   serializeListingTemplate,
+  summarizeMlSkuTargets,
   syncListingTemplateForProduct,
   syncListingTemplatesForUser,
 } from "../lib/listing-templates";
@@ -96,9 +99,26 @@ router.post("/listing-templates/from-product/:productId", ...auth, async (req, r
       mlItemId: row.mlItemId,
     });
 
-    const template = await getListingTemplateForUser(req.user!.id, templateId);
+    const found = await getListingTemplateForUser(req.user!.id, templateId);
+    const sku = found
+      ? await resolveTemplateSku({
+          userId: req.user!.id,
+          template: found.template,
+          joinedSku: found.sku,
+        })
+      : null;
     res.status(201).json({
-      data: template ? serializeListingTemplate(template, { includePayload: true }) : { id: templateId },
+      data: found
+        ? {
+            ...serializeListingTemplate(found.template, {
+              includePayload: true,
+              sku,
+            }),
+            skuTargets: sku
+              ? await summarizeMlSkuTargets(req.user!.id, sku)
+              : { total: 0, full: 0, traditional: 0, closed: 0 },
+          }
+        : { id: templateId },
     });
   } catch (err) {
     req.log.error({ err }, "Failed to save product as listing template");
@@ -109,12 +129,25 @@ router.post("/listing-templates/from-product/:productId", ...auth, async (req, r
 
 router.get("/listing-templates/:id", ...auth, async (req, res) => {
   try {
-    const template = await getListingTemplateForUser(req.user!.id, req.params.id as string);
-    if (!template) {
+    const found = await getListingTemplateForUser(req.user!.id, req.params.id as string);
+    if (!found) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Listing template not found" } });
       return;
     }
-    res.json({ data: serializeListingTemplate(template, { includePayload: true }) });
+    const sku =
+      (await resolveTemplateSku({
+        userId: req.user!.id,
+        template: found.template,
+        joinedSku: found.sku,
+      })) || null;
+    res.json({
+      data: {
+        ...serializeListingTemplate(found.template, { includePayload: true, sku }),
+        skuTargets: sku
+          ? await summarizeMlSkuTargets(req.user!.id, sku)
+          : { total: 0, full: 0, traditional: 0, closed: 0 },
+      },
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to get listing template");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
@@ -167,6 +200,33 @@ router.post("/listing-templates/:id/publish", ...auth, async (req, res) => {
       return;
     }
     req.log.error({ err }, "Failed to publish listing template");
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(502).json({ error: { code: "ML_ERROR", message } });
+  }
+});
+
+router.post("/listing-templates/:id/propagate", ...auth, async (req, res) => {
+  try {
+    const fields = Array.isArray(req.body?.fields)
+      ? (req.body.fields as unknown[]).filter((f): f is string => typeof f === "string")
+      : [];
+
+    const result = await propagateListingTemplate({
+      userId: req.user!.id,
+      templateId: req.params.id as string,
+      fields,
+      overrides: req.body?.overrides,
+    });
+
+    res.json({ data: result });
+  } catch (err) {
+    if (err instanceof MlListingError) {
+      const status =
+        err.code === "TEMPLATE_NOT_FOUND" ? 404 : 400;
+      res.status(status).json({ error: { code: err.code, message: err.message } });
+      return;
+    }
+    req.log.error({ err }, "Failed to propagate listing template");
     const message = err instanceof Error ? err.message : "Internal server error";
     res.status(502).json({ error: { code: "ML_ERROR", message } });
   }

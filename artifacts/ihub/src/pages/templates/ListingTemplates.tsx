@@ -83,6 +83,7 @@ function TemplateCard({
               </Link>
               <p className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate">
                 {template.sourceMlItemId}
+                {template.sku ? ` · ${template.sku}` : ""}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{accountLabel}</p>
             </div>
@@ -258,6 +259,7 @@ export default function ListingTemplates() {
             <p className="text-muted-foreground text-xs">
               {total} modelo{total === 1 ? "" : "s"} encontrado{total === 1 ? "" : "s"}
               {isFetching && !isLoading ? " · atualizando…" : ""}
+              {" · "}edite e espelhe campos por SKU (sem alterar estoque)
             </p>
           </div>
           <Button

@@ -10,13 +10,20 @@ import {
   getMlItemDescription,
   createMlItem,
   upsertProductFromMlItem,
+  updateMlItem,
+  sanitizeAttributesForCreate,
+  isUserProductSeller,
+  extractBlockedFieldIdsFromMlError,
+  WRITABLE_SALE_TERM_IDS,
   MlListingError,
   type CreateMlListingInput,
+  type UpdateMlListingInput,
   type MlListingAttributeInput,
   type MlListingVariationInput,
   type MlSaleTermInput,
   type CreateMlListingShippingInput,
 } from "./ml-listings";
+import { productsMatchSellerSkuIncludingVariations } from "./product-sku";
 import { logger } from "./logger";
 
 const TEMPLATE_SYNC_CONCURRENCY = 3;
@@ -346,7 +353,7 @@ export async function syncListingTemplatesForUser(userId: string): Promise<{
 
 export function serializeListingTemplate(
   row: typeof listingTemplatesTable.$inferSelect,
-  options?: { includePayload?: boolean },
+  options?: { includePayload?: boolean; sku?: string | null },
 ) {
   const base = {
     id: row.id,
@@ -354,6 +361,7 @@ export function serializeListingTemplate(
     sourceAccountId: row.sourceAccountId,
     sourceProductId: row.sourceProductId,
     sourceMlItemId: row.sourceMlItemId,
+    sku: options?.sku ?? null,
     name: row.name,
     thumbnail: row.thumbnail,
     categoryId: row.categoryId,
@@ -425,6 +433,7 @@ export async function listListingTemplatesForUser(params: {
   const rows = await db
     .select({
       template: listingTemplatesTable,
+      sku: productsTable.sku,
     })
     .from(listingTemplatesTable)
     .leftJoin(
@@ -437,7 +446,7 @@ export async function listListingTemplatesForUser(params: {
     .offset(offset);
 
   return {
-    data: rows.map((row) => serializeListingTemplate(row.template)),
+    data: rows.map((row) => serializeListingTemplate(row.template, { sku: row.sku })),
     pagination: {
       page,
       limit,
@@ -450,8 +459,12 @@ export async function listListingTemplatesForUser(params: {
 export async function getListingTemplateForUser(userId: string, templateId: string) {
   const db = getDb();
   const [row] = await db
-    .select()
+    .select({
+      template: listingTemplatesTable,
+      sku: productsTable.sku,
+    })
     .from(listingTemplatesTable)
+    .leftJoin(productsTable, eq(listingTemplatesTable.sourceProductId, productsTable.id))
     .where(and(eq(listingTemplatesTable.id, templateId), eq(listingTemplatesTable.userId, userId)))
     .limit(1);
   return row ?? null;
@@ -473,10 +486,11 @@ export async function publishListingTemplate(params: {
   overrides?: Partial<CreateMlListingInput>;
 }): Promise<{ itemId: string; productId: string }> {
   const db = getDb();
-  const template = await getListingTemplateForUser(params.userId, params.templateId);
-  if (!template) {
+  const found = await getListingTemplateForUser(params.userId, params.templateId);
+  if (!found) {
     throw new MlListingError("Modelo de anúncio não encontrado.", "TEMPLATE_NOT_FOUND");
   }
+  const template = found.template;
 
   const [account] = await db
     .select({ id: accountsTable.id })
@@ -521,4 +535,450 @@ export async function publishListingTemplate(params: {
   const created = await createMlItem(params.targetAccountId, input);
   const productId = await upsertProductFromMlItem(params.targetAccountId, created);
   return { itemId: created.id, productId };
+}
+
+export const LISTING_TEMPLATE_PROPAGATE_FIELDS = [
+  "title",
+  "price",
+  "pictures",
+  "description",
+  "attributes",
+  "saleTerms",
+  "videoId",
+] as const;
+
+export type ListingTemplatePropagateField = (typeof LISTING_TEMPLATE_PROPAGATE_FIELDS)[number];
+
+export type ListingTemplateSkuTargets = {
+  total: number;
+  full: number;
+  traditional: number;
+  closed: number;
+};
+
+export type PropagateListingTemplateResultItem = {
+  productId: string;
+  mlItemId: string;
+  accountId: string;
+  accountLabel: string | null;
+  isFull: boolean;
+  status: "updated" | "skipped" | "failed";
+  reason: string | null;
+};
+
+export type PropagateListingTemplateResult = {
+  sku: string;
+  fields: ListingTemplatePropagateField[];
+  updated: number;
+  skipped: number;
+  failed: number;
+  results: PropagateListingTemplateResultItem[];
+};
+
+const PROPAGATE_CONCURRENCY = 3;
+const PROPAGATE_RETRY_MAX = 3;
+const PROPAGATE_RETRY_BASE_MS = 400;
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRetryablePropagateError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /429|503|ECONNRESET|ETIMEDOUT|timeout|temporar/i.test(msg);
+}
+
+function normalizePropagateFields(fields: string[]): ListingTemplatePropagateField[] {
+  const allowed = new Set<string>(LISTING_TEMPLATE_PROPAGATE_FIELDS);
+  const unique: ListingTemplatePropagateField[] = [];
+  for (const raw of fields) {
+    if (!allowed.has(raw)) continue;
+    const field = raw as ListingTemplatePropagateField;
+    if (!unique.includes(field)) unique.push(field);
+  }
+  return unique;
+}
+
+function asAttributeInputs(rows: unknown): MlListingAttributeInput[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+    .filter((a) => typeof a.id === "string" && a.id)
+    .map((a) => ({
+      id: a.id as string,
+      value_name:
+        typeof a.value_name === "string"
+          ? a.value_name
+          : typeof a.valueName === "string"
+            ? a.valueName
+            : "",
+      ...(typeof a.value_id === "string" && a.value_id
+        ? { value_id: a.value_id }
+        : typeof a.valueId === "string" && a.valueId
+          ? { value_id: a.valueId }
+          : {}),
+    }))
+    .filter((a) => a.value_name.trim() || a.value_id);
+}
+
+function mergeTemplatePayload(
+  current: ListingTemplatePayload,
+  overrides?: Partial<CreateMlListingInput>,
+): ListingTemplatePayload {
+  if (!overrides) return current;
+  return {
+    ...current,
+    ...overrides,
+    pictures: overrides.pictures ?? current.pictures,
+    pictureSources: overrides.pictureSources ?? current.pictureSources,
+    attributes: overrides.attributes ?? current.attributes,
+    saleTerms: overrides.saleTerms ?? current.saleTerms,
+    shipping: overrides.shipping ?? current.shipping,
+    variations: overrides.variations ?? current.variations,
+  };
+}
+
+export async function resolveTemplateSku(params: {
+  userId: string;
+  template: typeof listingTemplatesTable.$inferSelect;
+  joinedSku?: string | null;
+}): Promise<string | null> {
+  if (params.joinedSku?.trim()) return params.joinedSku.trim();
+  const db = getDb();
+  if (params.template.sourceProductId) {
+    const [product] = await db
+      .select({ sku: productsTable.sku })
+      .from(productsTable)
+      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
+      .where(
+        and(
+          eq(productsTable.id, params.template.sourceProductId),
+          eq(accountsTable.userId, params.userId),
+        ),
+      )
+      .limit(1);
+    if (product?.sku?.trim()) return product.sku.trim();
+  }
+  if (params.template.sourceMlItemId && params.template.sourceAccountId) {
+    const [product] = await db
+      .select({ sku: productsTable.sku })
+      .from(productsTable)
+      .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
+      .where(
+        and(
+          eq(productsTable.mlItemId, params.template.sourceMlItemId),
+          eq(productsTable.accountId, params.template.sourceAccountId),
+          eq(accountsTable.userId, params.userId),
+        ),
+      )
+      .limit(1);
+    if (product?.sku?.trim()) return product.sku.trim();
+  }
+  return null;
+}
+
+type MlSkuListingTarget = {
+  productId: string;
+  mlItemId: string;
+  accountId: string;
+  accountLabel: string | null;
+  isFull: boolean;
+  hasVariations: boolean;
+  status: string | null;
+  categoryId: string | null;
+};
+
+async function listMlListingsBySku(userId: string, sku: string): Promise<MlSkuListingTarget[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      productId: productsTable.id,
+      mlItemId: productsTable.mlItemId,
+      accountId: productsTable.accountId,
+      accountLabel: accountsTable.mlNickname,
+      isFull: productsTable.isFull,
+      variationsJson: productsTable.variationsJson,
+      status: productsTable.status,
+      categoryId: productsTable.mlCategoryId,
+    })
+    .from(productsTable)
+    .innerJoin(accountsTable, eq(productsTable.accountId, accountsTable.id))
+    .where(
+      and(
+        eq(accountsTable.userId, userId),
+        eq(accountsTable.isActive, true),
+        or(eq(accountsTable.platform, "mercadolivre"), sql`${accountsTable.platform} is null`)!,
+        productsMatchSellerSkuIncludingVariations(sku),
+      ),
+    );
+
+  return rows
+    .filter((row): row is typeof row & { mlItemId: string } => Boolean(row.mlItemId))
+    .map((row) => ({
+      productId: row.productId,
+      mlItemId: row.mlItemId,
+      accountId: row.accountId,
+      accountLabel: row.accountLabel,
+      isFull: row.isFull,
+      hasVariations: Array.isArray(row.variationsJson) && row.variationsJson.length > 0,
+      status: row.status,
+      categoryId: row.categoryId,
+    }));
+}
+
+export async function summarizeMlSkuTargets(
+  userId: string,
+  sku: string,
+): Promise<ListingTemplateSkuTargets> {
+  const listings = await listMlListingsBySku(userId, sku);
+  let full = 0;
+  let traditional = 0;
+  let closed = 0;
+  for (const listing of listings) {
+    if (listing.status === "closed") {
+      closed += 1;
+      continue;
+    }
+    if (listing.isFull) full += 1;
+    else traditional += 1;
+  }
+  return {
+    total: listings.length,
+    full,
+    traditional,
+    closed,
+  };
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof MlListingError) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  return "Falha ao atualizar o anúncio no Mercado Livre.";
+}
+
+async function buildPropagatePatch(params: {
+  accountId: string;
+  categoryId: string | null;
+  payload: ListingTemplatePayload;
+  fields: ListingTemplatePropagateField[];
+  hasVariations: boolean;
+}): Promise<{ patch: UpdateMlListingInput; notes: string[] }> {
+  const notes: string[] = [];
+  const patch: UpdateMlListingInput = {};
+  const isUpSeller = await isUserProductSeller(params.accountId);
+
+  if (params.fields.includes("title")) {
+    const familyName = (params.payload.familyName ?? params.payload.title).trim();
+    const title = params.payload.title.trim();
+    if (isUpSeller) {
+      patch.familyName = familyName || title;
+    } else {
+      patch.title = title;
+    }
+  }
+
+  if (params.fields.includes("price")) {
+    if (params.hasVariations) {
+      notes.push("Preço não aplicado: anúncio com variações (preço por variação).");
+    } else if (typeof params.payload.price === "number" && params.payload.price > 0) {
+      patch.price = params.payload.price;
+    }
+  }
+
+  if (params.fields.includes("pictures")) {
+    const sources = (params.payload.pictureSources ?? []).map((u) => u.trim()).filter(Boolean);
+    if (sources.length > 0) {
+      patch.pictureSources = sources;
+    } else {
+      notes.push("Fotos ignoradas: o modelo não tem URLs públicas.");
+    }
+  }
+
+  if (params.fields.includes("description")) {
+    patch.description = params.payload.description?.trim() ?? "";
+  }
+
+  if (params.fields.includes("attributes")) {
+    const raw = asAttributeInputs(params.payload.attributes);
+    const categoryId = params.categoryId || params.payload.categoryId;
+    patch.attributes = categoryId
+      ? await sanitizeAttributesForCreate(params.accountId, categoryId, raw)
+      : raw;
+  }
+
+  if (params.fields.includes("saleTerms")) {
+    patch.saleTerms = asAttributeInputs(params.payload.saleTerms).filter((t) =>
+      WRITABLE_SALE_TERM_IDS.has(t.id),
+    );
+  }
+
+  if (params.fields.includes("videoId")) {
+    patch.videoId = params.payload.videoId?.trim() ? params.payload.videoId.trim() : null;
+  }
+
+  return { patch, notes };
+}
+
+async function applyPropagatePatch(
+  accountId: string,
+  mlItemId: string,
+  patch: UpdateMlListingInput,
+  isFull: boolean,
+): Promise<void> {
+  const putOnce = async (input: UpdateMlListingInput) => {
+    await updateMlItem(accountId, mlItemId, input, { isFull, omitStock: true });
+  };
+
+  let working = { ...patch };
+  try {
+    await putOnce(working);
+    return;
+  } catch (firstErr) {
+    const blockedIds = extractBlockedFieldIdsFromMlError(firstErr);
+    if (blockedIds.length === 0) throw firstErr;
+    const blocked = new Set(blockedIds);
+    working = {
+      ...working,
+      attributes: working.attributes?.filter((a) => !blocked.has(a.id)),
+      saleTerms: working.saleTerms?.filter((t) => !blocked.has(t.id)),
+    };
+    logger.warn(
+      { accountId, mlItemId, blockedIds },
+      "Listing template propagate: retrying without blocked ML fields",
+    );
+    await putOnce(working);
+  }
+}
+
+export async function propagateListingTemplate(params: {
+  userId: string;
+  templateId: string;
+  fields: string[];
+  overrides?: Partial<CreateMlListingInput>;
+}): Promise<PropagateListingTemplateResult> {
+  const fields = normalizePropagateFields(params.fields);
+  if (fields.length === 0) {
+    throw new MlListingError(
+      "Selecione ao menos um campo para espelhar (estoque não é alterado).",
+      "MISSING_FIELDS",
+    );
+  }
+
+  const found = await getListingTemplateForUser(params.userId, params.templateId);
+  if (!found) {
+    throw new MlListingError("Modelo de anúncio não encontrado.", "TEMPLATE_NOT_FOUND");
+  }
+
+  const sku = await resolveTemplateSku({
+    userId: params.userId,
+    template: found.template,
+    joinedSku: found.sku,
+  });
+  if (!sku) {
+    throw new MlListingError(
+      "Este modelo não tem SKU. Sincronize o anúncio de origem e tente de novo.",
+      "MISSING_SKU",
+    );
+  }
+
+  const currentPayload = found.template.payloadJson as ListingTemplatePayload;
+  const payload = mergeTemplatePayload(currentPayload, params.overrides);
+
+  const db = getDb();
+  await db
+    .update(listingTemplatesTable)
+    .set({
+      payloadJson: payload,
+      name: payload.title || found.template.name,
+      categoryId: payload.categoryId ?? found.template.categoryId,
+      listingTypeId: payload.listingTypeId ?? found.template.listingTypeId,
+      condition: payload.condition ?? found.template.condition,
+      updatedAt: new Date(),
+    })
+    .where(eq(listingTemplatesTable.id, found.template.id));
+
+  const listings = await listMlListingsBySku(params.userId, sku);
+  const results = await mapPool(listings, PROPAGATE_CONCURRENCY, async (listing) => {
+    const base: PropagateListingTemplateResultItem = {
+      productId: listing.productId,
+      mlItemId: listing.mlItemId,
+      accountId: listing.accountId,
+      accountLabel: listing.accountLabel,
+      isFull: listing.isFull,
+      status: "failed",
+      reason: null,
+    };
+
+    if (listing.status === "closed") {
+      return { ...base, status: "skipped" as const, reason: "Anúncio encerrado." };
+    }
+
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < PROPAGATE_RETRY_MAX; attempt++) {
+      try {
+        const { patch, notes } = await buildPropagatePatch({
+          accountId: listing.accountId,
+          categoryId: listing.categoryId,
+          payload,
+          fields,
+          hasVariations: listing.hasVariations,
+        });
+
+        const hasBody =
+          patch.title !== undefined ||
+          patch.familyName !== undefined ||
+          patch.price !== undefined ||
+          patch.pictureSources !== undefined ||
+          patch.pictures !== undefined ||
+          patch.attributes !== undefined ||
+          patch.description !== undefined ||
+          patch.saleTerms !== undefined ||
+          patch.videoId !== undefined;
+
+        if (!hasBody) {
+          return {
+            ...base,
+            status: "skipped" as const,
+            reason: notes[0] ?? "Nenhum campo aplicável neste anúncio.",
+          };
+        }
+
+        await applyPropagatePatch(listing.accountId, listing.mlItemId, patch, listing.isFull);
+
+        try {
+          const fresh = await ml.get<MlItem>(
+            listing.accountId,
+            `/items/${encodeURIComponent(listing.mlItemId)}`,
+          );
+          await upsertProductFromMlItem(listing.accountId, fresh);
+        } catch (err) {
+          logger.warn(
+            { err, accountId: listing.accountId, mlItemId: listing.mlItemId },
+            "Listing template propagate: item updated but local snapshot refresh failed",
+          );
+        }
+
+        return {
+          ...base,
+          status: "updated" as const,
+          reason: notes.length ? notes.join(" ") : null,
+        };
+      } catch (err) {
+        lastErr = err;
+        if (attempt === PROPAGATE_RETRY_MAX - 1 || !isRetryablePropagateError(err)) break;
+        await sleepMs(PROPAGATE_RETRY_BASE_MS * 2 ** attempt);
+      }
+    }
+
+    return { ...base, status: "failed" as const, reason: errorMessage(lastErr) };
+  });
+
+  return {
+    sku,
+    fields,
+    updated: results.filter((r) => r.status === "updated").length,
+    skipped: results.filter((r) => r.status === "skipped").length,
+    failed: results.filter((r) => r.status === "failed").length,
+    results,
+  };
 }
