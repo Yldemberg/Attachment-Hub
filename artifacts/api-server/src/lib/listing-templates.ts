@@ -12,7 +12,6 @@ import {
   upsertProductFromMlItem,
   updateMlItem,
   sanitizeAttributesForCreate,
-  isUserProductSeller,
   extractBlockedFieldIdsFromMlError,
   WRITABLE_SALE_TERM_IDS,
   MlListingError,
@@ -539,12 +538,16 @@ export async function publishListingTemplate(params: {
 
 export const LISTING_TEMPLATE_PROPAGATE_FIELDS = [
   "title",
+  "familyName",
   "price",
   "pictures",
   "description",
   "attributes",
   "saleTerms",
   "videoId",
+  "condition",
+  "listingTypeId",
+  "categoryId",
 ] as const;
 
 export type ListingTemplatePropagateField = (typeof LISTING_TEMPLATE_PROPAGATE_FIELDS)[number];
@@ -788,16 +791,12 @@ async function buildPropagatePatch(params: {
 }): Promise<{ patch: UpdateMlListingInput; notes: string[] }> {
   const notes: string[] = [];
   const patch: UpdateMlListingInput = {};
-  const isUpSeller = await isUserProductSeller(params.accountId);
 
   if (params.fields.includes("title")) {
-    const familyName = (params.payload.familyName ?? params.payload.title).trim();
-    const title = params.payload.title.trim();
-    if (isUpSeller) {
-      patch.familyName = familyName || title;
-    } else {
-      patch.title = title;
-    }
+    patch.title = params.payload.title.trim();
+  }
+  if (params.fields.includes("familyName")) {
+    patch.familyName = (params.payload.familyName ?? params.payload.title).trim();
   }
 
   if (params.fields.includes("price")) {
@@ -852,6 +851,15 @@ async function buildPropagatePatch(params: {
 
   if (params.fields.includes("videoId")) {
     patch.videoId = params.payload.videoId?.trim() ? params.payload.videoId.trim() : null;
+  }
+  if (params.fields.includes("condition") && (params.payload.condition === "new" || params.payload.condition === "used")) {
+    patch.condition = params.payload.condition;
+  }
+  if (params.fields.includes("listingTypeId") && params.payload.listingTypeId) {
+    patch.listingTypeId = params.payload.listingTypeId;
+  }
+  if (params.fields.includes("categoryId") && params.payload.categoryId) {
+    patch.categoryId = params.payload.categoryId;
   }
 
   return { patch, notes };
@@ -995,7 +1003,10 @@ export async function propagateListingTemplate(params: {
           patch.attributes !== undefined ||
           patch.description !== undefined ||
           patch.saleTerms !== undefined ||
-          patch.videoId !== undefined;
+          patch.videoId !== undefined ||
+          patch.condition !== undefined ||
+          patch.listingTypeId !== undefined ||
+          patch.categoryId !== undefined;
 
         if (!hasBody) {
           return {

@@ -14,10 +14,14 @@ export type PropagateListingTemplateField =
 
 export const PropagateListingTemplateField = {
   title: "title",
+  familyName: "familyName",
   price: "price",
   pictures: "pictures",
   description: "description",
   attributes: "attributes",
   saleTerms: "saleTerms",
   videoId: "videoId",
+  condition: "condition",
+  listingTypeId: "listingTypeId",
+  categoryId: "categoryId",
 } as const;

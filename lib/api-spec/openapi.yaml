@@ -4799,12 +4799,16 @@ components:
       description: Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.
       enum:
         - title
+        - familyName
         - price
         - pictures
         - description
         - attributes
         - saleTerms
         - videoId
+        - condition
+        - listingTypeId
+        - categoryId
 
     PropagateListingTemplateRequest:
       type: object

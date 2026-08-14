@@ -2007,12 +2007,16 @@ export const PropagateListingTemplateBody = zod.object({
       zod
         .enum([
           "title",
+          "familyName",
           "price",
           "pictures",
           "description",
           "attributes",
           "saleTerms",
           "videoId",
+          "condition",
+          "listingTypeId",
+          "categoryId",
         ])
         .describe(
           "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",
@@ -2047,12 +2051,16 @@ export const PropagateListingTemplateResponse = zod.object({
       zod
         .enum([
           "title",
+          "familyName",
           "price",
           "pictures",
           "description",
           "attributes",
           "saleTerms",
           "videoId",
+          "condition",
+          "listingTypeId",
+          "categoryId",
         ])
         .describe(
           "Campo de conteúdo a espelhar. Estoque nunca entra nesta lista.",

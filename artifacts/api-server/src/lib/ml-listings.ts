@@ -113,6 +113,9 @@ export type UpdateMlListingInput = {
   description?: string;
   saleTerms?: MlSaleTermInput[];
   videoId?: string | null;
+  condition?: "new" | "used";
+  listingTypeId?: string;
+  categoryId?: string;
 };
 
 export class MlListingError extends Error {
@@ -796,7 +799,8 @@ export async function updateMlItem(
   const payload: Record<string, unknown> = {};
   if (input.familyName !== undefined) {
     payload.family_name = input.familyName.trim();
-  } else if (input.title !== undefined) {
+  }
+  if (input.title !== undefined) {
     payload.title = input.title.trim();
   }
   if (input.price !== undefined) payload.price = input.price;
@@ -820,6 +824,9 @@ export async function updateMlItem(
   if (input.videoId !== undefined) {
     payload.video_id = input.videoId?.trim() ? input.videoId.trim() : null;
   }
+  if (input.condition !== undefined) payload.condition = input.condition;
+  if (input.listingTypeId !== undefined) payload.listing_type_id = input.listingTypeId;
+  if (input.categoryId !== undefined) payload.category_id = input.categoryId;
 
   try {
     let updated: MlItem;

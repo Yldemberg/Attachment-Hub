@@ -1,7 +1,10 @@
+import type { ReactNode } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import {
   MLB_LISTING_TYPES,
   LISTING_CONDITIONS,
@@ -21,6 +24,32 @@ export type EditableTemplateForm = {
   attributes: ListingFormAttribute[];
   saleTerms: ListingFormAttribute[];
   videoId: string;
+};
+
+export const TEMPLATE_SCALAR_FIELDS = [
+  "title",
+  "familyName",
+  "pictures",
+  "price",
+  "condition",
+  "listingTypeId",
+  "categoryId",
+  "videoId",
+  "description",
+] as const;
+
+export type TemplateScalarField = (typeof TEMPLATE_SCALAR_FIELDS)[number];
+
+export type TemplatePropagateSelection = {
+  fields: TemplateScalarField[];
+  attributeIndexes: number[];
+  saleTermIndexes: number[];
+};
+
+export const EMPTY_PROPAGATE_SELECTION: TemplatePropagateSelection = {
+  fields: [],
+  attributeIndexes: [],
+  saleTermIndexes: [],
 };
 
 export function payloadToForm(payload: {
@@ -101,7 +130,6 @@ export function formToPublishOverrides(form: EditableTemplateForm): {
     pictureSources,
     pictures: [],
     attributes: form.attributes.filter((a) => a.id && a.value_name.trim()),
-    // PURCHASE_MAX_QUANTITY e similares costumam ser read_only no ML e geram HTTP 400.
     saleTerms: form.saleTerms.filter(
       (a) =>
         a.id &&
@@ -112,11 +140,118 @@ export function formToPublishOverrides(form: EditableTemplateForm): {
   };
 }
 
+function idsFromIndexes(rows: ListingFormAttribute[], indexes: number[]): string[] {
+  const ids: string[] = [];
+  for (const index of indexes) {
+    const id = rows[index]?.id.trim();
+    if (id && !ids.some((x) => x.toLowerCase() === id.toLowerCase())) ids.push(id);
+  }
+  return ids;
+}
+
+export function selectionToPropagatePayload(
+  form: EditableTemplateForm,
+  selection: TemplatePropagateSelection,
+): {
+  fields: TemplateScalarField[];
+  attributeIds: string[];
+  saleTermIds: string[];
+} {
+  return {
+    fields: selection.fields,
+    attributeIds: idsFromIndexes(form.attributes, selection.attributeIndexes),
+    saleTermIds: idsFromIndexes(form.saleTerms, selection.saleTermIndexes),
+  };
+}
+
+export function allPropagateSelection(form: EditableTemplateForm): TemplatePropagateSelection {
+  return {
+    fields: [...TEMPLATE_SCALAR_FIELDS],
+    attributeIndexes: form.attributes.map((_, i) => i),
+    saleTermIndexes: form.saleTerms.map((_, i) => i),
+  };
+}
+
+export function changedPropagateSelection(
+  form: EditableTemplateForm,
+  original: EditableTemplateForm,
+): TemplatePropagateSelection {
+  const fields: TemplateScalarField[] = [];
+  if (form.title.trim() !== original.title.trim()) fields.push("title");
+  if (form.familyName.trim() !== original.familyName.trim()) fields.push("familyName");
+  if (JSON.stringify(form.pictureSources) !== JSON.stringify(original.pictureSources)) {
+    fields.push("pictures");
+  }
+  if (form.price !== original.price) fields.push("price");
+  if (form.condition !== original.condition) fields.push("condition");
+  if (form.listingTypeId !== original.listingTypeId) fields.push("listingTypeId");
+  if (form.categoryId.trim() !== original.categoryId.trim()) fields.push("categoryId");
+  if (form.videoId.trim() !== original.videoId.trim()) fields.push("videoId");
+  if (form.description.trim() !== original.description.trim()) fields.push("description");
+
+  const sameRow = (a?: ListingFormAttribute, b?: ListingFormAttribute) =>
+    (a?.id ?? "").trim().toLowerCase() === (b?.id ?? "").trim().toLowerCase() &&
+    (a?.value_name ?? "").trim() === (b?.value_name ?? "").trim() &&
+    (a?.value_id ?? "") === (b?.value_id ?? "");
+
+  return {
+    fields,
+    attributeIndexes: form.attributes
+      .map((_, i) => i)
+      .filter((i) => !sameRow(form.attributes[i], original.attributes[i])),
+    saleTermIndexes: form.saleTerms
+      .map((_, i) => i)
+      .filter((i) => !sameRow(form.saleTerms[i], original.saleTerms[i])),
+  };
+}
+
+function removeIndex(indexes: number[], removed: number): number[] {
+  return indexes.filter((i) => i !== removed).map((i) => (i > removed ? i - 1 : i));
+}
+
 type Props = {
   form: EditableTemplateForm;
   onChange: (form: EditableTemplateForm) => void;
   disabled?: boolean;
+  selection: TemplatePropagateSelection;
+  onSelectionChange: (selection: TemplatePropagateSelection) => void;
 };
+
+function FieldCheck({
+  checked,
+  onCheckedChange,
+  disabled,
+  locked,
+  children,
+}: {
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  locked?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {locked ? (
+        <span
+          className="inline-flex size-4 shrink-0 items-center justify-center text-[10px] text-muted-foreground"
+          title="Estoque nunca é espelhado"
+        >
+          —
+        </span>
+      ) : (
+        <Checkbox
+          checked={!!checked}
+          disabled={disabled}
+          onCheckedChange={(value) => onCheckedChange?.(value === true)}
+        />
+      )}
+      <Label className={cn(!locked && "cursor-pointer")} onClick={() => !locked && !disabled && onCheckedChange?.(!checked)}>
+        {children}
+      </Label>
+    </div>
+  );
+}
 
 function AttrRows({
   label,
@@ -124,17 +259,47 @@ function AttrRows({
   onChange,
   disabled,
   idPlaceholder,
+  selectedIndexes,
+  onSelectedIndexesChange,
 }: {
   label: string;
   rows: ListingFormAttribute[];
   onChange: (rows: ListingFormAttribute[]) => void;
   disabled?: boolean;
   idPlaceholder: string;
+  selectedIndexes: number[];
+  onSelectedIndexesChange: (indexes: number[]) => void;
 }) {
+  const allChecked = rows.length > 0 && selectedIndexes.length === rows.length;
+  const someChecked = selectedIndexes.length > 0 && !allChecked;
+  const selectedSet = new Set(selectedIndexes);
+
+  const toggleRow = (index: number, checked: boolean) => {
+    if (checked) {
+      if (selectedSet.has(index)) return;
+      onSelectedIndexesChange([...selectedIndexes, index].sort((a, b) => a - b));
+      return;
+    }
+    onSelectedIndexesChange(selectedIndexes.filter((i) => i !== index));
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <Label>{label}</Label>
+        <FieldCheck
+          checked={allChecked}
+          onCheckedChange={(checked) =>
+            onSelectedIndexesChange(checked ? rows.map((_, i) => i) : [])
+          }
+          disabled={disabled || rows.length === 0}
+        >
+          {label}
+          {someChecked ? (
+            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+              {selectedIndexes.length}/{rows.length}
+            </span>
+          ) : null}
+        </FieldCheck>
         <Button
           type="button"
           variant="outline"
@@ -152,7 +317,19 @@ function AttrRows({
       ) : (
         <div className="space-y-2">
           {rows.map((row, index) => (
-            <div key={`${row.id}-${index}`} className="flex gap-2 items-start">
+            <div
+              key={`${row.id}-${index}`}
+              className={cn(
+                "flex gap-2 items-start",
+                !selectedSet.has(index) && "opacity-55",
+              )}
+            >
+              <Checkbox
+                className="mt-2.5"
+                checked={selectedSet.has(index)}
+                disabled={disabled}
+                onCheckedChange={(value) => toggleRow(index, value === true)}
+              />
               <Input
                 value={row.id}
                 onChange={(e) => {
@@ -181,7 +358,10 @@ function AttrRows({
                 size="sm"
                 className="h-9 w-9 p-0 text-destructive hover:text-destructive flex-shrink-0"
                 disabled={disabled}
-                onClick={() => onChange(rows.filter((_, i) => i !== index))}
+                onClick={() => {
+                  onChange(rows.filter((_, i) => i !== index));
+                  onSelectedIndexesChange(removeIndex(selectedIndexes, index));
+                }}
                 title="Remover"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -194,18 +374,37 @@ function AttrRows({
   );
 }
 
-export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
+export function TemplatePayloadEditor({
+  form,
+  onChange,
+  disabled,
+  selection,
+  onSelectionChange,
+}: Props) {
   const selectCls =
     "w-full bg-input border border-border text-sm rounded-lg px-3 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60";
 
   const patch = (partial: Partial<EditableTemplateForm>) => onChange({ ...form, ...partial });
+  const fieldOn = (field: TemplateScalarField) => selection.fields.includes(field);
+  const toggleField = (field: TemplateScalarField, checked: boolean) => {
+    const fields = checked
+      ? selection.fields.includes(field)
+        ? selection.fields
+        : [...selection.fields, field]
+      : selection.fields.filter((f) => f !== field);
+    onSelectionChange({ ...selection, fields });
+  };
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
-        <Label>
+      <div className={cn("space-y-1.5", !fieldOn("title") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("title")}
+          onCheckedChange={(checked) => toggleField("title", checked)}
+          disabled={disabled}
+        >
           Título <span className="text-destructive">*</span>
-        </Label>
+        </FieldCheck>
         <Input
           value={form.title}
           onChange={(e) => patch({ title: e.target.value })}
@@ -214,8 +413,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Nome da família</Label>
+      <div className={cn("space-y-1.5", !fieldOn("familyName") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("familyName")}
+          onCheckedChange={(checked) => toggleField("familyName", checked)}
+          disabled={disabled}
+        >
+          Nome da família
+        </FieldCheck>
         <Input
           value={form.familyName}
           onChange={(e) => patch({ familyName: e.target.value })}
@@ -225,8 +430,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Fotos (URLs públicas)</Label>
+      <div className={cn("space-y-1.5", !fieldOn("pictures") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("pictures")}
+          onCheckedChange={(checked) => toggleField("pictures", checked)}
+          disabled={disabled}
+        >
+          Fotos (URLs públicas)
+        </FieldCheck>
         <div className="flex gap-2 overflow-x-auto pb-1 mb-2">
           {form.pictureSources.map((url, i) =>
             url.trim() ? (
@@ -293,10 +504,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label>
+        <div className={cn("space-y-1.5", !fieldOn("price") && "opacity-55")}>
+          <FieldCheck
+            checked={fieldOn("price")}
+            onCheckedChange={(checked) => toggleField("price", checked)}
+            disabled={disabled}
+          >
             Preço (R$) <span className="text-destructive">*</span>
-          </Label>
+          </FieldCheck>
           <Input
             type="number"
             min={0}
@@ -307,10 +522,10 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
             disabled={disabled}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label>
+        <div className="space-y-1.5 opacity-55">
+          <FieldCheck locked>
             Estoque <span className="text-destructive">*</span>
-          </Label>
+          </FieldCheck>
           <Input
             type="number"
             min={0}
@@ -320,15 +535,21 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
             disabled={disabled}
           />
           <p className="text-[11px] text-muted-foreground leading-snug">
-            Usado só ao <strong>publicar um anúncio novo</strong>. O espelhamento por SKU nunca
-            altera estoque — nem em anúncios tradicionais nem Full.
+            Usado só ao <strong>publicar um anúncio novo</strong>. O espelhamento nunca altera
+            estoque.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label>Condição</Label>
+        <div className={cn("space-y-1.5", !fieldOn("condition") && "opacity-55")}>
+          <FieldCheck
+            checked={fieldOn("condition")}
+            onCheckedChange={(checked) => toggleField("condition", checked)}
+            disabled={disabled}
+          >
+            Condição
+          </FieldCheck>
           <select
             value={form.condition}
             onChange={(e) => patch({ condition: e.target.value as "new" | "used" })}
@@ -342,8 +563,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
             ))}
           </select>
         </div>
-        <div className="space-y-1.5">
-          <Label>Tipo de anúncio</Label>
+        <div className={cn("space-y-1.5", !fieldOn("listingTypeId") && "opacity-55")}>
+          <FieldCheck
+            checked={fieldOn("listingTypeId")}
+            onCheckedChange={(checked) => toggleField("listingTypeId", checked)}
+            disabled={disabled}
+          >
+            Tipo de anúncio
+          </FieldCheck>
           <select
             value={form.listingTypeId}
             onChange={(e) => patch({ listingTypeId: e.target.value })}
@@ -362,8 +589,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Categoria (ID)</Label>
+      <div className={cn("space-y-1.5", !fieldOn("categoryId") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("categoryId")}
+          onCheckedChange={(checked) => toggleField("categoryId", checked)}
+          disabled={disabled}
+        >
+          Categoria (ID)
+        </FieldCheck>
         <Input
           value={form.categoryId}
           onChange={(e) => patch({ categoryId: e.target.value })}
@@ -372,8 +605,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Video Clip (ID)</Label>
+      <div className={cn("space-y-1.5", !fieldOn("videoId") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("videoId")}
+          onCheckedChange={(checked) => toggleField("videoId", checked)}
+          disabled={disabled}
+        >
+          Video Clip (ID)
+        </FieldCheck>
         <Input
           value={form.videoId}
           onChange={(e) => patch({ videoId: e.target.value })}
@@ -383,13 +622,18 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
         />
         <p className="text-[11px] text-muted-foreground leading-snug">
           Preenchido automaticamente quando o anúncio de origem tem Clips. Funciona melhor ao
-          republicar na <strong>mesma conta</strong>; em outra conta o ML pode rejeitar o clip (ele
-          fica vinculado ao vendedor que fez o upload).
+          republicar na <strong>mesma conta</strong>; em outra conta o ML pode rejeitar o clip.
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Descrição</Label>
+      <div className={cn("space-y-1.5", !fieldOn("description") && "opacity-55")}>
+        <FieldCheck
+          checked={fieldOn("description")}
+          onCheckedChange={(checked) => toggleField("description", checked)}
+          disabled={disabled}
+        >
+          Descrição
+        </FieldCheck>
         <textarea
           value={form.description}
           onChange={(e) => patch({ description: e.target.value })}
@@ -406,16 +650,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
           onChange={(attributes) => patch({ attributes })}
           disabled={disabled}
           idPlaceholder="ID (ex.: BRAND)"
+          selectedIndexes={selection.attributeIndexes}
+          onSelectedIndexesChange={(attributeIndexes) =>
+            onSelectionChange({ ...selection, attributeIndexes })
+          }
         />
         <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-          Na publicação, o iHub consulta a categoria no Mercado Livre e remove atributos{" "}
-          <em>read_only</em>, <em>fixed</em> ou <em>inferred</em> gerenciados pelo ML (ex.: AGE_GROUP,
-          marcas internas). Atributos de regra de venda como{" "}
-          <span className="font-mono">SALE_FORMAT</span> e{" "}
-          <span className="font-mono">UNITS_PER_PACK</span> são enviados quando preenchidos. Com
-          variações clássicas, <span className="font-mono">UNITS_PER_PACK</span> vai como{" "}
-          <strong>1</strong> (Unidade); sem variações, se for maior que 1 o formato vira Pack.
-          Você pode deixar a lista completa no modelo.
+          Só os atributos com checkbox marcada são espelhados. Na publicação de anúncio novo, a
+          lista inteira segue valendo.
         </p>
       </div>
 
@@ -426,11 +668,14 @@ export function TemplatePayloadEditor({ form, onChange, disabled }: Props) {
           onChange={(saleTerms) => patch({ saleTerms })}
           disabled={disabled}
           idPlaceholder="ID (ex.: WARRANTY_TYPE)"
+          selectedIndexes={selection.saleTermIndexes}
+          onSelectedIndexesChange={(saleTermIndexes) =>
+            onSelectionChange({ ...selection, saleTermIndexes })
+          }
         />
         <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-          Na publicação, o iHub envia apenas garantia e prazo de fabricação. Termos como{" "}
-          <span className="font-mono">PURCHASE_MAX_QUANTITY</span> o Mercado Livre costuma rejeitar
-          (read_only).
+          Marque só os termos a espelhar (garantia/prazo).{" "}
+          <span className="font-mono">PURCHASE_MAX_QUANTITY</span> o ML costuma rejeitar.
         </p>
       </div>
     </div>

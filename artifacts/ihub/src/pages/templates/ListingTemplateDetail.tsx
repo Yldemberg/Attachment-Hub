@@ -9,7 +9,7 @@ import {
   getGetListingTemplateQueryKey,
   getListListingTemplatesQueryKey,
   getListProductsQueryKey,
-  PropagateListingTemplateField,
+  type PropagateListingTemplateField,
   type PropagateListingTemplateResponseData,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,6 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { type PublishedListingRef } from "./components/PublishTemplateDialog";
@@ -33,7 +32,12 @@ import {
   TemplatePayloadEditor,
   formToPublishOverrides,
   payloadToForm,
+  allPropagateSelection,
+  changedPropagateSelection,
+  selectionToPropagatePayload,
+  EMPTY_PROPAGATE_SELECTION,
   type EditableTemplateForm,
+  type TemplatePropagateSelection,
 } from "./components/TemplatePayloadEditor";
 import {
   AlertDialog,
@@ -53,182 +57,18 @@ const STATUS_LABELS: Record<string, string> = {
   under_review: "Em revisão",
 };
 
-const PROPAGATE_FIELD_OPTIONS: Array<{
-  id: (typeof PropagateListingTemplateField)[keyof typeof PropagateListingTemplateField];
-  label: string;
-  hint: string;
-}> = [
-  { id: PropagateListingTemplateField.title, label: "Título / família", hint: "Título ou family_name" },
-  { id: PropagateListingTemplateField.pictures, label: "Fotos", hint: "URLs públicas" },
-  { id: PropagateListingTemplateField.description, label: "Descrição", hint: "Texto do anúncio" },
-  { id: PropagateListingTemplateField.price, label: "Preço", hint: "Não aplica em variações" },
-  { id: PropagateListingTemplateField.videoId, label: "Video Clip", hint: "Pode falhar em outra conta" },
-];
-
-const DEFAULT_PROPAGATE_FIELDS = [
-  PropagateListingTemplateField.title,
-  PropagateListingTemplateField.pictures,
-  PropagateListingTemplateField.description,
-] as const;
-
-function publishBlockedReason(flags: {
-  isCatalog: boolean;
-}): string | null {
+function publishBlockedReason(flags: { isCatalog: boolean }): string | null {
   if (flags.isCatalog) {
     return "Modelos de catálogo compartilhado não podem ser publicados automaticamente.";
   }
   return null;
 }
 
-function attrKey(row: { id: string; value_name: string; value_id?: string }): string {
-  return row.id.trim();
-}
-
-function changedItemIds(
-  current: Array<{ id: string; value_name: string; value_id?: string }>,
-  original: Array<{ id: string; value_name: string; value_id?: string }>,
-): string[] {
-  const origById = new Map(original.filter((r) => r.id.trim()).map((r) => [r.id.trim().toLowerCase(), r]));
-  const changed: string[] = [];
-  for (const row of current) {
-    const id = row.id.trim();
-    if (!id) continue;
-    const prev = origById.get(id.toLowerCase());
-    if (
-      !prev ||
-      prev.value_name.trim() !== row.value_name.trim() ||
-      (prev.value_id ?? "") !== (row.value_id ?? "")
-    ) {
-      if (!changed.some((x) => x.toLowerCase() === id.toLowerCase())) changed.push(id);
-    }
-  }
-  return changed;
-}
-
-function changedPropagateFields(
-  form: EditableTemplateForm,
-  payload: {
-    title?: string;
-    familyName?: string;
-    price?: number;
-    description?: string;
-    pictureSources?: string[];
-    attributes?: Array<{ [key: string]: unknown }>;
-    saleTerms?: Array<{ [key: string]: unknown }>;
-    videoId?: string | null;
-  },
-): Array<(typeof PropagateListingTemplateField)[keyof typeof PropagateListingTemplateField]> {
-  const changed: Array<(typeof PropagateListingTemplateField)[keyof typeof PropagateListingTemplateField]> =
-    [];
-  const origForm = payloadToForm(payload);
-  if (form.title.trim() !== origForm.title.trim() || form.familyName.trim() !== origForm.familyName.trim()) {
-    changed.push(PropagateListingTemplateField.title);
-  }
-  if (form.price !== origForm.price) changed.push(PropagateListingTemplateField.price);
-  if (JSON.stringify(form.pictureSources) !== JSON.stringify(origForm.pictureSources)) {
-    changed.push(PropagateListingTemplateField.pictures);
-  }
-  if (form.description.trim() !== origForm.description.trim()) {
-    changed.push(PropagateListingTemplateField.description);
-  }
-  if (form.videoId.trim() !== origForm.videoId.trim()) {
-    changed.push(PropagateListingTemplateField.videoId);
-  }
-  return changed;
-}
-
-function IdChecklist({
-  title,
-  hint,
-  rows,
-  selectedIds,
-  onChange,
-  changedIds,
-  disabled,
-  emptyLabel,
-}: {
-  title: string;
-  hint: string;
-  rows: Array<{ id: string; value_name: string; value_id?: string }>;
-  selectedIds: string[];
-  onChange: (ids: string[]) => void;
-  changedIds: string[];
-  disabled?: boolean;
-  emptyLabel: string;
-}) {
-  const usable = rows.filter((r) => r.id.trim());
-  const allIds = usable.map((r) => r.id.trim());
-  const selectedSet = new Set(selectedIds.map((id) => id.toLowerCase()));
-  const selectedCount = allIds.filter((id) => selectedSet.has(id.toLowerCase())).length;
-  const allChecked = allIds.length > 0 && selectedCount === allIds.length;
-  const someChecked = selectedCount > 0 && !allChecked;
-  const changedSet = new Set(changedIds.map((id) => id.toLowerCase()));
-
-  const toggleOne = (id: string, checked: boolean) => {
-    const key = id.trim();
-    if (!key) return;
-    if (checked) {
-      if (selectedSet.has(key.toLowerCase())) return;
-      onChange([...selectedIds, key]);
-      return;
-    }
-    onChange(selectedIds.filter((x) => x.toLowerCase() !== key.toLowerCase()));
-  };
-
+function hasAnySelection(selection: TemplatePropagateSelection): boolean {
   return (
-    <div className="rounded-lg border border-border px-3 py-2.5 space-y-2 sm:col-span-2">
-      <label className="flex items-start gap-2 cursor-pointer">
-        <Checkbox
-          checked={allChecked ? true : someChecked ? "indeterminate" : false}
-          disabled={disabled || usable.length === 0}
-          onCheckedChange={(value) => onChange(value === true ? allIds : [])}
-          className="mt-0.5"
-        />
-        <span className="min-w-0">
-          <span className="text-sm text-foreground">{title}</span>
-          <span className="block text-[11px] text-muted-foreground">{hint}</span>
-        </span>
-      </label>
-      {usable.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground pl-6">{emptyLabel}</p>
-      ) : (
-        <div className="pl-6 grid grid-cols-1 gap-1.5">
-          {usable.map((row, index) => {
-            const id = row.id.trim();
-            const checked = selectedSet.has(id.toLowerCase());
-            const edited = changedSet.has(id.toLowerCase());
-            return (
-              <label
-                key={`${id}-${index}`}
-                className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 cursor-pointer"
-              >
-                <Checkbox
-                  checked={checked}
-                  disabled={disabled}
-                  onCheckedChange={(value) => toggleOne(id, value === true)}
-                  className="mt-0.5"
-                />
-                <span className="min-w-0">
-                  <span className="text-xs font-mono text-foreground">
-                    {id}
-                    {edited ? (
-                      <span className="ml-1.5 font-sans text-[10px] text-primary font-medium">
-                        alterado
-                      </span>
-                    ) : null}
-                  </span>
-                  {row.value_name.trim() ? (
-                    <span className="block text-[11px] text-muted-foreground truncate">
-                      {row.value_name.trim()}
-                    </span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    selection.fields.length > 0 ||
+    selection.attributeIndexes.length > 0 ||
+    selection.saleTermIndexes.length > 0
   );
 }
 
@@ -243,9 +83,7 @@ export default function ListingTemplateDetail() {
   const [form, setForm] = useState<EditableTemplateForm | null>(null);
   const [formReadyForId, setFormReadyForId] = useState<string | null>(null);
   const [publishedListings, setPublishedListings] = useState<PublishedListingRef[]>([]);
-  const [selectedFields, setSelectedFields] = useState<string[]>([...DEFAULT_PROPAGATE_FIELDS]);
-  const [selectedAttributeIds, setSelectedAttributeIds] = useState<string[]>([]);
-  const [selectedSaleTermIds, setSelectedSaleTermIds] = useState<string[]>([]);
+  const [selection, setSelection] = useState<TemplatePropagateSelection>(EMPTY_PROPAGATE_SELECTION);
   const [propagateResult, setPropagateResult] = useState<PropagateListingTemplateResponseData | null>(
     null,
   );
@@ -266,7 +104,7 @@ export default function ListingTemplateDetail() {
     setFormReadyForId(template.id);
     setPublishedListings([]);
     setPropagateResult(null);
-    setSelectedFields([...DEFAULT_PROPAGATE_FIELDS]);
+    setSelection(EMPTY_PROPAGATE_SELECTION);
   }, [template?.id, payload, formReadyForId]);
 
   const { data: accountsData } = useListAccounts();
@@ -285,18 +123,22 @@ export default function ListingTemplateDetail() {
       "Conta")
     : "Sem conta";
 
-  const blocked = template
-    ? publishBlockedReason({ isCatalog: template.isCatalog })
-    : null;
+  const blocked = template ? publishBlockedReason({ isCatalog: template.isCatalog }) : null;
 
-  const liveChangedFields = useMemo(
-    () => (form && payload ? changedPropagateFields(form, payload) : []),
-    [form, payload],
+  const originalForm = useMemo(() => (payload ? payloadToForm(payload) : null), [payload]);
+  const changedSelection = useMemo(
+    () => (form && originalForm ? changedPropagateSelection(form, originalForm) : EMPTY_PROPAGATE_SELECTION),
+    [form, originalForm],
+  );
+  const propagatePayload = useMemo(
+    () => (form ? selectionToPropagatePayload(form, selection) : null),
+    [form, selection],
   );
 
   const resetFormFromTemplate = () => {
     if (!payload) return;
     setForm(payloadToForm(payload));
+    setSelection(EMPTY_PROPAGATE_SELECTION);
     toast({ title: "Campos restaurados", description: "Valores originais do modelo foram recarregados." });
   };
 
@@ -311,8 +153,6 @@ export default function ListingTemplateDetail() {
     }
     return null;
   };
-
-  const busyNote = (publishing: boolean, propagating: boolean) => publishing || propagating;
 
   const { mutate: publishTemplate, isPending: publishing } = usePublishListingTemplate({
     mutation: {
@@ -392,7 +232,7 @@ export default function ListingTemplateDetail() {
   };
 
   const handlePropagate = () => {
-    if (!template || !form) return;
+    if (!template || !form || !propagatePayload) return;
     if (!sku) {
       toast({
         variant: "destructive",
@@ -401,29 +241,23 @@ export default function ListingTemplateDetail() {
       });
       return;
     }
-    if (selectedFields.length === 0) {
+    if (!hasAnySelection(selection)) {
       toast({
         variant: "destructive",
         title: "Selecione campos",
-        description: "Marque ao menos um campo para espelhar. Estoque nunca é enviado.",
+        description: "Marque a checkbox ao lado de cada campo que deve ser alterado.",
       });
       return;
     }
     propagateTemplate({
       id: template.id,
       data: {
-        fields: selectedFields as Array<
-          (typeof PropagateListingTemplateField)[keyof typeof PropagateListingTemplateField]
-        >,
+        fields: propagatePayload.fields as PropagateListingTemplateField[],
+        attributeIds: propagatePayload.attributeIds,
+        saleTermIds: propagatePayload.saleTermIds,
         overrides: formToPublishOverrides(form),
       },
     });
-  };
-
-  const toggleField = (fieldId: string, checked: boolean) => {
-    setSelectedFields((prev) =>
-      checked ? (prev.includes(fieldId) ? prev : [...prev, fieldId]) : prev.filter((f) => f !== fieldId),
-    );
   };
 
   const { mutate: deleteTemplate, isPending: deleting } = useDeleteListingTemplate({
@@ -465,10 +299,8 @@ export default function ListingTemplateDetail() {
   }
 
   const lastPublished = publishedListings[publishedListings.length - 1];
-  const isBusy = busyNote(publishing, propagating);
-  const applicableTargets = skuTargets
-    ? skuTargets.full + skuTargets.traditional
-    : 0;
+  const isBusy = publishing || propagating;
+  const applicableTargets = skuTargets ? skuTargets.full + skuTargets.traditional : 0;
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -497,9 +329,7 @@ export default function ListingTemplateDetail() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div className="min-w-0">
-                  <h1 className="text-lg font-bold text-foreground leading-tight">
-                    {template.name}
-                  </h1>
+                  <h1 className="text-lg font-bold text-foreground leading-tight">{template.name}</h1>
                   <p className="text-muted-foreground text-xs mt-1 font-mono">
                     {template.sourceMlItemId}
                     {sku ? ` · SKU ${sku}` : ""}
@@ -567,8 +397,8 @@ export default function ListingTemplateDetail() {
               {!blocked && template.isFull && (
                 <p className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 mt-3">
                   Este modelo veio de um anúncio Full. Ao publicar, será criado um anúncio{" "}
-                  <strong>tradicional</strong> (sem Fulfillment), com os mesmos dados editáveis abaixo.
-                  O espelhamento por SKU, porém, <strong>também atualiza os Full</strong> existentes.
+                  <strong>tradicional</strong> (sem Fulfillment). O espelhamento por SKU também
+                  atualiza os Full existentes.
                 </p>
               )}
 
@@ -595,7 +425,7 @@ export default function ListingTemplateDetail() {
               </p>
               <p className="text-xs text-emerald-700/80 mt-0.5">
                 {publishedListings.length} publicado{publishedListings.length === 1 ? "" : "s"} nesta
-                sessão — edite os campos abaixo e publique outro quando quiser.
+                sessão.
               </p>
             </div>
             <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
@@ -605,22 +435,48 @@ export default function ListingTemplateDetail() {
         )}
 
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
             <div>
               <h2 className="text-sm font-semibold text-foreground">Campos do anúncio</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Edite os valores e escolha, abaixo, quais campos espelhar nos anúncios do mesmo SKU.
+                Marque a checkbox ao lado do campo para espelhá-lo. Campos desmarcados{" "}
+                <strong>não são alterados</strong> nos anúncios. Estoque nunca entra.
               </p>
             </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={isBusy}
+                onClick={() => setSelection(allPropagateSelection(form))}
+              >
+                Marcar todos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={isBusy || !hasAnySelection(changedSelection)}
+                onClick={() => setSelection(changedSelection)}
+              >
+                Só alterados
+              </Button>
+            </div>
           </div>
-          <TemplatePayloadEditor form={form} onChange={setForm} disabled={isBusy} />
+          <TemplatePayloadEditor
+            form={form}
+            onChange={setForm}
+            disabled={isBusy}
+            selection={selection}
+            onSelectionChange={setSelection}
+          />
           {template.hasVariations && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-4">
-              Este modelo tem variações clássicas: elas serão enviadas junto com os campos acima.
-              Na publicação, <span className="font-mono">UNITS_PER_PACK</span> é forçado para{" "}
-              <strong>1</strong> (venda por unidade). Se o anúncio de origem for uma família User
-              Products (pai + filhos MLB separados), publique o modelo de cada filho — republicar
-              o pai não recria os irmãos.
+              Anúncios com variações: preço por variação não é aplicado automaticamente. Na
+              publicação de anúncio novo, as variações do modelo continuam sendo enviadas.
             </p>
           )}
         </div>
@@ -629,8 +485,8 @@ export default function ListingTemplateDetail() {
           <div>
             <h2 className="text-sm font-semibold text-foreground">Espelhar por SKU (Mercado Livre)</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Aplica os campos marcados em todos os anúncios ML com o mesmo SKU, em todas as contas,
-              <strong> inclusive Full</strong>. Estoque nunca é alterado.
+              Aplica <strong>somente as checkboxes marcadas</strong> em todos os anúncios ML com o
+              mesmo SKU, em todas as contas, inclusive Full.
             </p>
           </div>
 
@@ -653,61 +509,9 @@ export default function ListingTemplateDetail() {
             </p>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {PROPAGATE_FIELD_OPTIONS.map((field) => {
-              const checked = selectedFields.includes(field.id);
-              const edited = liveChangedFields.includes(field.id);
-              return (
-                <label
-                  key={field.id}
-                  className="flex items-start gap-2 rounded-lg border border-border px-3 py-2 cursor-pointer hover:bg-muted/40"
-                >
-                  <Checkbox
-                    checked={checked}
-                    disabled={isBusy}
-                    onCheckedChange={(value) => toggleField(field.id, value === true)}
-                    className="mt-0.5"
-                  />
-                  <span className="min-w-0">
-                    <span className="text-sm text-foreground">
-                      {field.label}
-                      {edited ? (
-                        <span className="ml-1.5 text-[10px] text-primary font-medium">alterado</span>
-                      ) : null}
-                    </span>
-                    <span className="block text-[11px] text-muted-foreground">{field.hint}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={isBusy}
-              onClick={() => setSelectedFields(PROPAGATE_FIELD_OPTIONS.map((f) => f.id))}
-            >
-              Marcar todos
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={isBusy || liveChangedFields.length === 0}
-              onClick={() => setSelectedFields(liveChangedFields)}
-            >
-              Só campos alterados
-            </Button>
-          </div>
-
           <Button
             className="gap-1 w-full sm:w-auto"
-            disabled={isBusy || !sku || selectedFields.length === 0 || applicableTargets === 0}
+            disabled={isBusy || !sku || applicableTargets === 0 || !hasAnySelection(selection)}
             onClick={() => setPropagateOpen(true)}
           >
             {propagating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Repeat className="w-4 h-4" />}
@@ -738,9 +542,7 @@ export default function ListingTemplateDetail() {
                       {row.accountLabel ?? "Conta"}
                       {row.isFull ? " · Full" : ""}
                     </p>
-                    {row.reason ? (
-                      <p className="text-muted-foreground mt-0.5">{row.reason}</p>
-                    ) : null}
+                    {row.reason ? <p className="text-muted-foreground mt-0.5">{row.reason}</p> : null}
                   </div>
                   <span
                     className={
@@ -791,11 +593,7 @@ export default function ListingTemplateDetail() {
             disabled={isBusy || !!blocked || !targetAccountId}
             onClick={handlePublish}
           >
-            {publishing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Upload className="w-4 h-4" />
-            )}
+            {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             {lastPublished ? "Publicar outro" : "Publicar anúncio"}
           </Button>
         </div>
@@ -829,24 +627,39 @@ export default function ListingTemplateDetail() {
       <AlertDialog open={propagateOpen} onOpenChange={setPropagateOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Espelhar campos nos anúncios do SKU?</AlertDialogTitle>
+            <AlertDialogTitle>Espelhar campos marcados?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p>
-                  Os campos marcados serão aplicados em{" "}
+                  Somente as checkboxes marcadas serão aplicadas em{" "}
                   <strong className="text-foreground">{applicableTargets}</strong> anúncio
-                  {applicableTargets === 1 ? "" : "s"} Mercado Livre com SKU{" "}
+                  {applicableTargets === 1 ? "" : "s"} com SKU{" "}
                   <span className="font-mono text-foreground">{sku}</span>
                   {skuTargets && skuTargets.full > 0 ? (
                     <>
                       , incluindo <strong className="text-foreground">{skuTargets.full} Full</strong>
                     </>
                   ) : null}
-                  .
+                  . Campos desmarcados permanecem como estão.
                 </p>
+                {propagatePayload && propagatePayload.attributeIds.length > 0 ? (
+                  <p>
+                    Atributos:{" "}
+                    <span className="font-mono text-foreground">
+                      {propagatePayload.attributeIds.join(", ")}
+                    </span>
+                  </p>
+                ) : null}
+                {propagatePayload && propagatePayload.saleTermIds.length > 0 ? (
+                  <p>
+                    Condições de venda:{" "}
+                    <span className="font-mono text-foreground">
+                      {propagatePayload.saleTermIds.join(", ")}
+                    </span>
+                  </p>
+                ) : null}
                 <p>
-                  <strong className="text-foreground">Estoque não será alterado</strong> em nenhum
-                  anúncio.
+                  <strong className="text-foreground">Estoque não será alterado</strong>.
                 </p>
               </div>
             </AlertDialogDescription>
