@@ -35,17 +35,23 @@ export type MlCategoryAttribute = {
     read_only?: boolean;
     inferred?: boolean;
     hidden?: boolean;
+    variation?: boolean;
+    allow_variations?: boolean;
   };
   values?: Array<{ id: string; name: string }>;
   allowedUnits?: Array<{ id: string; name: string }>;
   defaultUnit?: string;
   hint?: string;
+  groupId?: string;
+  groupName?: string;
 };
 
 export type MlListingAttributeInput = {
   id: string;
   value_name: string;
   value_id?: string;
+  name?: string;
+  groupName?: string;
 };
 
 export type MlListingVariationInput = {
@@ -217,6 +223,8 @@ export async function getCategoryAttributes(
       allowed_units?: Array<{ id: string; name: string }>;
       default_unit?: string;
       hint?: string;
+      attribute_group_id?: string;
+      attribute_group_name?: string;
     }>
   >(accountId, `/categories/${encodeURIComponent(categoryId)}/attributes`);
 
@@ -229,7 +237,87 @@ export async function getCategoryAttributes(
     allowedUnits: a.allowed_units,
     defaultUnit: a.default_unit,
     hint: a.hint,
+    groupId: a.attribute_group_id,
+    groupName: a.attribute_group_name,
   }));
+}
+
+type MlTechnicalSpecGroup = {
+  id?: string;
+  label?: string;
+  components?: Array<{
+    label?: string;
+    attributes?: Array<{
+      id?: string;
+      name?: string;
+      value_type?: string;
+    }>;
+  }>;
+};
+
+function flattenTechnicalSpecGroups(groups: MlTechnicalSpecGroup[] | undefined): MlCategoryAttribute[] {
+  if (!Array.isArray(groups)) return [];
+  const out: MlCategoryAttribute[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    const groupName = group.label?.trim() || group.id;
+    for (const component of group.components ?? []) {
+      for (const attr of component.attributes ?? []) {
+        if (!attr.id || attr.id === "ITEM_CONDITION" || seen.has(attr.id)) continue;
+        seen.add(attr.id);
+        out.push({
+          id: attr.id,
+          name: (attr.name?.trim() || component.label?.trim() || attr.id) as string,
+          valueType: attr.value_type ?? "string",
+          groupId: group.id,
+          groupName,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Ficha técnica do formulário do vendedor (principais + secundárias).
+ * É o mesmo agrupamento da tela "Características secundárias" no ML.
+ */
+export async function getTechnicalSpecsInputAttributes(
+  accountId: string,
+  categoryId: string,
+  domainId?: string | null,
+): Promise<MlCategoryAttribute[]> {
+  try {
+    const spec = await ml.get<{ groups?: MlTechnicalSpecGroup[] }>(
+      accountId,
+      `/categories/${encodeURIComponent(categoryId)}/technical_specs/input`,
+    );
+    const rows = flattenTechnicalSpecGroups(spec.groups);
+    if (rows.length) return rows;
+  } catch (err) {
+    logger.warn(
+      { err, accountId, categoryId },
+      "Failed to load category technical_specs/input for listing template",
+    );
+  }
+
+  if (domainId) {
+    try {
+      const spec = await ml.get<{
+        input?: { groups?: MlTechnicalSpecGroup[] };
+        groups?: MlTechnicalSpecGroup[];
+      }>(accountId, `/domains/${encodeURIComponent(domainId)}/technical_specs`);
+      const rows = flattenTechnicalSpecGroups(spec.input?.groups ?? spec.groups);
+      if (rows.length) return rows;
+    } catch (err) {
+      logger.warn(
+        { err, accountId, domainId },
+        "Failed to load domain technical_specs for listing template",
+      );
+    }
+  }
+
+  return [];
 }
 
 /** Atributos que o ML gerencia e costumam estourar HTTP 400 se reenviados no create. */

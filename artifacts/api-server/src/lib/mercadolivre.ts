@@ -238,6 +238,8 @@ export type MlAttributeRow = {
   name?: string;
   value_id?: string | null;
   value_name?: string | null;
+  value_struct?: { number?: number | null; unit?: string | null } | null;
+  values?: Array<{ id?: string | null; name?: string | null }> | null;
 };
 
 export type MlItem = {
@@ -262,6 +264,10 @@ export type MlItem = {
   thumbnail: string;
   permalink: string;
   category_id: string;
+  /** Catalog domain, e.g. MLB-HANDBAGS — used for technical_specs (secondary characteristics). */
+  domain_id?: string | null;
+  /** User Products family id — attributes may live here instead of only on the item. */
+  user_product_id?: string | null;
   /** Present on GET /items — true for user products linked to Mercado Livre catalog. */
   catalog_listing?: boolean;
   /** Product video clip on the listing; null/absent when there is no clip. */

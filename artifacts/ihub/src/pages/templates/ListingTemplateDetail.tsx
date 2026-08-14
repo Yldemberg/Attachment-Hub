@@ -6,6 +6,7 @@ import {
   useDeleteListingTemplate,
   usePublishListingTemplate,
   usePropagateListingTemplate,
+  useSaveListingTemplateFromProduct,
   getGetListingTemplateQueryKey,
   getListListingTemplatesQueryKey,
   getListProductsQueryKey,
@@ -21,6 +22,7 @@ import {
   Package,
   Repeat,
   RotateCcw,
+  RefreshCw,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -207,6 +209,28 @@ export default function ListingTemplateDetail() {
     },
   });
 
+  const { mutate: refreshFromMl, isPending: refreshingFromMl } = useSaveListingTemplateFromProduct({
+    mutation: {
+      onSuccess: () => {
+        setFormReadyForId(null);
+        queryClient.invalidateQueries({ queryKey: getGetListingTemplateQueryKey(id) });
+        queryClient.invalidateQueries({ queryKey: getListListingTemplatesQueryKey({}) });
+        toast({
+          title: "Modelo atualizado do ML",
+          description: "Atributos principais e secundários foram recarregados do anúncio de origem.",
+        });
+      },
+      onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
+        toast({
+          variant: "destructive",
+          title: "Erro ao atualizar do ML",
+          description:
+            err.payload?.error?.message ?? err.message ?? "Não foi possível recarregar o anúncio.",
+        });
+      },
+    },
+  });
+
   const handlePublish = () => {
     if (!template || !form) return;
     const err = validateForm();
@@ -299,7 +323,7 @@ export default function ListingTemplateDetail() {
   }
 
   const lastPublished = publishedListings[publishedListings.length - 1];
-  const isBusy = publishing || propagating;
+  const isBusy = publishing || propagating || refreshingFromMl;
   const applicableTargets = skuTargets ? skuTargets.full + skuTargets.traditional : 0;
 
   return (
@@ -337,6 +361,18 @@ export default function ListingTemplateDetail() {
                   <p className="text-muted-foreground text-xs mt-0.5">{sourceAccountLabel}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {template.sourceProductId ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => refreshFromMl({ productId: template.sourceProductId as string })}
+                      disabled={isBusy}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${refreshingFromMl ? "animate-spin" : ""}`} />
+                      Atualizar do ML
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     size="sm"

@@ -5,7 +5,7 @@ import {
   accountsTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { ml, type MlItem, type MlVariation, itemIsMlFull } from "./mercadolivre";
+import { ml, type MlItem, type MlVariation, type MlAttributeRow, itemIsMlFull } from "./mercadolivre";
 import {
   getMlItemDescription,
   createMlItem,
@@ -13,6 +13,8 @@ import {
   updateMlItem,
   sanitizeAttributesForCreate,
   extractBlockedFieldIdsFromMlError,
+  getCategoryAttributes,
+  getTechnicalSpecsInputAttributes,
   WRITABLE_SALE_TERM_IDS,
   MlListingError,
   type CreateMlListingInput,
@@ -21,6 +23,7 @@ import {
   type MlListingVariationInput,
   type MlSaleTermInput,
   type CreateMlListingShippingInput,
+  type MlCategoryAttribute,
 } from "./ml-listings";
 import { productsMatchSellerSkuIncludingVariations } from "./product-sku";
 import { logger } from "./logger";
@@ -48,11 +51,13 @@ export type ListingTemplatePayload = {
   variations?: MlListingVariationInput[];
   videoId?: string | null;
   sourcePermalink?: string;
+  domainId?: string | null;
 };
 
 type MlItemForTemplate = MlItem & {
   condition?: string;
   family_name?: string;
+  user_product_id?: string | null;
   pictures?: Array<{ id?: string; secure_url?: string; url?: string }>;
   sale_terms?: Array<{ id: string; value_name?: string | null; value_id?: string | null }>;
   shipping?: MlItem["shipping"] & {
@@ -62,14 +67,137 @@ type MlItemForTemplate = MlItem & {
   };
 };
 
-function mapAttributes(attributes: MlItemForTemplate["attributes"]): MlListingAttributeInput[] {
-  return (attributes ?? [])
-    .filter((a) => a.id && a.id !== "ITEM_CONDITION" && a.value_name?.trim())
-    .map((a) => ({
-      id: a.id!,
-      value_name: a.value_name!.trim(),
-      ...(a.value_id ? { value_id: a.value_id } : {}),
-    }));
+function formatItemAttributeValue(attr: MlAttributeRow): string {
+  if (attr.value_name?.trim()) return attr.value_name.trim();
+  const struct = attr.value_struct;
+  if (struct && struct.number != null) {
+    const unit = struct.unit?.trim();
+    return unit ? `${struct.number} ${unit}` : String(struct.number);
+  }
+  const firstNamed = attr.values?.find((v) => v.name?.trim())?.name?.trim();
+  return firstNamed ?? "";
+}
+
+function mapItemAttributeRow(attr: MlAttributeRow): MlListingAttributeInput | null {
+  if (!attr.id || attr.id === "ITEM_CONDITION") return null;
+  const valueName = formatItemAttributeValue(attr);
+  const valueId = attr.value_id?.trim() || attr.values?.find((v) => v.id)?.id || undefined;
+  if (!valueName && !valueId) return null;
+  return {
+    id: attr.id,
+    value_name: valueName,
+    ...(valueId ? { value_id: valueId } : {}),
+    ...(attr.name?.trim() ? { name: attr.name.trim() } : {}),
+  };
+}
+
+function isCategoryFormAttribute(attr: MlCategoryAttribute): boolean {
+  if (attr.id === "ITEM_CONDITION") return false;
+  const tags = attr.tags ?? {};
+  // `hidden` no /attributes = oculto na ficha do comprador, não no formulário do vendedor.
+  // Características secundárias (altura, bolsos, à prova d'água…) vêm com hidden=true.
+  // Só ignoramos internos que o ML marca hidden+read_only (fiscal, VIP, packing de fábrica).
+  if (tags.hidden && tags.read_only) return false;
+  return true;
+}
+
+function secondaryGroupLabel(groupName?: string, groupId?: string): string | undefined {
+  const id = (groupId ?? "").toUpperCase();
+  const name = (groupName ?? "").trim();
+  if (id === "OTHERS" || /secund/i.test(name) || /^outros$/i.test(name)) {
+    return "Características secundárias";
+  }
+  if (id === "MAIN" || id === "DFLT" || /princip/i.test(name)) {
+    return "Características principais";
+  }
+  return name || undefined;
+}
+
+function mergeTemplateAttributes(
+  categoryAttrs: MlCategoryAttribute[],
+  itemAttrs: MlListingAttributeInput[],
+): MlListingAttributeInput[] {
+  const byId = new Map(itemAttrs.map((a) => [a.id, a]));
+  const used = new Set<string>();
+  const merged: MlListingAttributeInput[] = [];
+
+  for (const cat of categoryAttrs) {
+    if (!isCategoryFormAttribute(cat)) continue;
+    used.add(cat.id);
+    const fromItem = byId.get(cat.id);
+    merged.push({
+      id: cat.id,
+      value_name: fromItem?.value_name ?? "",
+      ...(fromItem?.value_id ? { value_id: fromItem.value_id } : {}),
+      name: cat.name,
+      groupName: secondaryGroupLabel(cat.groupName, cat.groupId),
+    });
+  }
+
+  for (const attr of itemAttrs) {
+    if (used.has(attr.id)) continue;
+    merged.push(attr);
+  }
+  return merged;
+}
+
+async function fetchUserProductAttributes(
+  accountId: string,
+  userProductId: string,
+): Promise<MlAttributeRow[]> {
+  try {
+    const product = await ml.get<{ attributes?: MlAttributeRow[] | null }>(
+      accountId,
+      `/user-products/${encodeURIComponent(userProductId)}`,
+    );
+    return product.attributes ?? [];
+  } catch (err) {
+    logger.warn({ err, accountId, userProductId }, "Failed to fetch user-product attributes for template");
+    return [];
+  }
+}
+
+async function resolveTemplateAttributes(
+  accountId: string,
+  item: MlItemForTemplate,
+): Promise<MlListingAttributeInput[]> {
+  const fromItem = (item.attributes ?? [])
+    .map(mapItemAttributeRow)
+    .filter((a): a is MlListingAttributeInput => a != null);
+
+  let fromFamily: MlListingAttributeInput[] = [];
+  if (item.user_product_id) {
+    const familyRows = await fetchUserProductAttributes(accountId, item.user_product_id);
+    fromFamily = familyRows
+      .map(mapItemAttributeRow)
+      .filter((a): a is MlListingAttributeInput => a != null);
+  }
+
+  const familyById = new Map(fromFamily.map((a) => [a.id, a]));
+  for (const attr of fromItem) familyById.set(attr.id, attr);
+  const filled = [...familyById.values()];
+
+  let categoryAttrs: MlCategoryAttribute[] = [];
+  if (item.category_id) {
+    categoryAttrs = await getTechnicalSpecsInputAttributes(
+      accountId,
+      item.category_id,
+      item.domain_id,
+    );
+    if (categoryAttrs.length === 0) {
+      try {
+        categoryAttrs = await getCategoryAttributes(accountId, item.category_id);
+      } catch (err) {
+        logger.warn(
+          { err, accountId, categoryId: item.category_id },
+          "Failed to load category attributes for listing template",
+        );
+      }
+    }
+  }
+
+  if (categoryAttrs.length === 0) return filled;
+  return mergeTemplateAttributes(categoryAttrs, filled);
 }
 
 function mapSaleTerms(saleTerms: MlItemForTemplate["sale_terms"]): MlSaleTermInput[] {
@@ -107,10 +235,11 @@ function mapShipping(shipping: MlItemForTemplate["shipping"]): CreateMlListingSh
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-export function buildTemplatePayloadFromMlItem(
+export async function buildTemplatePayloadFromMlItem(
+  accountId: string,
   item: MlItemForTemplate,
   description: string,
-): ListingTemplatePayload {
+): Promise<ListingTemplatePayload> {
   const pictureSources = (item.pictures ?? [])
     .map((p) => p.secure_url ?? p.url ?? "")
     .filter((url) => url.length > 0);
@@ -122,6 +251,7 @@ export function buildTemplatePayloadFromMlItem(
   const saleTerms = mapSaleTerms(item.sale_terms);
   const shipping = mapShipping(item.shipping);
   const variations = mapVariations(item.variations);
+  const attributes = await resolveTemplateAttributes(accountId, item);
 
   return {
     title,
@@ -133,13 +263,14 @@ export function buildTemplatePayloadFromMlItem(
     listingTypeId: item.listing_type_id,
     pictures: pictureIds,
     pictureSources,
-    attributes: mapAttributes(item.attributes),
+    attributes,
     description: description.trim() || undefined,
     ...(saleTerms.length ? { saleTerms } : {}),
     ...(shipping ? { shipping } : {}),
     ...(variations?.length ? { variations } : {}),
     videoId: item.video_id ?? null,
     sourcePermalink: item.permalink,
+    domainId: item.domain_id ?? null,
   };
 }
 
@@ -172,7 +303,7 @@ export async function upsertListingTemplateFromMlItem(params: {
 }): Promise<string> {
   const { userId, accountId, productId, item, description } = params;
   const db = getDb();
-  const payload = buildTemplatePayloadFromMlItem(item, description);
+  const payload = await buildTemplatePayloadFromMlItem(accountId, item, description);
   const isFull = itemIsMlFull(item);
   const isCatalog = item.catalog_listing === true;
   const hasVariations = Array.isArray(item.variations) && item.variations.length > 0;
@@ -228,7 +359,63 @@ export async function upsertListingTemplateFromMlItem(params: {
 }
 
 async function fetchMlItemForTemplate(accountId: string, mlItemId: string): Promise<MlItemForTemplate> {
-  return ml.get<MlItemForTemplate>(accountId, `/items/${encodeURIComponent(mlItemId)}`);
+  return ml.get<MlItemForTemplate>(
+    accountId,
+    `/items/${encodeURIComponent(mlItemId)}?include_attributes=all&include_internal_attributes=true`,
+  );
+}
+
+/** Completa o payload salvo com a ficha técnica da categoria (campos secundários vazios inclusive). */
+export async function hydrateListingTemplatePayloadForDisplay(
+  accountId: string,
+  payload: ListingTemplatePayload,
+  sourceMlItemId?: string | null,
+): Promise<ListingTemplatePayload> {
+  try {
+    if (sourceMlItemId) {
+      const item = await fetchMlItemForTemplate(accountId, sourceMlItemId);
+      const live = await resolveTemplateAttributes(accountId, item);
+      const storedById = new Map((payload.attributes ?? []).map((a) => [a.id, a]));
+      const attributes = live.map((attr) => {
+        const stored = storedById.get(attr.id);
+        if (!stored) return attr;
+        return {
+          ...attr,
+          value_name: stored.value_name?.trim() ? stored.value_name : attr.value_name,
+          ...(stored.value_id || attr.value_id
+            ? { value_id: stored.value_id || attr.value_id }
+            : {}),
+        };
+      });
+      const used = new Set(attributes.map((a) => a.id));
+      for (const stored of payload.attributes ?? []) {
+        if (!used.has(stored.id)) attributes.push(stored);
+      }
+      return {
+        ...payload,
+        attributes,
+        domainId: item.domain_id ?? payload.domainId,
+      };
+    }
+
+    if (!payload.categoryId) return payload;
+    let categoryAttrs = await getTechnicalSpecsInputAttributes(
+      accountId,
+      payload.categoryId,
+      payload.domainId,
+    );
+    if (categoryAttrs.length === 0) {
+      categoryAttrs = await getCategoryAttributes(accountId, payload.categoryId);
+    }
+    if (categoryAttrs.length === 0) return payload;
+    return {
+      ...payload,
+      attributes: mergeTemplateAttributes(categoryAttrs, payload.attributes ?? []),
+    };
+  } catch (err) {
+    logger.warn({ err, accountId, sourceMlItemId }, "Failed to hydrate listing template attributes");
+    return payload;
+  }
 }
 
 export async function syncListingTemplateForProduct(params: {

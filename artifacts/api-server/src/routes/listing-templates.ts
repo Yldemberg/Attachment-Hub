@@ -8,6 +8,7 @@ import { MlListingError } from "../lib/ml-listings";
 import {
   deleteListingTemplateForUser,
   getListingTemplateForUser,
+  hydrateListingTemplatePayloadForDisplay,
   listListingTemplatesForUser,
   publishListingTemplate,
   propagateListingTemplate,
@@ -16,6 +17,7 @@ import {
   summarizeMlSkuTargets,
   syncListingTemplateForProduct,
   syncListingTemplatesForUser,
+  type ListingTemplatePayload,
 } from "../lib/listing-templates";
 
 const router = Router();
@@ -140,9 +142,16 @@ router.get("/listing-templates/:id", ...auth, async (req, res) => {
         template: found.template,
         joinedSku: found.sku,
       })) || null;
+    const serialized = serializeListingTemplate(found.template, { includePayload: true, sku });
+    const payload = await hydrateListingTemplatePayloadForDisplay(
+      found.template.sourceAccountId,
+      found.template.payloadJson as ListingTemplatePayload,
+      found.template.sourceMlItemId,
+    );
     res.json({
       data: {
-        ...serializeListingTemplate(found.template, { includePayload: true, sku }),
+        ...serialized,
+        payload,
         skuTargets: sku
           ? await summarizeMlSkuTargets(req.user!.id, sku)
           : { total: 0, full: 0, traditional: 0, closed: 0 },

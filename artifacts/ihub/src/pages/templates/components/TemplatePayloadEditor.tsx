@@ -82,6 +82,12 @@ export function payloadToForm(payload: {
           : typeof a.valueId === "string" && a.valueId
             ? { value_id: a.valueId }
             : {}),
+        ...(typeof a.name === "string" && a.name.trim() ? { name: a.name.trim() } : {}),
+        ...(typeof a.groupName === "string" && a.groupName.trim()
+          ? { groupName: a.groupName.trim() }
+          : typeof a.group_name === "string" && a.group_name.trim()
+            ? { groupName: a.group_name.trim() }
+            : {}),
       }));
 
   return {
@@ -129,7 +135,7 @@ export function formToPublishOverrides(form: EditableTemplateForm): {
     description: form.description.trim() || undefined,
     pictureSources,
     pictures: [],
-    attributes: form.attributes.filter((a) => a.id && a.value_name.trim()),
+    attributes: form.attributes.filter((a) => a.id && (a.value_name.trim() || a.value_id)),
     saleTerms: form.saleTerms.filter(
       (a) =>
         a.id &&
@@ -315,59 +321,74 @@ function AttrRows({
       {rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhum item. Clique em Adicionar.</p>
       ) : (
-        <div className="space-y-2">
-          {rows.map((row, index) => (
-            <div
-              key={`${row.id}-${index}`}
-              className={cn(
-                "flex gap-2 items-start",
-                !selectedSet.has(index) && "opacity-55",
-              )}
-            >
-              <Checkbox
-                className="mt-2.5"
-                checked={selectedSet.has(index)}
-                disabled={disabled}
-                onCheckedChange={(value) => toggleRow(index, value === true)}
-              />
-              <Input
-                value={row.id}
-                onChange={(e) => {
-                  const next = [...rows];
-                  next[index] = { ...row, id: e.target.value };
-                  onChange(next);
-                }}
-                placeholder={idPlaceholder}
-                className="h-9 font-mono text-xs w-[40%]"
-                disabled={disabled}
-              />
-              <Input
-                value={row.value_name}
-                onChange={(e) => {
-                  const next = [...rows];
-                  next[index] = { ...row, value_name: e.target.value };
-                  onChange(next);
-                }}
-                placeholder="Valor"
-                className="h-9 flex-1"
-                disabled={disabled}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-9 w-9 p-0 text-destructive hover:text-destructive flex-shrink-0"
-                disabled={disabled}
-                onClick={() => {
-                  onChange(rows.filter((_, i) => i !== index));
-                  onSelectedIndexesChange(removeIndex(selectedIndexes, index));
-                }}
-                title="Remover"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          ))}
+        <div className="space-y-3">
+          {rows.map((row, index) => {
+            const prevGroup = index > 0 ? rows[index - 1]?.groupName : undefined;
+            const showGroup = row.groupName && row.groupName !== prevGroup;
+            return (
+              <div key={`${row.id}-${index}`} className="space-y-1">
+                {showGroup ? (
+                  <p className="text-[11px] font-medium text-muted-foreground pt-1">{row.groupName}</p>
+                ) : null}
+                <div
+                  className={cn(
+                    "flex gap-2 items-start",
+                    !selectedSet.has(index) && "opacity-55",
+                  )}
+                >
+                  <Checkbox
+                    className="mt-2.5"
+                    checked={selectedSet.has(index)}
+                    disabled={disabled}
+                    onCheckedChange={(value) => toggleRow(index, value === true)}
+                  />
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {row.name ? (
+                      <p className="text-[11px] text-foreground leading-tight">{row.name}</p>
+                    ) : null}
+                    <div className="flex gap-2 items-start">
+                      <Input
+                        value={row.id}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          next[index] = { ...row, id: e.target.value };
+                          onChange(next);
+                        }}
+                        placeholder={idPlaceholder}
+                        className="h-9 font-mono text-xs w-[40%]"
+                        disabled={disabled}
+                      />
+                      <Input
+                        value={row.value_name}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          next[index] = { ...row, value_name: e.target.value };
+                          onChange(next);
+                        }}
+                        placeholder={row.name ? `Valor de ${row.name}` : "Valor"}
+                        className="h-9 flex-1"
+                        disabled={disabled}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 w-9 p-0 text-destructive hover:text-destructive flex-shrink-0"
+                        disabled={disabled}
+                        onClick={() => {
+                          onChange(rows.filter((_, i) => i !== index));
+                          onSelectedIndexesChange(removeIndex(selectedIndexes, index));
+                        }}
+                        title="Remover"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -656,8 +677,9 @@ export function TemplatePayloadEditor({
           }
         />
         <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-          Só os atributos com checkbox marcada são espelhados. Na publicação de anúncio novo, a
-          lista inteira segue valendo.
+          A lista vem da categoria do ML (principais e secundárias), inclusive campos ainda vazios
+          (tipo de uso, bolsos, à prova d&apos;água, etc.). Só as linhas com checkbox marcada são
+          espelhadas. Sincronize o modelo de novo para atualizar esta lista.
         </p>
       </div>
 

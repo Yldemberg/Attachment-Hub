@@ -21,6 +21,8 @@ export type ListingFormAttribute = {
   id: string;
   value_name: string;
   value_id?: string;
+  name?: string;
+  groupName?: string;
 };
 
 export type UploadedPicture = {
