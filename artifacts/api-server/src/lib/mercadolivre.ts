@@ -190,7 +190,16 @@ async function mlFetch<T>(
         throw new Error(`ML API ${res.status}: ${text}`);
       }
 
-      return res.json() as Promise<T>;
+      if (res.status === 204) {
+        return undefined as T;
+      }
+
+      const text = await res.text();
+      if (!text) {
+        return undefined as T;
+      }
+
+      return JSON.parse(text) as T;
     } catch (err) {
       clearTimeout(timeoutId);
       lastError = err as Error;
@@ -211,10 +220,10 @@ export const ml = {
   getWithHeaders: <T>(accountId: string, path: string, extraHeaders: Record<string, string>) =>
     mlFetch<T>(accountId, path, { method: "GET", headers: extraHeaders }),
 
-  post: <T>(accountId: string, path: string, body: unknown) =>
+  post: <T>(accountId: string, path: string, body?: unknown) =>
     mlFetch<T>(accountId, path, {
       method: "POST",
-      body: JSON.stringify(body),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }),
 
   put: <T>(accountId: string, path: string, body: unknown) =>

@@ -1210,6 +1210,58 @@ export const BulkUpdateProductListingStatusResponse = zod.object({
 });
 
 /**
+ * Opts the listing into or out of Flex via ML shipping self-service API. Enabling requires an active listing; disabling is allowed for active or paused listings. The seller account must already be subscribed to Flex on Mercado Livre.
+ * @summary Enable or disable Mercado Envios Flex (Mercado Livre)
+ */
+export const UpdateProductFlexParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateProductFlexBody = zod.object({
+  enabled: zod.boolean(),
+});
+
+export const UpdateProductFlexResponse = zod.object({
+  success: zod.boolean(),
+  productId: zod.string(),
+  isFlex: zod.boolean(),
+  logisticType: zod.string().nullish(),
+});
+
+/**
+ * Opts up to 500 listings into or out of Flex via ML API. Enabling requires active listings; others are skipped or reported as failed.
+ * @summary Enable or disable Flex on multiple listings (Mercado Livre)
+ */
+export const bulkUpdateProductFlexBodyProductIdsMax = 500;
+
+export const BulkUpdateProductFlexBody = zod.object({
+  enabled: zod.boolean(),
+  product_ids: zod
+    .array(zod.string())
+    .min(1)
+    .max(bulkUpdateProductFlexBodyProductIdsMax),
+});
+
+export const BulkUpdateProductFlexResponse = zod.object({
+  success: zod.boolean(),
+  enabled: zod.boolean(),
+  results: zod.array(
+    zod.object({
+      productId: zod.string(),
+      mlItemId: zod.string().nullish(),
+      ok: zod.boolean(),
+      error: zod.string().optional(),
+      skipped: zod.boolean().optional(),
+    }),
+  ),
+  summary: zod.object({
+    updated: zod.number(),
+    skipped: zod.number(),
+    failed: zod.number(),
+  }),
+});
+
+/**
  * Updates available_quantity for a single product by its ID. Returns 400 for FULL (Fulfillment) items.
  * @summary Update stock for a single product
  */

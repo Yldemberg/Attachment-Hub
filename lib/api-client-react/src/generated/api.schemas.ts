@@ -211,6 +211,40 @@ export interface BulkUpdateProductListingStatusResponse {
   summary: BulkUpdateProductListingStatusResponseSummary;
 }
 
+export interface UpdateProductFlexRequest {
+  enabled: boolean;
+}
+
+export interface BulkUpdateProductFlexRequest {
+  enabled: boolean;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  product_ids: string[];
+}
+
+export interface BulkUpdateProductFlexResult {
+  productId: string;
+  mlItemId?: string | null;
+  ok: boolean;
+  error?: string;
+  skipped?: boolean;
+}
+
+export type BulkUpdateProductFlexResponseSummary = {
+  updated: number;
+  skipped: number;
+  failed: number;
+};
+
+export interface BulkUpdateProductFlexResponse {
+  success: boolean;
+  enabled: boolean;
+  results: BulkUpdateProductFlexResult[];
+  summary: BulkUpdateProductFlexResponseSummary;
+}
+
 export interface MlCategoryPrediction {
   categoryId: string;
   categoryName: string;
@@ -1655,6 +1689,13 @@ export type UpdateProductListingStatus200 = {
   success: boolean;
   productId: string;
   status: UpdateProductListingStatus200Status;
+};
+
+export type UpdateProductFlex200 = {
+  success: boolean;
+  productId: string;
+  isFlex: boolean;
+  logisticType?: string | null;
 };
 
 export type UpdateProductStock200 = {

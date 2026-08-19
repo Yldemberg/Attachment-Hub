@@ -6,6 +6,7 @@ import {
   useDuplicateProduct,
   useListAccounts,
   useSaveListingTemplateFromProduct,
+  useUpdateProductFlex,
   getGetProductQueryKey,
   getListProductsQueryKey,
   getListListingTemplatesQueryKey,
@@ -13,10 +14,11 @@ import {
 import { formatCurrency, formatDateTime, stockBgColor } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Copy, ExternalLink, FileEdit, LayoutTemplate, Package, RefreshCw, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, FileEdit, LayoutTemplate, Package, RefreshCw, Tag, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 import { buildProductsListReturnPath } from "@/lib/products-list-persistence";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +46,7 @@ interface Product {
   regularAmount?: number | null;
   status?: string | null;
   isFull?: boolean | null;
+  isFlex?: boolean | null;
   catalogListing?: boolean | null;
   thumbnail?: string | null;
   mlItemId?: string | null;
@@ -163,6 +166,29 @@ export default function ProductDetail() {
     },
   });
 
+  const { mutate: updateFlex, isPending: updatingFlex } = useUpdateProductFlex({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getGetProductQueryKey(id) });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        toast({
+          title: data.isFlex ? "Flex ativado" : "Flex desativado",
+          description: data.isFlex
+            ? "O anúncio passou a oferecer Mercado Envios Flex."
+            : "O anúncio deixou de oferecer Mercado Envios Flex.",
+        });
+      },
+      onError: (err: Error & { payload?: { error?: { message?: string } } }) => {
+        toast({
+          variant: "destructive",
+          title: "Erro ao alterar Flex",
+          description:
+            err.payload?.error?.message ?? err.message ?? "Não foi possível alterar o Flex do anúncio.",
+        });
+      },
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="h-full overflow-y-auto bg-background p-6 space-y-3">
@@ -197,6 +223,9 @@ export default function ProductDetail() {
   const canEdit = p.status !== "closed";
   const canClose = p.status === "active" || p.status === "paused";
   const canDuplicate = !p.isFull && !p.catalogListing;
+  const offersFlex = !!p.isFlex || (p.logisticType ?? "").includes("self_service");
+  const canToggleFlex =
+    !!p.mlItemId && (p.status === "active" || (offersFlex && p.status === "paused"));
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -294,6 +323,12 @@ export default function ProductDetail() {
                   FULL — estoque gerenciado pelo ML
                 </span>
               )}
+              {offersFlex && (
+                <span className="inline-flex items-center gap-1 mt-2 ml-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-lg px-2 py-0.5">
+                  <Zap className="w-3 h-3" aria-hidden />
+                  Flex
+                </span>
+              )}
             </div>
           </div>
 
@@ -327,6 +362,34 @@ export default function ProductDetail() {
             </div>
           </div>
         </div>
+
+        {canToggleFlex ? (
+          <div className="bg-card border border-card-border rounded-xl p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <Zap className={`w-4 h-4 ${offersFlex ? "text-orange-600" : "text-muted-foreground"}`} />
+                  Logística Flex
+                </h2>
+                <p className="text-muted-foreground text-xs mt-1">
+                  {offersFlex
+                    ? "Este anúncio oferece Mercado Envios Flex."
+                    : "Ative para oferecer Mercado Envios Flex neste anúncio. A conta precisa já ter Flex ativo no Mercado Livre."}
+                </p>
+              </div>
+              <Switch
+                checked={offersFlex}
+                disabled={updatingFlex}
+                title={offersFlex ? "Desativar Flex" : "Ativar Flex"}
+                aria-label={offersFlex ? "Desativar Flex" : "Ativar Flex"}
+                onCheckedChange={(checked) => {
+                  if (!id || offersFlex === checked) return;
+                  updateFlex({ id, data: { enabled: checked } });
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
 
         <div className="bg-card border border-card-border rounded-xl p-5">
           <div className="flex items-center justify-between">

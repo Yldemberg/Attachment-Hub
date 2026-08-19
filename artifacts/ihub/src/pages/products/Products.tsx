@@ -5,6 +5,8 @@ import {
   useUpdateProductStock,
   useUpdateProductListingStatus,
   useBulkUpdateProductListingStatus,
+  useUpdateProductFlex,
+  useBulkUpdateProductFlex,
   useDeleteProduct,
   useDuplicateProduct,
   useSyncSkuStock,
@@ -78,6 +80,10 @@ import {
   bulkListingStatusErrorMessage,
   bulkListingStatusToastContent,
 } from "./components/bulkListingStatusFeedback";
+import {
+  bulkFlexErrorMessage,
+  bulkFlexToastContent,
+} from "./components/bulkFlexFeedback";
 
 interface Product {
   id: string;
@@ -141,6 +147,12 @@ function stockTextColor(qty: number | null | undefined): string {
   return "text-emerald-600";
 }
 
+function productOffersFlex(p: Pick<Product, "isFlex" | "logisticType">): boolean {
+  if (p.isFlex) return true;
+  const logistic = p.logisticType ?? "";
+  return logistic === "self_service" || logistic.includes("self_service");
+}
+
 function ProductCard({
   p,
   onEdit,
@@ -149,6 +161,8 @@ function ProductCard({
   onCloseListing,
   onListingStatusChange,
   statusMutationPending,
+  onFlexChange,
+  flexMutationPending,
   accountNickname,
   bulkMode,
   selected,
@@ -162,6 +176,8 @@ function ProductCard({
   onCloseListing: () => void;
   onListingStatusChange: (next: "active" | "paused") => void;
   statusMutationPending: boolean;
+  onFlexChange: (enabled: boolean) => void;
+  flexMutationPending: boolean;
   accountNickname?: string | null;
   bulkMode?: boolean;
   selected?: boolean;
@@ -177,7 +193,7 @@ function ProductCard({
     listPrice > salePrice;
 
   const isFull = p.logisticType === "fulfillment" || !!p.isFull;
-  const isFlex = p.logisticType === "self_service" || !!p.isFlex;
+  const isFlex = productOffersFlex(p);
   const isCross = p.logisticType === "cross_docking";
 
   const qty = p.availableQuantity ?? 0;
@@ -206,6 +222,8 @@ function ProductCard({
             : (p.status ?? "—");
 
   const canToggleListingStatus = p.status === "active" || p.status === "paused";
+  const canToggleFlex =
+    !!p.mlItemId && (p.status === "active" || (isFlex && p.status === "paused"));
   const canCloseListing = p.status === "active" || p.status === "paused";
   const canEditListing = p.status !== "closed";
   const canDuplicate = !isFull && !p.catalogListing;
@@ -438,25 +456,48 @@ function ProductCard({
             </button>
           )}
         </div>
-        {canToggleListingStatus ? (
-          <div
-            className="flex shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30 p-1"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <Switch
-              checked={p.status === "active"}
-              disabled={statusMutationPending}
-              title={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
-              aria-label={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
-              onCheckedChange={(checked) => {
-                onListingStatusChange(checked ? "active" : "paused");
-              }}
-            />
-          </div>
-        ) : (
-          <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
-        )}
+        <div className="flex items-center gap-1">
+          {canToggleFlex ? (
+            <div
+              className="flex shrink-0 items-center justify-center gap-0.5 rounded-lg border border-orange-200 bg-orange-50/60 p-1"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Zap
+                className={`w-3 h-3 ${isFlex ? "text-orange-600" : "text-orange-300"}`}
+                aria-hidden
+              />
+              <Switch
+                checked={isFlex}
+                disabled={flexMutationPending}
+                title={isFlex ? "Desativar Flex" : "Ativar Flex"}
+                aria-label={isFlex ? "Desativar Flex" : "Ativar Flex"}
+                onCheckedChange={(checked) => {
+                  onFlexChange(checked);
+                }}
+              />
+            </div>
+          ) : null}
+          {canToggleListingStatus ? (
+            <div
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30 p-1"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Switch
+                checked={p.status === "active"}
+                disabled={statusMutationPending}
+                title={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
+                aria-label={p.status === "active" ? "Pausar anúncio" : "Ativar anúncio"}
+                onCheckedChange={(checked) => {
+                  onListingStatusChange(checked ? "active" : "paused");
+                }}
+              />
+            </div>
+          ) : (
+            <span className={`text-[10px] font-medium px-2 py-1 rounded-lg border ${statusBadgeCls}`}>{statusLabel}</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -529,7 +570,9 @@ export default function Products() {
   const [duplicateTargetAccountId, setDuplicateTargetAccountId] = useState("");
   const [bulkModeEnabled, setBulkModeEnabled] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [bulkConfirm, setBulkConfirm] = useState<"pause" | "activate" | null>(null);
+  const [bulkConfirm, setBulkConfirm] = useState<
+    "pause" | "activate" | "flex-on" | "flex-off" | null
+  >(null);
 
   const params = {
     page,
@@ -582,6 +625,15 @@ export default function Products() {
 
   const pauseCount = selectedProducts.filter((p) => p.status === "active").length;
   const activateCount = selectedProducts.filter((p) => p.status === "paused").length;
+  const enableFlexCount = selectedProducts.filter(
+    (p) => !!p.mlItemId && p.status === "active" && !productOffersFlex(p),
+  ).length;
+  const disableFlexCount = selectedProducts.filter(
+    (p) =>
+      !!p.mlItemId &&
+      (p.status === "active" || p.status === "paused") &&
+      productOffersFlex(p),
+  ).length;
 
   const selectedSelectableCount = selectableIds.filter((id) => selectedIds.has(id)).length;
   const allSelectableSelected =
@@ -872,6 +924,79 @@ export default function Products() {
     bulkUpdateListingStatus({
       data: {
         status: action === "pause" ? "paused" : "active",
+        product_ids: ids,
+      },
+    });
+  };
+
+  const { mutate: updateProductFlex, isPending: updatingFlex, variables: flexVariables } =
+    useUpdateProductFlex({
+      mutation: {
+        onSuccess: (_, vars) => {
+          queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+          toast({
+            title: vars.data.enabled ? "Flex ativado" : "Flex desativado",
+            description: vars.data.enabled
+              ? "O anúncio passou a oferecer Mercado Envios Flex."
+              : "O anúncio deixou de oferecer Mercado Envios Flex.",
+          });
+        },
+        onError: (err) => {
+          const msg =
+            (err as { payload?: { error?: { message?: string } } })?.payload?.error?.message ??
+            "Não foi possível alterar o Flex do anúncio.";
+          toast({
+            variant: "destructive",
+            title: "Erro ao alterar Flex",
+            description: msg,
+          });
+        },
+      },
+    });
+
+  const { mutate: bulkUpdateFlex, isPending: bulkUpdatingFlex } = useBulkUpdateProductFlex({
+    mutation: {
+      onSuccess: (data, vars) => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+        toast(bulkFlexToastContent(vars.data.enabled, data.results));
+        const okIds = new Set(
+          (data.results ?? []).filter((r) => r.ok && !r.skipped).map((r) => r.productId),
+        );
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of okIds) next.delete(id);
+          return next;
+        });
+        setBulkConfirm(null);
+      },
+      onError: (err) => {
+        toast({
+          variant: "destructive",
+          title: "Erro na ação em massa",
+          description: bulkFlexErrorMessage(err),
+        });
+        setBulkConfirm(null);
+      },
+    },
+  });
+
+  const runBulkFlexUpdate = (enabled: boolean) => {
+    const ids = enabled
+      ? selectedProducts
+          .filter((p) => !!p.mlItemId && p.status === "active" && !productOffersFlex(p))
+          .map((p) => p.id)
+      : selectedProducts
+          .filter(
+            (p) =>
+              !!p.mlItemId &&
+              (p.status === "active" || p.status === "paused") &&
+              productOffersFlex(p),
+          )
+          .map((p) => p.id);
+    if (ids.length === 0) return;
+    bulkUpdateFlex({
+      data: {
+        enabled,
         product_ids: ids,
       },
     });
@@ -1179,7 +1304,7 @@ export default function Products() {
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs"
-                disabled={pauseCount === 0 || bulkUpdatingListingStatus}
+                disabled={pauseCount === 0 || bulkUpdatingListingStatus || bulkUpdatingFlex}
                 onClick={() => setBulkConfirm("pause")}
               >
                 Pausar em massa ({pauseCount})
@@ -1188,10 +1313,30 @@ export default function Products() {
                 type="button"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={activateCount === 0 || bulkUpdatingListingStatus}
+                disabled={activateCount === 0 || bulkUpdatingListingStatus || bulkUpdatingFlex}
                 onClick={() => setBulkConfirm("activate")}
               >
                 Ativar em massa ({activateCount})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                disabled={enableFlexCount === 0 || bulkUpdatingListingStatus || bulkUpdatingFlex}
+                onClick={() => setBulkConfirm("flex-on")}
+              >
+                Ativar Flex ({enableFlexCount})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                disabled={disableFlexCount === 0 || bulkUpdatingListingStatus || bulkUpdatingFlex}
+                onClick={() => setBulkConfirm("flex-off")}
+              >
+                Desativar Flex ({disableFlexCount})
               </Button>
             </div>
             {allListingsForPicker.isLoading ? (
@@ -1292,6 +1437,11 @@ export default function Products() {
                       statusMutationPending={
                         updatingListingStatus && listingStatusVariables?.id === p.id
                       }
+                      onFlexChange={(enabled) => {
+                        if (productOffersFlex(p) === enabled) return;
+                        updateProductFlex({ id: p.id, data: { enabled } });
+                      }}
+                      flexMutationPending={updatingFlex && flexVariables?.id === p.id}
                       accountNickname={p.accountId ? accountNicknameMap[p.accountId] : null}
                     />
                   </div>
@@ -1460,32 +1610,54 @@ export default function Products() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {bulkConfirm === "pause" ? "Pausar anúncios em massa" : "Ativar anúncios em massa"}
+              {bulkConfirm === "pause"
+                ? "Pausar anúncios em massa"
+                : bulkConfirm === "activate"
+                  ? "Ativar anúncios em massa"
+                  : bulkConfirm === "flex-on"
+                    ? "Ativar Flex em massa"
+                    : "Desativar Flex em massa"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {bulkConfirm === "pause"
                 ? `Confirma pausar ${pauseCount} anúncio(s) selecionado(s) no Mercado Livre? Anúncios pausados deixam de aparecer para compradores.`
-                : `Confirma ativar ${activateCount} anúncio(s) selecionado(s) no Mercado Livre? Eles voltarão a ficar visíveis para compradores.`}
+                : bulkConfirm === "activate"
+                  ? `Confirma ativar ${activateCount} anúncio(s) selecionado(s) no Mercado Livre? Eles voltarão a ficar visíveis para compradores.`
+                  : bulkConfirm === "flex-on"
+                    ? `Confirma ativar Mercado Envios Flex em ${enableFlexCount} anúncio(s) selecionado(s)? A conta precisa já ter Flex ativo no Mercado Livre.`
+                    : `Confirma desativar Mercado Envios Flex em ${disableFlexCount} anúncio(s) selecionado(s)?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkUpdatingListingStatus}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkUpdatingListingStatus || bulkUpdatingFlex}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
-              disabled={bulkUpdatingListingStatus}
+              disabled={bulkUpdatingListingStatus || bulkUpdatingFlex}
               onClick={(e) => {
                 e.preventDefault();
-                if (bulkConfirm) runBulkStatusUpdate(bulkConfirm);
+                if (bulkConfirm === "pause" || bulkConfirm === "activate") {
+                  runBulkStatusUpdate(bulkConfirm);
+                } else if (bulkConfirm === "flex-on") {
+                  runBulkFlexUpdate(true);
+                } else if (bulkConfirm === "flex-off") {
+                  runBulkFlexUpdate(false);
+                }
               }}
             >
-              {bulkUpdatingListingStatus ? (
+              {bulkUpdatingListingStatus || bulkUpdatingFlex ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                   Processando…
                 </>
               ) : bulkConfirm === "pause" ? (
                 "Pausar"
-              ) : (
+              ) : bulkConfirm === "activate" ? (
                 "Ativar"
+              ) : bulkConfirm === "flex-on" ? (
+                "Ativar Flex"
+              ) : (
+                "Desativar Flex"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

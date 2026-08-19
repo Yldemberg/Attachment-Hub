@@ -420,6 +420,129 @@ export function installMockFetch(): void {
       return jsonResponse({ success: true, productId: id, status: st });
     }
 
+    if (path === "/products/bulk-flex" && method === "POST") {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      const enabled = body.enabled;
+      const rawIds = body.product_ids;
+      if (typeof enabled !== "boolean" || !Array.isArray(rawIds) || rawIds.length === 0) {
+        return jsonResponse({ error: { message: "payload inválido" } }, 400);
+      }
+      const ids = rawIds.filter((id): id is string => typeof id === "string");
+      const results: {
+        productId: string;
+        mlItemId: string | null;
+        ok: boolean;
+        error?: string;
+        skipped?: boolean;
+      }[] = [];
+      for (const id of ids) {
+        const prod = _mockProducts.find((p) => p.id === id);
+        if (!prod) {
+          results.push({ productId: id, mlItemId: null, ok: false, error: "Anúncio não encontrado" });
+          continue;
+        }
+        if (!prod.mlItemId) {
+          results.push({
+            productId: id,
+            mlItemId: null,
+            ok: false,
+            skipped: true,
+            error: "Produto sem mlItemId (não ML)",
+          });
+          continue;
+        }
+        if (enabled && prod.status !== "active") {
+          results.push({
+            productId: id,
+            mlItemId: prod.mlItemId ?? null,
+            ok: false,
+            skipped: true,
+            error: "Só é possível ativar Flex em anúncios ativos",
+          });
+          continue;
+        }
+        if (!enabled && prod.status !== "active" && prod.status !== "paused") {
+          results.push({
+            productId: id,
+            mlItemId: prod.mlItemId ?? null,
+            ok: false,
+            skipped: true,
+            error: "Só é possível desativar Flex em anúncios ativos ou pausados",
+          });
+          continue;
+        }
+        const isFlexNow = prod.isFlex === true || prod.logisticType === "self_service";
+        if (isFlexNow === enabled) {
+          results.push({
+            productId: id,
+            mlItemId: prod.mlItemId ?? null,
+            ok: true,
+            skipped: true,
+          });
+          continue;
+        }
+        _mockProducts = _mockProducts.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                isFlex: enabled,
+                logisticType: enabled ? "self_service" : p.logisticType === "self_service" ? "cross_docking" : p.logisticType,
+              }
+            : p,
+        );
+        results.push({ productId: id, mlItemId: prod.mlItemId ?? null, ok: true });
+      }
+      const summary = {
+        updated: results.filter((r) => r.ok && !r.skipped).length,
+        skipped: results.filter((r) => r.skipped).length,
+        failed: results.filter((r) => !r.ok && !r.skipped).length,
+      };
+      return jsonResponse({ success: true, enabled, results, summary });
+    }
+
+    if (path.match(/^\/products\/([^/]+)\/flex$/) && method === "PATCH") {
+      const id = path.split("/")[2];
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((init?.body as string) ?? "{}");
+      } catch {
+        /* ignore */
+      }
+      if (typeof body.enabled !== "boolean") {
+        return jsonResponse({ error: { message: "enabled inválido" } }, 400);
+      }
+      const enabled = body.enabled;
+      const prod = _mockProducts.find((p) => p.id === id);
+      if (!prod) {
+        return jsonResponse({ error: { message: "not found" } }, 404);
+      }
+      if (!prod.mlItemId) {
+        return jsonResponse({ error: { message: "Produto sem mlItemId (não ML)" } }, 400);
+      }
+      if (enabled && prod.status !== "active") {
+        return jsonResponse({ error: { message: "Só é possível ativar Flex em anúncios ativos" } }, 400);
+      }
+      if (!enabled && prod.status !== "active" && prod.status !== "paused") {
+        return jsonResponse({
+          error: { message: "Só é possível desativar Flex em anúncios ativos ou pausados" },
+        }, 400);
+      }
+      const logisticType = enabled
+        ? "self_service"
+        : prod.logisticType === "self_service"
+          ? "cross_docking"
+          : prod.logisticType;
+      _mockProducts = _mockProducts.map((p) =>
+        p.id === id ? { ...p, isFlex: enabled, logisticType } : p,
+      );
+      return jsonResponse({ success: true, productId: id, isFlex: enabled, logisticType });
+    }
+
     if (path.match(/^\/products\/sku\/([^/]+)\/stock$/) && method === "PUT") {
       const sku = path.split("/")[3];
       let body: Record<string, unknown> = {};

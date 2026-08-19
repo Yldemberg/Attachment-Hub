@@ -48,6 +48,11 @@ import {
   ProductListingStatusError,
 } from "../lib/product-listing-status";
 import {
+  bulkChangeProductFlex,
+  changeProductFlex,
+  ProductFlexError,
+} from "../lib/product-flex";
+import {
   startListingPrepareJob,
   getListingPrepareJobForUser,
   publishDraftOnMercadoLivre,
@@ -1086,6 +1091,83 @@ router.patch("/products/:id/status", ...auth, async (req, res) => {
       }
     }
     req.log.error({ err }, "Failed to update product listing status");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.post("/products/bulk-flex", ...auth, async (req, res) => {
+  try {
+    const { enabled, product_ids } = req.body as {
+      enabled?: unknown;
+      product_ids?: unknown;
+    };
+
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe enabled true ou false" },
+      });
+      return;
+    }
+
+    if (!Array.isArray(product_ids) || product_ids.length === 0) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe ao menos um product_id" },
+      });
+      return;
+    }
+
+    if (product_ids.length > 500) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Máximo de 500 anúncios por requisição" },
+      });
+      return;
+    }
+
+    const ids = product_ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length === 0) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "product_ids inválidos" },
+      });
+      return;
+    }
+
+    const result = await bulkChangeProductFlex(req.user!.id, ids, enabled);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk update product flex");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
+router.patch("/products/:id/flex", ...auth, async (req, res) => {
+  try {
+    const { enabled } = req.body as { enabled?: unknown };
+
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "Informe enabled true ou false" },
+      });
+      return;
+    }
+
+    const result = await changeProductFlex(req.user!.id, req.params.id as string, enabled);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    if (err instanceof ProductFlexError) {
+      if (err.code === "NOT_FOUND") {
+        res.status(404).json({ error: { code: "NOT_FOUND", message: err.message } });
+        return;
+      }
+      if (err.code === "INVALID_STATUS") {
+        res.status(400).json({ error: { code: "INVALID_STATUS", message: err.message } });
+        return;
+      }
+      if (err.code === "ML_API_ERROR") {
+        res.status(502).json({ error: { code: "ML_API_ERROR", message: err.message } });
+        return;
+      }
+    }
+    req.log.error({ err }, "Failed to update product flex");
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
 });

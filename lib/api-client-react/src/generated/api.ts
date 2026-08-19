@@ -25,6 +25,8 @@ import type {
   BadRequestResponse,
   BulkActivatePromotionItemsRequest,
   BulkActivatePromotionItemsResponse,
+  BulkUpdateProductFlexRequest,
+  BulkUpdateProductFlexResponse,
   BulkUpdateProductListingStatusRequest,
   BulkUpdateProductListingStatusResponse,
   ConnectAmazonAccountBody,
@@ -128,6 +130,8 @@ import type {
   SyncFullStockBody,
   SyncListingTemplates202,
   UnauthorizedResponse,
+  UpdateProductFlex200,
+  UpdateProductFlexRequest,
   UpdateProductListingStatus200,
   UpdateProductListingStatusRequest,
   UpdateProductRequest,
@@ -2799,6 +2803,193 @@ export const useBulkUpdateProductListingStatus = <
   TContext
 > => {
   return useMutation(getBulkUpdateProductListingStatusMutationOptions(options));
+};
+
+/**
+ * Opts the listing into or out of Flex via ML shipping self-service API. Enabling requires an active listing; disabling is allowed for active or paused listings. The seller account must already be subscribed to Flex on Mercado Livre.
+ * @summary Enable or disable Mercado Envios Flex (Mercado Livre)
+ */
+export const getUpdateProductFlexUrl = (id: string) => {
+  return `/api/products/${id}/flex`;
+};
+
+export const updateProductFlex = async (
+  id: string,
+  updateProductFlexRequest: UpdateProductFlexRequest,
+  options?: RequestInit,
+): Promise<UpdateProductFlex200> => {
+  return customFetch<UpdateProductFlex200>(getUpdateProductFlexUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateProductFlexRequest),
+  });
+};
+
+export const getUpdateProductFlexMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductFlex>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductFlexRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProductFlex>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductFlexRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateProductFlex"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProductFlex>>,
+    { id: string; data: BodyType<UpdateProductFlexRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProductFlex(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProductFlexMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProductFlex>>
+>;
+export type UpdateProductFlexMutationBody = BodyType<UpdateProductFlexRequest>;
+export type UpdateProductFlexMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Enable or disable Mercado Envios Flex (Mercado Livre)
+ */
+export const useUpdateProductFlex = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductFlex>>,
+    TError,
+    { id: string; data: BodyType<UpdateProductFlexRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProductFlex>>,
+  TError,
+  { id: string; data: BodyType<UpdateProductFlexRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateProductFlexMutationOptions(options));
+};
+
+/**
+ * Opts up to 500 listings into or out of Flex via ML API. Enabling requires active listings; others are skipped or reported as failed.
+ * @summary Enable or disable Flex on multiple listings (Mercado Livre)
+ */
+export const getBulkUpdateProductFlexUrl = () => {
+  return `/api/products/bulk-flex`;
+};
+
+export const bulkUpdateProductFlex = async (
+  bulkUpdateProductFlexRequest: BulkUpdateProductFlexRequest,
+  options?: RequestInit,
+): Promise<BulkUpdateProductFlexResponse> => {
+  return customFetch<BulkUpdateProductFlexResponse>(
+    getBulkUpdateProductFlexUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(bulkUpdateProductFlexRequest),
+    },
+  );
+};
+
+export const getBulkUpdateProductFlexMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkUpdateProductFlex>>,
+    TError,
+    { data: BodyType<BulkUpdateProductFlexRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkUpdateProductFlex>>,
+  TError,
+  { data: BodyType<BulkUpdateProductFlexRequest> },
+  TContext
+> => {
+  const mutationKey = ["bulkUpdateProductFlex"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkUpdateProductFlex>>,
+    { data: BodyType<BulkUpdateProductFlexRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkUpdateProductFlex(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkUpdateProductFlexMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkUpdateProductFlex>>
+>;
+export type BulkUpdateProductFlexMutationBody =
+  BodyType<BulkUpdateProductFlexRequest>;
+export type BulkUpdateProductFlexMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Enable or disable Flex on multiple listings (Mercado Livre)
+ */
+export const useBulkUpdateProductFlex = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkUpdateProductFlex>>,
+    TError,
+    { data: BodyType<BulkUpdateProductFlexRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkUpdateProductFlex>>,
+  TError,
+  { data: BodyType<BulkUpdateProductFlexRequest> },
+  TContext
+> => {
+  return useMutation(getBulkUpdateProductFlexMutationOptions(options));
 };
 
 /**

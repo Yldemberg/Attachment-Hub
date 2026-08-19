@@ -904,6 +904,82 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /products/{id}/flex:
+    patch:
+      operationId: updateProductFlex
+      tags: [products]
+      summary: Enable or disable Mercado Envios Flex (Mercado Livre)
+      description: >-
+        Opts the listing into or out of Flex via ML shipping self-service API.
+        Enabling requires an active listing; disabling is allowed for active or paused listings.
+        The seller account must already be subscribed to Flex on Mercado Livre.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductFlexRequest"
+      responses:
+        "200":
+          description: Flex updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  productId:
+                    type: string
+                  isFlex:
+                    type: boolean
+                  logisticType:
+                    type: string
+                    nullable: true
+                required: [success, productId, isFlex]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /products/bulk-flex:
+    post:
+      operationId: bulkUpdateProductFlex
+      tags: [products]
+      summary: Enable or disable Flex on multiple listings (Mercado Livre)
+      description: >-
+        Opts up to 500 listings into or out of Flex via ML API.
+        Enabling requires active listings; others are skipped or reported as failed.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkUpdateProductFlexRequest"
+      responses:
+        "200":
+          description: Bulk Flex update completed (may include partial failures)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkUpdateProductFlexResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /products/{id}/stock:
     patch:
       operationId: updateProductStock
@@ -2967,6 +3043,65 @@ components:
               type: integer
           required: [updated, skipped, failed]
       required: [success, status, results, summary]
+
+    UpdateProductFlexRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required: [enabled]
+
+    BulkUpdateProductFlexRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        product_ids:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 500
+      required: [enabled, product_ids]
+
+    BulkUpdateProductFlexResult:
+      type: object
+      properties:
+        productId:
+          type: string
+        mlItemId:
+          type: string
+          nullable: true
+        ok:
+          type: boolean
+        error:
+          type: string
+        skipped:
+          type: boolean
+      required: [productId, ok]
+
+    BulkUpdateProductFlexResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        enabled:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkUpdateProductFlexResult"
+        summary:
+          type: object
+          properties:
+            updated:
+              type: integer
+            skipped:
+              type: integer
+            failed:
+              type: integer
+          required: [updated, skipped, failed]
+      required: [success, enabled, results, summary]
 
     MlCategoryPrediction:
       type: object
