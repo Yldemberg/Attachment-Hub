@@ -69,12 +69,14 @@ import type {
   HandleN8nListingPrepared200,
   HandleStripeWebhook200,
   HealthStatus,
+  InventoryMovementListResponse,
   InventorySearchResponse,
   InventorySkuFinancialsPatchRequest,
   InventorySkuFinancialsResponse,
   ListAccounts200,
   ListCriticalAdsParams,
   ListFullInboundsParams,
+  ListInventoryMovementsParams,
   ListListingTemplatesParams,
   ListNotificationsParams,
   ListOrdersParams,
@@ -3301,6 +3303,112 @@ export function useSearchInventory<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchInventoryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Lista movimentações gravadas a partir do deploy (ajustes manuais, produto, venda, cancelamento e sync). Datas em America/Sao_Paulo (YYYY-MM-DD).
+ * @summary Histórico de movimentação de estoque por SKU
+ */
+export const getListInventoryMovementsUrl = (
+  params?: ListInventoryMovementsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/movements?${stringifiedParams}`
+    : `/api/inventory/movements`;
+};
+
+export const listInventoryMovements = async (
+  params?: ListInventoryMovementsParams,
+  options?: RequestInit,
+): Promise<InventoryMovementListResponse> => {
+  return customFetch<InventoryMovementListResponse>(
+    getListInventoryMovementsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInventoryMovementsQueryKey = (
+  params?: ListInventoryMovementsParams,
+) => {
+  return [`/api/inventory/movements`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryMovementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryMovements>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params?: ListInventoryMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryMovementsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryMovements>>
+  > = ({ signal }) =>
+    listInventoryMovements(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryMovements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryMovementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryMovements>>
+>;
+export type ListInventoryMovementsQueryError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Histórico de movimentação de estoque por SKU
+ */
+
+export function useListInventoryMovements<
+  TData = Awaited<ReturnType<typeof listInventoryMovements>>,
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+>(
+  params?: ListInventoryMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryMovementsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

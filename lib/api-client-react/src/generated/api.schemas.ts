@@ -630,6 +630,50 @@ export interface InventorySearchResponse {
   data: InventorySearchItem[];
 }
 
+export type InventoryMovementSource =
+  (typeof InventoryMovementSource)[keyof typeof InventoryMovementSource];
+
+export const InventoryMovementSource = {
+  manual: "manual",
+  product: "product",
+  sale: "sale",
+  cancel: "cancel",
+  sync: "sync",
+} as const;
+
+export type InventoryMovementOperation =
+  (typeof InventoryMovementOperation)[keyof typeof InventoryMovementOperation];
+
+export const InventoryMovementOperation = {
+  add: "add",
+  subtract: "subtract",
+  set: "set",
+  decrement: "decrement",
+  increment: "increment",
+  sync: "sync",
+} as const;
+
+export interface InventoryMovementItem {
+  id: string;
+  sku: string;
+  source: InventoryMovementSource;
+  operation: InventoryMovementOperation;
+  quantityBefore: number;
+  /** Sinalizado (positivo = entrada, negativo = saída) */
+  quantityDelta: number;
+  quantityAfter: number;
+  /** Usuário que ajustou; null = sistema (venda/cancelamento) */
+  actorUserId?: string | null;
+  relatedOrderId?: string | null;
+  relatedProductId?: string | null;
+  createdAt: string;
+}
+
+export interface InventoryMovementListResponse {
+  data: InventoryMovementItem[];
+  total: number;
+}
+
 export type MandateAdjustRequestOperation =
   (typeof MandateAdjustRequestOperation)[keyof typeof MandateAdjustRequestOperation];
 
@@ -1716,6 +1760,25 @@ export type SearchInventoryParams = {
    * Texto ou código de barras / SKU. Se omitido ou vazio, retorna todos os SKUs de anúncios da conta (Full e não Full).
    */
   query?: string;
+};
+
+export type ListInventoryMovementsParams = {
+  /**
+   * Filtro parcial de SKU (ILIKE)
+   */
+  sku?: string;
+  date_from?: string;
+  date_to?: string;
+  source?: InventoryMovementSource;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
 };
 
 export type ListOrdersParams = {

@@ -19,8 +19,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Package, ScanBarcode, Loader2, Layers, ChevronLeft } from "lucide-react";
+import { Search, Package, ScanBarcode, Loader2, Layers, ChevronLeft, History } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import InventoryMovements from "@/pages/inventory/InventoryMovements";
 
 type Operation = MandateAdjustRequestOperation;
 
@@ -167,6 +169,8 @@ export default function GeneralInventory() {
   const [operation, setOperation] = useState<Operation>("set");
   const [amountStr, setAmountStr] = useState("1");
   const [scanOpen, setScanOpen] = useState(false);
+  const [tab, setTab] = useState<"stock" | "history">("stock");
+  const [historySku, setHistorySku] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
@@ -240,6 +244,7 @@ export default function GeneralInventory() {
           });
         }
         queryClient.invalidateQueries({ queryKey: ["/api/inventory/search"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory/movements"] });
         queryClient.invalidateQueries({ queryKey: ["/api/products"] });
         if (selected?.sku === data.sku) {
           setSelected((s) =>
@@ -386,6 +391,11 @@ export default function GeneralInventory() {
     });
   };
 
+  const openHistory = (sku: string) => {
+    setHistorySku(sku);
+    setTab("history");
+  };
+
   const displayMandate = selected?.mandateQuantity;
   const displayCurrent = selected?.currentStock ?? 0;
   const nonFullListingCount = selected
@@ -399,10 +409,25 @@ export default function GeneralInventory() {
         <div>
           <h1 className="text-base font-bold text-foreground">Inventário geral</h1>
           <p className="text-muted-foreground text-xs leading-snug">
-            Busque por SKU, descrição ou MLB. Inclui anúncios Full e não Full (ML e Amazon). O estoque mandatário só pode ser
-            espelhado nos anúncios não Full.
+            {tab === "history"
+              ? "Consulte entradas e saídas por SKU e data (ajustes manuais, vendas, produto e sync)."
+              : "Busque por SKU, descrição ou MLB. Inclui anúncios Full e não Full (ML e Amazon). O estoque mandatário só pode ser espelhado nos anúncios não Full."}
           </p>
         </div>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            const next = v === "history" ? "history" : "stock";
+            setTab(next);
+            if (next === "stock") setHistorySku("");
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="stock">Estoque</TabsTrigger>
+            <TabsTrigger value="history">Histórico</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {tab === "stock" && (
         <div className="space-y-1.5">
           <Label htmlFor="inv-search" className="text-xs text-muted-foreground">
             SKU, descrição, código de barras ou MLB
@@ -534,9 +559,14 @@ export default function GeneralInventory() {
             </p>
           )}
         </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4">
+        {tab === "history" ? (
+          <InventoryMovements initialSku={historySku} />
+        ) : (
+          <>
         {debouncedQuery && !selected && searchQuery.isError && (
           <p className="text-sm text-destructive">Não foi possível buscar. Tente novamente.</p>
         )}
@@ -547,13 +577,15 @@ export default function GeneralInventory() {
         {!selected && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {searchQuery.data?.data.map((item) => (
-              <button
+              <div
                 key={item.sku}
-                type="button"
-                onClick={() => setSelected(item)}
-                className="text-left rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/40"
+                className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/40"
               >
-                <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelected(item)}
+                  className="flex w-full gap-3 text-left"
+                >
                   {item.thumbnail ? (
                     <img src={item.thumbnail} alt="" className="size-14 rounded-lg object-cover border border-border bg-muted shrink-0" />
                   ) : (
@@ -584,24 +616,44 @@ export default function GeneralInventory() {
                       )}
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                    <button
+                      type="button"
+                      className="mt-2 ml-[4.25rem] inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                      onClick={() => openHistory(item.sku)}
+                    >
+                      <History className="h-3 w-3" />
+                      Ver histórico
+                    </button>
+              </div>
             ))}
           </div>
         )}
 
         {selected && (
           <div className="rounded-xl border border-border bg-card p-3 sm:p-4 w-full max-w-lg mx-auto sm:mx-0">
+            <div className="flex flex-wrap items-center gap-1 mb-1">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="mb-1 -ml-2 h-8 text-muted-foreground hover:text-foreground"
+              className="-ml-2 h-8 text-muted-foreground hover:text-foreground"
               onClick={() => setSelected(null)}
             >
               <ChevronLeft className="w-4 h-4 mr-0.5" />
               Voltar à lista
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => openHistory(selected.sku)}
+            >
+              <History className="w-3.5 h-3.5 mr-1" />
+              Ver histórico
+            </Button>
+            </div>
             <h2 className="text-sm font-semibold text-foreground mb-3">
               {canMandateMirror ? "Ajustar estoque mandatário" : "Detalhes do SKU"}
             </h2>
@@ -742,6 +794,8 @@ export default function GeneralInventory() {
               </>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
 

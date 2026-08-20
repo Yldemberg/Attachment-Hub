@@ -41,7 +41,7 @@ import {
   suggestAmazonBrowseNode,
   getAmazonMarketplaceId,
 } from "../lib/amazon";
-import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
+import { recordSkuInventoryMovement, upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import {
   bulkChangeProductListingStatus,
   changeProductListingStatus,
@@ -1219,6 +1219,19 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
         .update(productsTable)
         .set({ availableQuantity: quantity, updatedAt: new Date() })
         .where(eq(productsTable.id, product.id));
+      const amazonSku = product.amazonSku || product.sku;
+      if (amazonSku) {
+        await recordSkuInventoryMovement({
+          userId: req.user!.id,
+          sku: amazonSku,
+          source: "product",
+          operation: "set",
+          quantityBefore: product.availableQuantity,
+          quantityAfter: quantity,
+          actorUserId: req.user!.id,
+          relatedProductId: product.id,
+        });
+      }
       res.json({ success: true, productId: product.id, quantity });
       return;
     }
@@ -1246,6 +1259,16 @@ router.patch("/products/:id/stock", ...auth, async (req, res) => {
 
     if (product.sku) {
       await upsertSkuMandateQuantity(req.user!.id, product.sku, quantity);
+      await recordSkuInventoryMovement({
+        userId: req.user!.id,
+        sku: product.sku,
+        source: "product",
+        operation: "set",
+        quantityBefore: product.availableQuantity,
+        quantityAfter: after.available_quantity,
+        actorUserId: req.user!.id,
+        relatedProductId: product.id,
+      });
     }
 
     res.json({ success: true, productId: product.id, quantity: after.available_quantity });
@@ -1352,7 +1375,20 @@ router.patch("/products/sku/:sku/stock", ...auth, async (req, res) => {
     }
 
     if (updated > 0) {
-      await upsertSkuMandateQuantity(req.user!.id, req.params.sku as string, quantity);
+      const sku = req.params.sku as string;
+      const listingQtys = products.filter((p) => !p.isFull).map((p) => p.availableQuantity);
+      const quantityBefore =
+        listingQtys.length > 0 ? Math.min(...listingQtys) : (products[0]?.availableQuantity ?? 0);
+      await upsertSkuMandateQuantity(req.user!.id, sku, quantity);
+      await recordSkuInventoryMovement({
+        userId: req.user!.id,
+        sku,
+        source: "product",
+        operation: "set",
+        quantityBefore,
+        quantityAfter: quantity,
+        actorUserId: req.user!.id,
+      });
     }
 
     res.json({ sku: req.params.sku, updated, skipped, failed, results });

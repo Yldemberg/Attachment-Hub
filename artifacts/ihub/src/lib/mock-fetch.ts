@@ -72,6 +72,79 @@ let _mockMandateQty: Record<string, number> = {};
 /** Imposto / preço de compra demo por SKU */
 let _mockSkuFinancials: Record<string, { taxPercent: number | null; purchasePrice: number | null }> = {};
 
+type MockInventoryMovement = {
+  id: string;
+  sku: string;
+  source: "manual" | "product" | "sale" | "cancel" | "sync";
+  operation: "add" | "subtract" | "set" | "decrement" | "increment" | "sync";
+  quantityBefore: number;
+  quantityDelta: number;
+  quantityAfter: number;
+  actorUserId: string | null;
+  relatedOrderId: string | null;
+  relatedProductId: string | null;
+  createdAt: string;
+};
+
+function hoursAgoIso(hours: number): string {
+  return new Date(Date.now() - hours * 3600_000).toISOString();
+}
+
+let _mockInventoryMovements: MockInventoryMovement[] = [
+  {
+    id: "mov-demo-1",
+    sku: "TNK-AIR-270-BLK",
+    source: "manual",
+    operation: "add",
+    quantityBefore: 10,
+    quantityDelta: 5,
+    quantityAfter: 15,
+    actorUserId: DEMO_ME.id,
+    relatedOrderId: null,
+    relatedProductId: null,
+    createdAt: hoursAgoIso(6),
+  },
+  {
+    id: "mov-demo-2",
+    sku: "TNK-AIR-270-BLK",
+    source: "sale",
+    operation: "decrement",
+    quantityBefore: 15,
+    quantityDelta: -1,
+    quantityAfter: 14,
+    actorUserId: null,
+    relatedOrderId: "2345678901",
+    relatedProductId: null,
+    createdAt: hoursAgoIso(4),
+  },
+  {
+    id: "mov-demo-3",
+    sku: "SMS-A54-128-AZL",
+    source: "product",
+    operation: "set",
+    quantityBefore: 8,
+    quantityDelta: 4,
+    quantityAfter: 12,
+    actorUserId: DEMO_ME.id,
+    relatedOrderId: null,
+    relatedProductId: null,
+    createdAt: hoursAgoIso(28),
+  },
+  {
+    id: "mov-demo-4",
+    sku: "JBL-T510BT-WHT",
+    source: "sync",
+    operation: "sync",
+    quantityBefore: 20,
+    quantityDelta: -3,
+    quantityAfter: 17,
+    actorUserId: DEMO_ME.id,
+    relatedOrderId: null,
+    relatedProductId: null,
+    createdAt: hoursAgoIso(50),
+  },
+];
+
 const _originalFetch = globalThis.fetch;
 
 export function installMockFetch(): void {
@@ -703,6 +776,31 @@ export function installMockFetch(): void {
       return jsonResponse({ data });
     }
 
+    if (path === "/inventory/movements" && method === "GET") {
+      const skuQ = (params.get("sku") ?? "").trim().toLowerCase();
+      const sourceQ = (params.get("source") ?? "").trim();
+      const dateFrom = params.get("date_from") ?? "";
+      const dateTo = params.get("date_to") ?? "";
+      const offset = getNum(params, "offset", 0);
+      const movLimit = getNum(params, "limit", 50);
+      const tz = "America/Sao_Paulo";
+      const ymdSp = (iso: string) =>
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: tz,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(iso));
+      let rows = _mockInventoryMovements.slice();
+      if (skuQ) rows = rows.filter((m) => m.sku.toLowerCase().includes(skuQ));
+      if (sourceQ) rows = rows.filter((m) => m.source === sourceQ);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) rows = rows.filter((m) => ymdSp(m.createdAt) >= dateFrom);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) rows = rows.filter((m) => ymdSp(m.createdAt) <= dateTo);
+      const total = rows.length;
+      const data = rows.slice(Math.max(0, offset), Math.max(0, offset) + Math.max(1, movLimit));
+      return jsonResponse({ data, total });
+    }
+
     if (path === "/inventory/mandate-adjust" && method === "POST") {
       let body: Record<string, unknown> = {};
       try {
@@ -738,6 +836,24 @@ export function installMockFetch(): void {
       else if (operation === "add") mandateQty = baseline + amount;
       else mandateQty = Math.max(0, baseline - amount);
       _mockMandateQty[sku] = mandateQty;
+      if (mandateQty !== baseline) {
+        _mockInventoryMovements = [
+          {
+            id: `mov-demo-${Date.now()}`,
+            sku,
+            source: "manual",
+            operation,
+            quantityBefore: baseline,
+            quantityDelta: mandateQty - baseline,
+            quantityAfter: mandateQty,
+            actorUserId: DEMO_ME.id,
+            relatedOrderId: null,
+            relatedProductId: null,
+            createdAt: new Date().toISOString(),
+          },
+          ..._mockInventoryMovements,
+        ];
+      }
       const results: Array<{ productId: string; mlItemId: string; success: boolean; reason: string | null }> = [];
       let updated = 0;
       let failed = 0;

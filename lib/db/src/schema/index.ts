@@ -2,6 +2,7 @@ export * from "./profiles";
 export * from "./accounts";
 export * from "./inventory-sku-financials";
 export * from "./sku-mandate-inventory";
+export * from "./sku-inventory-movements";
 export * from "./products";
 export * from "./orders";
 export * from "./questions";

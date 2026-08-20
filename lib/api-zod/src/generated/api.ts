@@ -1369,6 +1369,64 @@ export const SearchInventoryResponse = zod.object({
 });
 
 /**
+ * Lista movimentações gravadas a partir do deploy (ajustes manuais, produto, venda, cancelamento e sync). Datas em America/Sao_Paulo (YYYY-MM-DD).
+ * @summary Histórico de movimentação de estoque por SKU
+ */
+export const listInventoryMovementsQueryLimitDefault = 50;
+export const listInventoryMovementsQueryLimitMax = 100;
+
+export const listInventoryMovementsQueryOffsetDefault = 0;
+export const listInventoryMovementsQueryOffsetMin = 0;
+
+export const ListInventoryMovementsQueryParams = zod.object({
+  sku: zod.coerce.string().optional().describe("Filtro parcial de SKU (ILIKE)"),
+  date_from: zod.date().optional(),
+  date_to: zod.date().optional(),
+  source: zod.enum(["manual", "product", "sale", "cancel", "sync"]).optional(),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listInventoryMovementsQueryLimitMax)
+    .default(listInventoryMovementsQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(listInventoryMovementsQueryOffsetMin)
+    .default(listInventoryMovementsQueryOffsetDefault),
+});
+
+export const ListInventoryMovementsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      sku: zod.string(),
+      source: zod.enum(["manual", "product", "sale", "cancel", "sync"]),
+      operation: zod.enum([
+        "add",
+        "subtract",
+        "set",
+        "decrement",
+        "increment",
+        "sync",
+      ]),
+      quantityBefore: zod.number(),
+      quantityDelta: zod
+        .number()
+        .describe("Sinalizado (positivo = entrada, negativo = saída)"),
+      quantityAfter: zod.number(),
+      actorUserId: zod
+        .string()
+        .uuid()
+        .nullish()
+        .describe("Usuário que ajustou; null = sistema (venda\/cancelamento)"),
+      relatedOrderId: zod.string().nullish(),
+      relatedProductId: zod.string().uuid().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
  * Persiste percentual de imposto (0–100) e preço de compra (BRL) para o SKU no escopo do usuário. Exige pelo menos um anúncio (Full ou não Full) com esse SKU. Campos omitidos mantêm o valor anterior.
  * @summary Salvar imposto e preço de compra por SKU
  */

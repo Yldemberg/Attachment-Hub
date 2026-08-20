@@ -2,11 +2,11 @@ import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
 import { getDb } from "../lib/db";
-import { productsTable, accountsTable, skuMandateInventoryTable, inventorySkuFinancialsTable } from "@workspace/db/schema";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { productsTable, accountsTable, skuMandateInventoryTable, inventorySkuFinancialsTable, skuInventoryMovementsTable, SKU_INVENTORY_MOVEMENT_SOURCES } from "@workspace/db/schema";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { ml, putMlItemStockForSellerSku, MlItem } from "../lib/mercadolivre";
 import { patchAmazonListingQuantity } from "../lib/amazon-listings";
-import { upsertSkuMandateQuantity } from "../lib/sku-mandate";
+import { recordSkuInventoryMovement, upsertSkuMandateQuantity } from "../lib/sku-mandate";
 import { propagateStockBySku } from "../lib/order-mandate-stock";
 import { getUserAccountIds } from "../lib/account-scope";
 import { isAmazonProductRow, productsMatchSellerSku } from "../lib/product-sku";
@@ -17,6 +17,13 @@ const auth = [requireAuth, requireActivePlan];
 function escapeIlikePattern(token: string): string {
   return token.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
+
+function isIsoDateOnly(s: string | undefined): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+const MOVEMENT_TZ = "America/Sao_Paulo";
+const MOVEMENT_SOURCES = new Set<string>(SKU_INVENTORY_MOVEMENT_SOURCES);
 
 type VariationJsonRow = {
   sku?: string | null;
@@ -343,6 +350,99 @@ router.patch("/inventory/sku/:sku/financials", ...auth, async (req, res) => {
   }
 });
 
+/** GET /inventory/movements — histórico de estoque por SKU (a partir do deploy). */
+router.get("/inventory/movements", ...auth, async (req, res) => {
+  try {
+    const db = getDb();
+    const q = req.query as Record<string, string | undefined>;
+    const skuRaw = typeof q.sku === "string" ? q.sku.trim() : "";
+    const sourceRaw = typeof q.source === "string" ? q.source.trim() : "";
+    const dateFrom = q.date_from;
+    const dateTo = q.date_to;
+
+    if (dateFrom !== undefined && dateFrom !== "" && !isIsoDateOnly(dateFrom)) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "date_from deve ser YYYY-MM-DD" } });
+      return;
+    }
+    if (dateTo !== undefined && dateTo !== "" && !isIsoDateOnly(dateTo)) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "date_to deve ser YYYY-MM-DD" } });
+      return;
+    }
+    if (isIsoDateOnly(dateFrom) && isIsoDateOnly(dateTo) && dateFrom > dateTo) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "date_from não pode ser posterior a date_to" } });
+      return;
+    }
+    if (sourceRaw && !MOVEMENT_SOURCES.has(sourceRaw)) {
+      res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "source deve ser manual, product, sale, cancel ou sync" },
+      });
+      return;
+    }
+
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(q.limit ?? "50"), 10) || 50));
+    const offsetNum = Math.max(0, parseInt(String(q.offset ?? "0"), 10) || 0);
+
+    const conditions = [eq(skuInventoryMovementsTable.userId, req.user!.id)];
+    if (skuRaw) {
+      const pat = `%${escapeIlikePattern(skuRaw)}%`;
+      conditions.push(sql`${skuInventoryMovementsTable.sku} ILIKE ${pat} ESCAPE '\\'`);
+    }
+    if (sourceRaw) {
+      conditions.push(eq(skuInventoryMovementsTable.source, sourceRaw));
+    }
+
+    const movementLocalDateSp = sql`CAST(timezone(${sql.raw(`'${MOVEMENT_TZ}'`)}, ${skuInventoryMovementsTable.createdAt}) AS date)`;
+    if (isIsoDateOnly(dateFrom)) {
+      conditions.push(sql`${movementLocalDateSp} >= ${sql.raw(`'${dateFrom}'`)}::date`);
+    }
+    if (isIsoDateOnly(dateTo)) {
+      conditions.push(sql`${movementLocalDateSp} <= ${sql.raw(`'${dateTo}'`)}::date`);
+    }
+
+    const where = and(...conditions);
+
+    const [countResult, rows] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as int)` }).from(skuInventoryMovementsTable).where(where),
+      db
+        .select()
+        .from(skuInventoryMovementsTable)
+        .where(where)
+        .orderBy(desc(skuInventoryMovementsTable.createdAt))
+        .limit(limitNum)
+        .offset(offsetNum),
+    ]);
+
+    const total = countResult[0]?.count ?? 0;
+    res.json({
+      data: rows.map((row) => ({
+        id: row.id,
+        sku: row.sku,
+        source: row.source,
+        operation: row.operation,
+        quantityBefore: row.quantityBefore,
+        quantityDelta: row.quantityDelta,
+        quantityAfter: row.quantityAfter,
+        actorUserId: row.actorUserId,
+        relatedOrderId: row.relatedOrderId,
+        relatedProductId: row.relatedProductId,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      total,
+    });
+  } catch (err) {
+    const code = (err as { code?: string } | undefined)?.code;
+    if (code === "42P01") {
+      req.log.warn(
+        "sku_inventory_movements indisponível — aplique scripts/migrations/020_sku_inventory_movements.sql",
+      );
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    req.log.error({ err }, "inventory movements list failed");
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+  }
+});
+
 /** POST /inventory/mandate-adjust — atualiza mandatário e espelha em todos os anúncios não Full do SKU. */
 router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
   try {
@@ -420,6 +520,15 @@ router.post("/inventory/mandate-adjust", ...auth, async (req, res) => {
     }
 
     await upsertSkuMandateQuantity(req.user!.id, sku, mandateQty);
+    await recordSkuInventoryMovement({
+      userId: req.user!.id,
+      sku,
+      source: "manual",
+      operation,
+      quantityBefore: baseline,
+      quantityAfter: mandateQty,
+      actorUserId: req.user!.id,
+    });
 
     const results: Array<{ productId: string; mlItemId: string; success: boolean; reason: string | null }> = [];
     let updated = 0;
@@ -586,6 +695,17 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
         excludeAccountId: sourceProduct.accountId,
       });
 
+      await recordSkuInventoryMovement({
+        userId: req.user!.id,
+        sku,
+        source: "sync",
+        operation: "sync",
+        quantityBefore: sourceProduct.availableQuantity,
+        quantityAfter: newStock,
+        actorUserId: req.user!.id,
+        relatedProductId: sourceProduct.id,
+      });
+
       res.json({ synced: synced + 1, skipped, sku, newStock });
       return;
     }
@@ -614,6 +734,17 @@ router.post("/inventory/sync-sku", ...auth, async (req, res) => {
       sourceListingStock: newStock,
       excludeMlItemId: sourceProduct.mlItemId,
       excludeAccountId: sourceProduct.accountId,
+    });
+
+    await recordSkuInventoryMovement({
+      userId: req.user!.id,
+      sku,
+      source: "sync",
+      operation: "sync",
+      quantityBefore: sourceProduct.availableQuantity,
+      quantityAfter: newStock,
+      actorUserId: req.user!.id,
+      relatedProductId: sourceProduct.id,
     });
 
     res.json({ synced: synced + 1, skipped, sku, newStock });

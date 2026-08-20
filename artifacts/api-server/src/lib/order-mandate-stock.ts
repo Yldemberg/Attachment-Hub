@@ -13,6 +13,7 @@ import {
 } from "./mercadolivre";
 import { patchAmazonListingQuantity } from "./amazon-listings";
 import { isAmazonProductRow, productsMatchSellerSku } from "./product-sku";
+import { recordSkuInventoryMovement } from "./sku-mandate";
 
 /**
  * Estados ML tratados como pagamento confirmado (`paid`, `confirmed`, `partially_paid`).
@@ -429,6 +430,19 @@ export async function applyMandateStockFromWebhookOrder(sellingAccountId: string
       sourceListingStock,
       excludeMlItemId: mlItemId,
       excludeAccountId: sellingAccountId,
+    });
+
+    const qtyLine = Math.floor(Number(oi.quantity) || 0);
+    const delta = transition === "decrement_sale" ? -qtyLine : qtyLine;
+    await recordSkuInventoryMovement({
+      userId,
+      sku: effectiveSku,
+      source: transition === "decrement_sale" ? "sale" : "cancel",
+      operation: transition === "decrement_sale" ? "decrement" : "increment",
+      quantityBefore: sourceListingStock - delta,
+      quantityAfter: sourceListingStock,
+      relatedOrderId: String(order.id),
+      relatedProductId: soldProduct.id,
     });
   }
 

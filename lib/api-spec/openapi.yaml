@@ -1091,6 +1091,67 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /inventory/movements:
+    get:
+      operationId: listInventoryMovements
+      tags: [inventory]
+      summary: Histórico de movimentação de estoque por SKU
+      description: >-
+        Lista movimentações gravadas a partir do deploy (ajustes manuais, produto, venda,
+        cancelamento e sync). Datas em America/Sao_Paulo (YYYY-MM-DD).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sku
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtro parcial de SKU (ILIKE)
+        - name: date_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/InventoryMovementSource"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Movimentações paginadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovementListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /inventory/sku/{sku}/financials:
     patch:
       operationId: patchInventorySkuFinancials
@@ -3750,6 +3811,69 @@ components:
           items:
             $ref: "#/components/schemas/InventorySearchItem"
       required: [data]
+
+    InventoryMovementSource:
+      type: string
+      enum: [manual, product, sale, cancel, sync]
+
+    InventoryMovementOperation:
+      type: string
+      enum: [add, subtract, set, decrement, increment, sync]
+
+    InventoryMovementItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        source:
+          $ref: "#/components/schemas/InventoryMovementSource"
+        operation:
+          $ref: "#/components/schemas/InventoryMovementOperation"
+        quantityBefore:
+          type: integer
+        quantityDelta:
+          type: integer
+          description: Sinalizado (positivo = entrada, negativo = saída)
+        quantityAfter:
+          type: integer
+        actorUserId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Usuário que ajustou; null = sistema (venda/cancelamento)
+        relatedOrderId:
+          type: string
+          nullable: true
+        relatedProductId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sku
+        - source
+        - operation
+        - quantityBefore
+        - quantityDelta
+        - quantityAfter
+        - createdAt
+
+    InventoryMovementListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryMovementItem"
+        total:
+          type: integer
+      required: [data, total]
 
     MandateAdjustRequest:
       type: object
