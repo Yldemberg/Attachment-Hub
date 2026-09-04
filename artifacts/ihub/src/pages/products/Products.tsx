@@ -932,11 +932,12 @@ export default function Products() {
   const { mutate: updateProductFlex, isPending: updatingFlex, variables: flexVariables } =
     useUpdateProductFlex({
       mutation: {
-        onSuccess: (_, vars) => {
+        onSuccess: (data, vars) => {
           queryClient.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+          const enabledNow = data.isFlex ?? vars.data.enabled;
           toast({
-            title: vars.data.enabled ? "Flex ativado" : "Flex desativado",
-            description: vars.data.enabled
+            title: enabledNow ? "Flex ativado" : "Flex desativado",
+            description: enabledNow
               ? "O anúncio passou a oferecer Mercado Envios Flex."
               : "O anúncio deixou de oferecer Mercado Envios Flex.",
           });

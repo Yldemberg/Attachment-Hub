@@ -30,6 +30,10 @@ export type BulkProductFlexSummary = {
 
 const BULK_CHUNK_SIZE = 3;
 
+type MlFlexItemStatus = {
+  has_flex?: boolean;
+};
+
 function mlSiteIdFromItemId(mlItemId: string): string {
   const prefix = mlItemId.slice(0, 3).toUpperCase();
   if (!/^[A-Z]{3}$/.test(prefix)) {
@@ -47,38 +51,115 @@ function productOffersFlex(product: Pick<Product, "isFlex" | "logisticType">): b
   return logistic.includes("self_service");
 }
 
-function flexSelfServicePath(mlItemId: string): string {
+/** Current ML Flex item API (v2). Legacy: `/sites/{site}/shipping/selfservice/items/{id}`. */
+function flexItemPath(mlItemId: string): string {
   const siteId = mlSiteIdFromItemId(mlItemId);
-  return `/sites/${siteId}/shipping/selfservice/items/${encodeURIComponent(mlItemId)}`;
+  return `/flex/sites/${siteId}/items/${encodeURIComponent(mlItemId)}/v2`;
 }
 
-function isAlreadyInFlexStateError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.toLowerCase().includes("item is already in flex");
+function mlErrorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
-function mapMlFlexError(err: unknown): ProductFlexError {
-  const msg = err instanceof Error ? err.message : String(err);
-  const lower = msg.toLowerCase();
+function parseMlErrorPayload(err: unknown): { status: number | null; message: string } {
+  const raw = mlErrorText(err);
+  const statusMatch = raw.match(/ML API (\d+)/);
+  const status = statusMatch ? parseInt(statusMatch[1]!, 10) : null;
+  let message = raw;
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart >= 0) {
+    try {
+      const body = JSON.parse(raw.slice(jsonStart)) as {
+        message?: unknown;
+        error?: unknown;
+        cause?: Array<{ message?: string }>;
+      };
+      const causeMsg = body.cause?.find((c) => c.message)?.message;
+      if (typeof causeMsg === "string" && causeMsg.trim()) {
+        message = causeMsg;
+      } else if (typeof body.message === "string" && body.message.trim()) {
+        message = body.message;
+      } else if (typeof body.error === "string" && body.error.trim()) {
+        message = body.error;
+      }
+    } catch {
+      /* keep raw */
+    }
+  }
+  return { status, message };
+}
+
+function isAlreadyInDesiredFlexStateError(err: unknown, enabled: boolean): boolean {
+  const { message } = parseMlErrorPayload(err);
+  const lower = `${message} ${mlErrorText(err)}`.toLowerCase();
+  if (lower.includes("item is already in flex")) return true;
+  if (enabled) return false;
+  return (
+    lower.includes("item down") ||
+    lower.includes("item is not in flex") ||
+    lower.includes("not in flex")
+  );
+}
+
+function mapMlFlexError(err: unknown, enabled: boolean): ProductFlexError {
+  if (err instanceof ProductFlexError) return err;
+
+  const { status, message } = parseMlErrorPayload(err);
+  const lower = `${message} ${mlErrorText(err)}`.toLowerCase();
+
   if (lower.includes("item down")) {
     return new ProductFlexError(
-      "Este anúncio não pode oferecer Flex",
+      enabled
+        ? "Este anúncio não pode oferecer Flex"
+        : "Este anúncio não oferece Flex no Mercado Livre",
       "INVALID_STATUS",
     );
   }
-  if (msg.includes("ML API 403")) {
+  if (status === 409 || lower.includes("can't activate item") || lower.includes("conflict")) {
+    return new ProductFlexError(
+      "O Mercado Livre está processando outra alteração neste anúncio. Tente novamente em instantes.",
+      "ML_API_ERROR",
+    );
+  }
+  if (status === 403 || mlErrorText(err).includes("ML API 403")) {
     return new ProductFlexError("Conta sem Flex ativo no Mercado Livre", "ML_API_ERROR");
   }
-  if (msg.startsWith("ML API")) {
-    return new ProductFlexError(msg, "ML_API_ERROR");
+  if (status === 404 || mlErrorText(err).includes("ML API 404")) {
+    return new ProductFlexError(
+      "Flex não está disponível para este anúncio ou país",
+      "ML_API_ERROR",
+    );
   }
-  return err instanceof ProductFlexError
-    ? err
-    : new ProductFlexError(msg || "Erro desconhecido", "ML_API_ERROR");
+  if (mlErrorText(err).startsWith("ML API")) {
+    const readable = message && message !== mlErrorText(err) ? message : mlErrorText(err);
+    return new ProductFlexError(readable, "ML_API_ERROR");
+  }
+  return new ProductFlexError(mlErrorText(err) || "Erro desconhecido", "ML_API_ERROR");
 }
 
 function itemIsFlex(item: MlItem): boolean {
   return Array.isArray(item.shipping?.tags) && item.shipping.tags!.includes("self_service_in");
+}
+
+function logisticTypeWithoutFlex(logisticType: string | null): string | null {
+  if (!logisticType) return null;
+  const parts = logisticType
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t && t !== "self_service" && t !== "self_service_in");
+  return parts.length > 0 ? parts.join(",") : null;
+}
+
+async function readFlexStatusFromMl(
+  accountId: string,
+  mlItemId: string,
+): Promise<boolean | null> {
+  try {
+    const status = await ml.get<MlFlexItemStatus>(accountId, flexItemPath(mlItemId));
+    return typeof status?.has_flex === "boolean" ? status.has_flex : null;
+  } catch {
+    return null;
+  }
 }
 
 async function refreshProductFlexFromMl(
@@ -91,8 +172,13 @@ async function refreshProductFlexFromMl(
     product.accountId,
     `/items/${encodeURIComponent(product.mlItemId)}`,
   );
-  const isFlex = itemIsFlex(item);
-  const logisticType = getMlEffectiveLogisticType(item);
+  const taggedFlex = itemIsFlex(item);
+  const apiFlex = await readFlexStatusFromMl(product.accountId, product.mlItemId);
+  const isFlex = apiFlex ?? taggedFlex;
+  let logisticType = getMlEffectiveLogisticType(item);
+  if (!isFlex) {
+    logisticType = logisticTypeWithoutFlex(logisticType);
+  }
   const db = getDb();
   await db
     .update(productsTable)
@@ -109,7 +195,7 @@ async function setProductFlex(
     throw new ProductFlexError("Produto sem mlItemId (não ML)", "INVALID_STATUS");
   }
 
-  const path = flexSelfServicePath(product.mlItemId);
+  const path = flexItemPath(product.mlItemId);
   try {
     if (enabled) {
       await ml.post(product.accountId, path);
@@ -117,14 +203,37 @@ async function setProductFlex(
       await ml.delete(product.accountId, path);
     }
   } catch (err) {
-    if (isAlreadyInFlexStateError(err)) {
+    if (isAlreadyInDesiredFlexStateError(err, enabled)) {
       const refreshed = await refreshProductFlexFromMl(product);
-      return { ...refreshed, skippedAlready: true };
+      if (refreshed.isFlex === enabled) {
+        return { ...refreshed, skippedAlready: true };
+      }
+      const logisticType = enabled
+        ? refreshed.logisticType
+        : logisticTypeWithoutFlex(refreshed.logisticType);
+      const db = getDb();
+      await db
+        .update(productsTable)
+        .set({ isFlex: enabled, logisticType, updatedAt: new Date() })
+        .where(eq(productsTable.id, product.id));
+      return { isFlex: enabled, logisticType, skippedAlready: true };
     }
-    throw mapMlFlexError(err);
+    throw mapMlFlexError(err, enabled);
   }
 
-  return refreshProductFlexFromMl(product);
+  const refreshed = await refreshProductFlexFromMl(product);
+  if (refreshed.isFlex === enabled) return refreshed;
+
+  // GET /items can lag behind a successful Flex v2 204. Persist the requested state.
+  const logisticType = enabled
+    ? refreshed.logisticType
+    : logisticTypeWithoutFlex(refreshed.logisticType);
+  const db = getDb();
+  await db
+    .update(productsTable)
+    .set({ isFlex: enabled, logisticType, updatedAt: new Date() })
+    .where(eq(productsTable.id, product.id));
+  return { isFlex: enabled, logisticType };
 }
 
 /** Mesma lógica de PATCH /products/:id/flex — usada na tela Produtos. */
@@ -183,7 +292,7 @@ export async function changeProductFlex(
     };
   } catch (err) {
     if (err instanceof ProductFlexError) throw err;
-    throw mapMlFlexError(err);
+    throw mapMlFlexError(err, enabled);
   }
 }
 
@@ -293,8 +402,8 @@ export async function bulkChangeProductFlex(
             skipped: result.skippedAlready || undefined,
           };
         } catch (err) {
-          const msg = err instanceof Error ? err.message : "Erro desconhecido";
-          return { productId: product.id, mlItemId: product.mlItemId, ok: false, error: msg };
+          const mapped = err instanceof ProductFlexError ? err : mapMlFlexError(err, enabled);
+          return { productId: product.id, mlItemId: product.mlItemId, ok: false, error: mapped.message };
         }
       }),
     );

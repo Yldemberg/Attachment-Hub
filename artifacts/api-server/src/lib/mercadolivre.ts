@@ -166,15 +166,23 @@ async function mlFetch<T>(
     const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS);
 
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Accept-Language": "pt-BR",
+      };
+      // DELETE/GET without a body: sending Content-Type: application/json makes some
+      // ML endpoints (Flex opt-out) reject the request while parsing an empty body.
+      if (options.body != null && options.body !== "") {
+        headers["Content-Type"] = "application/json";
+      }
+      if (options.headers) {
+        Object.assign(headers, options.headers as Record<string, string>);
+      }
+
       const res = await fetch(url, {
         ...options,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "Accept-Language": "pt-BR",
-          ...(options.headers as Record<string, string>),
-        },
+        headers,
         signal: controller.signal,
       });
 

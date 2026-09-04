@@ -910,7 +910,8 @@ paths:
       tags: [products]
       summary: Enable or disable Mercado Envios Flex (Mercado Livre)
       description: >-
-        Opts the listing into or out of Flex via ML shipping self-service API.
+        Opts the listing into or out of Flex via ML Flex item API v2
+        (`/flex/sites/{site}/items/{id}/v2`).
         Enabling requires an active listing; disabling is allowed for active or paused listings.
         The seller account must already be subscribed to Flex on Mercado Livre.
       security:
