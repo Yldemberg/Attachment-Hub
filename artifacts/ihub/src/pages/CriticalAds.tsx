@@ -3,7 +3,7 @@ import {
   useListCriticalAds,
   type CriticalAd,
 } from "@workspace/api-client-react";
-import { AlertTriangle, ExternalLink, Search, Store } from "lucide-react";
+import { AlertTriangle, ExternalLink, RefreshCw, Search, Store } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -112,7 +112,7 @@ export default function CriticalAds() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, error } = useListCriticalAds({
+  const { data, isLoading, isFetching, isError, error, refetch } = useListCriticalAds({
     search: search || undefined,
     page,
     limit: 20,
@@ -124,11 +124,22 @@ export default function CriticalAds() {
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Anúncios Críticos</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Diagnósticos de anúncios com problemas no Mercado Livre
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Anúncios Críticos</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Diagnósticos de anúncios com problemas no Mercado Livre
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
         </div>
 
         <form
