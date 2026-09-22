@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/auth";
 import { requireActivePlan } from "../lib/trial";
+import { syncCriticalAdsFromMercadoLivre } from "../lib/critical-ads-sync";
 import { getDiagnosticoDb } from "../lib/diagnostico-db";
 import { mlDiagnosticoCriticoTable } from "@workspace/db/schema";
 import { desc, ilike, or, sql } from "drizzle-orm";
@@ -22,8 +23,16 @@ function formatProblemas(value: unknown): string | null {
 
 router.get("/critical-ads", ...auth, async (req, res) => {
   try {
+    const { search, page = "1", limit = "20", refresh } = req.query as Record<string, string>;
+    if (refresh === "true") {
+      if (!req.user?.id) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      await syncCriticalAdsFromMercadoLivre(req.user.id);
+    }
+
     const db = getDiagnosticoDb();
-    const { search, page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -81,6 +90,10 @@ router.get("/critical-ads", ...auth, async (req, res) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     if (message.includes("ML_DIAGNOSTICO_DATABASE_URL")) {
       res.status(503).json({ error: "Critical ads database not configured" });
+      return;
+    }
+    if (message.includes("Mercado Livre") || message.includes("conectada")) {
+      res.status(502).json({ error: message });
       return;
     }
     res.status(500).json({ error: "Failed to load critical ads" });

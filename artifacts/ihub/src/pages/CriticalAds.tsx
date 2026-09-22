@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  getListCriticalAdsQueryKey,
+  listCriticalAds,
   useListCriticalAds,
   type CriticalAd,
 } from "@workspace/api-client-react";
@@ -111,12 +114,30 @@ export default function CriticalAds() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, isFetching, isError, error, refetch } = useListCriticalAds({
+  const params = {
     search: search || undefined,
     page,
     limit: 20,
-  });
+  };
+
+  const { data, isLoading, isFetching, isError, error } = useListCriticalAds(params);
+
+  async function handleRefresh() {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const fresh = await listCriticalAds({ ...params, refresh: true });
+      queryClient.setQueryData(getListCriticalAdsQueryKey(params), fresh);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "Não foi possível atualizar no Mercado Livre.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const ads = data?.data ?? [];
   const pagination = data?.pagination;
@@ -134,10 +155,10 @@ export default function CriticalAds() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void refetch()}
-            disabled={isFetching}
+            onClick={() => void handleRefresh()}
+            disabled={syncing || isFetching}
           >
-            <RefreshCw className={`w-4 h-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${syncing || isFetching ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
         </div>
@@ -169,6 +190,13 @@ export default function CriticalAds() {
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
+          </div>
+        )}
+
+        {syncError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+            Não foi possível atualizar os anúncios no Mercado Livre.
+            <p className="text-xs mt-1 text-red-600/80">{syncError}</p>
           </div>
         )}
 

@@ -13,4 +13,8 @@ export type ListCriticalAdsParams = {
   search?: string;
   page?: number;
   limit?: number;
+  /**
+   * When true, sync listing diagnostics from Mercado Livre before listing
+   */
+  refresh?: boolean;
 };

@@ -1536,6 +1536,12 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: refresh
+          in: query
+          description: When true, sync listing diagnostics from Mercado Livre before listing
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Paginated list of critical ads
